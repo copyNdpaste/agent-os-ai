@@ -1,0 +1,27 @@
+# Build / deps
+node_modules/
+out/
+*.vsix
+.vscode-test/
+.vscode/PythonImportHelper-v2-Completion.json
+
+# OS / temp
+.DS_Store
+preview.html
+releases/
+*.bak.*
+
+# 🔒 시크릿 절대 격리
+.env
+.env.*
+*.env
+_company/
+tokens.json
+**/tokens.json
+**/.env
+**/secrets.json
+
+# Python (가능성 — 다른 도구가 들어올 경우)
+__pycache__/
+*.pyc
+.venv/

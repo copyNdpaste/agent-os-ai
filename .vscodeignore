@@ -1,0 +1,45 @@
+.vscode/**
+.claude/**
+.secondbrain/**
+.git/**
+.github/**
+.env
+.env.*
+ARCHITECTURE.md
+src/**
+# v2.89.84 — extension_download_site/ 와 releases/ 디렉토리 삭제됨.
+# scripts/cycle.js 는 standalone 24h cron 옵션 도구로 유지 (vsix 제외).
+scripts/**
+system_schema.json
+# 한글 파일명이 vsix에 깨진 상태로 들어가던 튜토리얼 docs 제외.
+**/*.md
+!readme.md
+!README.md
+!assets/**/*.md
+**/*.vsix
+node_modules/**
+!node_modules/axios/**
+!node_modules/follow-redirects/**
+!node_modules/form-data/**
+!node_modules/proxy-from-env/**
+!node_modules/mime-db/**
+!node_modules/mime-types/**
+!node_modules/combined-stream/**
+!node_modules/delayed-stream/**
+*.ts
+*.map
+.gitignore
+tsconfig.json
+*.vsix
+assets/icon.svg
+preview.html
+# Heavy LimeZu source packs — kept out of vsix (huge, ~1GB). The slim
+# office bundle at `assets/pixel/office/` ships instead, plus the 7
+# renamed character sprites at `assets/pixel/characters/*.png`.
+# Project owner has redistribution permission for the bundled subset.
+**/moderninteriors-win/**
+**/modernexteriors-win/**
+**/Modern_Office_Revamped_v1/**
+# Nested duplicate copies (user dragged folders into multiple paths)
+assets/pixel/characters/Modern_Office_Revamped_v1/**
+assets/pixel/characters/moderninteriors-win/**
