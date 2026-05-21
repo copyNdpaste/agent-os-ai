@@ -15,7 +15,7 @@
 
 ## 🌟 Overview
 
-VS Code / Cursor / Antigravity 확장 프로그램. 사장님 (operator) 한 명이 **CEO 일론머스크 + 8 명의 전문가 에이전트**를 거느리는 1인 AI 회사를 운영합니다. 각 에이전트는 자기 분야의 사고법·원칙을 체득한 캐릭터로 동작합니다 — 단순 LLM 래퍼가 아닙니다.
+VS Code 계열 IDE 확장. 사장님 (operator) 한 명이 **CEO 일론머스크 + 8 명의 전문가 에이전트**를 거느리는 1인 AI 회사를 운영합니다. 각 에이전트는 자기 분야의 사고법·원칙을 체득한 캐릭터로 동작합니다 — 단순 LLM 래퍼가 아닙니다.
 
 ---
 
@@ -43,7 +43,7 @@ VS Code / Cursor / Antigravity 확장 프로그램. 사장님 (operator) 한 명
 사장님이 던지는 raw 데이터를 에이전트가 **스스로 의미 분석 → 폴더 생성 → Markdown wiki 정리 → 클라우드 자동 백업** 까지 수행합니다.
 
 ### 📂 Zero-Interaction 지식 구조화
-원시 데이터를 `10_Wiki`, `00_Raw`, `🚀 Skills` 등 정형화된 P-Reinforce 템플릿으로 자동 분할·조립.
+원시 데이터를 `10_Wiki`, `00_Raw`, `🚀 Skills` 등 일관된 마크다운 템플릿으로 자동 분할·조립.
 
 ### ☁️ Auto-Git Sync
 파일 생성 즉시 에이전트가 `git add`, `commit`, `push` 자동 수행.
