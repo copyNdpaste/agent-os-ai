@@ -20,7 +20,7 @@ export function _loadToolSeed(rel: string): string {
     try {
         cached = fs.readFileSync(path.join(_TOOL_SEEDS_DIR, rel), 'utf-8');
     } catch (e: any) {
-        console.error(`[Connect AI] tool seed 로드 실패 ${rel}:`, e?.message || e);
+        console.error(`[Agent OS] tool seed 로드 실패 ${rel}:`, e?.message || e);
         cached = '';
     }
     _toolSeedCache.set(rel, cached);
@@ -97,6 +97,6 @@ export function _seedBundledTemplates(agentId: string, targetDir: string) {
       _copyDirRecursive(src, dst);
     }
   } catch (err) {
-    console.error('[Connect AI] 템플릿 시드 실패:', err);
+    console.error('[Agent OS] 템플릿 시드 실패:', err);
   }
 }

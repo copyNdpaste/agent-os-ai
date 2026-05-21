@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Standalone 24h autonomous cycle for Connect AI Lab.
+ * Standalone 24h autonomous cycle for Agent OS.
  *
  * Runs OUTSIDE the VS Code extension lifecycle so the company keeps working
  * even when the IDE is closed. Reads the brain folder, asks the local LLM to
@@ -27,7 +27,12 @@ const os = require('os');
 const axios = require('axios');
 
 // ───────────────────────── Config (env-overridable) ─────────────────────────
-const BRAIN_DIR = (process.env.BRAIN_DIR || path.join(os.homedir(), '.connect-ai-brain')).replace(/^~/, os.homedir());
+const BRAIN_DIR = (process.env.BRAIN_DIR || (function() {
+  // v2.90.0 리브랜드: 기존 ~/.connect-ai-brain 가 있으면 backward-compat 으로 우선 사용.
+  const legacy = path.join(os.homedir(), '.connect-ai-brain');
+  if (fs.existsSync(legacy)) return legacy;
+  return path.join(os.homedir(), '.agent-os-brain');
+})()).replace(/^~/, os.homedir());
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const LMSTUDIO_URL = process.env.LMSTUDIO_URL || 'http://127.0.0.1:1234';
 const MODEL = process.env.MODEL || 'gemma4:e2b';

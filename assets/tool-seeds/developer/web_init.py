@@ -167,7 +167,7 @@ def _scaffold_vanilla(target_dir, name):
 <body>
 <header>
   <h1>{name}</h1>
-  <p>Connect AI · 코다리가 만든 사이트</p>
+  <p>Agent OS · 코다리가 만든 사이트</p>
 </header>
 <main>
   <p>여기에 콘텐츠를 추가하세요.</p>
@@ -183,11 +183,11 @@ header h1 { font-size: 48px; font-weight: 800; margin-bottom: 8px; }
 main { max-width: 720px; margin: 40px auto; padding: 0 24px; }
 ''',
         "script.js": '''// 코다리가 첨부한 스크립트
-console.log("✦ Connect AI 사이트 로드 완료");
+console.log("✦ Agent OS 사이트 로드 완료");
 ''',
         "README.md": f'''# {name}
 
-Connect AI 코다리가 셋업한 정적 웹사이트.
+Agent OS 코다리가 셋업한 정적 웹사이트.
 
 ## 미리보기
 ```

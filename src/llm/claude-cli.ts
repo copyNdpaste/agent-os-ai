@@ -112,7 +112,7 @@ export function runClaudeCli(
         settle(() => reject(new Error(
           `Claude CLI not found at '${opts.binPath}'. ` +
           `Install from https://docs.claude.com/en/docs/claude-code/setup ` +
-          `or set connectAiLab.claudeBinPath.`
+          `or set agentOs.claudeBinPath.`
         )));
       } else {
         settle(() => reject(e));

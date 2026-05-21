@@ -59,7 +59,7 @@ python3 pack_apply.py
 
 ## 안전장치
 - `KIT_NAME` 없거나 잘못되면 종료 + 사용 가능 키트 안내
-- 두뇌 폴더 자동 탐색 (~/.connect-ai-brain 또는 fallback 경로)
+- 두뇌 폴더 자동 탐색 (~/.agent-os-brain · legacy ~/.connect-ai-brain · fallback 경로)
 - 파일 복사는 덮어쓰기 (사용자가 수정한 거 있으면 백업 권장)
 - 의존성 설치 실패해도 계속 진행 (warn만, 사용자 수동 가능)
 - App.tsx 패턴 매칭 실패 시 수동 안내

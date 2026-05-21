@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # version: paypal_revenue_v3
-"""PayPal 매출 자동 분석 — Connect AI 비즈니스 에이전트 전용.
+"""PayPal 매출 자동 분석 — Agent OS 비즈니스 에이전트 전용.
 
 흐름:
   1. CLIENT_ID + CLIENT_SECRET 으로 OAuth2 access token 발급

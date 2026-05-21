@@ -74,7 +74,7 @@ export function resolveClaudeBin(): string | null {
   let configured = '';
   try {
     const vscode = require('vscode');
-    const cfg = vscode.workspace.getConfiguration('connectAiLab');
+    const cfg = vscode.workspace.getConfiguration('agentOs');
     configured = (cfg.get('claudeBinPath', '') || '').trim();
   } catch {
     /* vscode not available — running outside extension host */
@@ -136,7 +136,7 @@ export async function pingClaude(): Promise<string> {
       if (e.code === 'ENOENT') {
         reject(new Error(
           `Claude CLI not found at '${bin}'. Install: 'npm install -g @anthropic-ai/claude-code' ` +
-          `or set connectAiLab.claudeBinPath.`
+          `or set agentOs.claudeBinPath.`
         ));
       } else {
         reject(e);

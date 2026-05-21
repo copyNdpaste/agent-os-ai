@@ -121,7 +121,7 @@ USER → 응답                USER → 행동 계획
 3. **Memory** — 단기 (context) + 장기 (두뇌 폴더)
 4. **Actuators** — 도구 호출 (코드 실행, 결제, 이메일)
 
-**Connect AI 의 9명**:
+**Agent OS 의 9명**:
 각 에이전트 = LLM + system prompt + 도구 + 메모리 (자기 영역만)
 
 **참고:** Russell, S. & Norvig, P. (2020). *AI: A Modern Approach* (4th ed). Ch. 2.
@@ -206,7 +206,7 @@ LLM 출력 (텍스트 + 도구 태그):
 }
 ```
 
-**Connect AI 가 XML 쓰는 이유:**
+**Agent OS 가 XML 쓰는 이유:**
 - 작은 LLM (2~7B) 이 JSON 보다 XML 을 더 잘 따라함
 - 사용자에게도 *읽기 쉬움*
 - 도구 결과를 자연어 안에 자연스럽게 끼움
@@ -248,9 +248,9 @@ LLM 응답 시:
 
 ---
 
-## 📚 C-2. "Connect AI 의 환각 방어 3중 시스템"
+## 📚 C-2. "Agent OS 의 환각 방어 3중 시스템"
 
-**큰 질문:** "Connect AI 는 어떻게 작은 LLM 으로 정확한 매출을 답할까?"
+**큰 질문:** "Agent OS 는 어떻게 작은 LLM 으로 정확한 매출을 답할까?"
 
 **3단 방어:**
 
@@ -290,7 +290,7 @@ LLM 응답 시:
 
 ---
 
-## 📚 C-3. "RAG (Retrieval Augmented Generation) — Connect AI 두뇌"
+## 📚 C-3. "RAG (Retrieval Augmented Generation) — Agent OS 두뇌"
 
 **큰 질문:** "내가 작년에 만든 결정을 AI 가 어떻게 기억하지?"
 
@@ -316,7 +316,7 @@ LLM system prompt 에 컨텍스트로 주입
 정확한 답 생성
 ```
 
-**Connect AI 의 RAG 구현:**
+**Agent OS 의 RAG 구현:**
 - 현재: **기본 grep + 폴더 스캔** (작은 두뇌면 충분)
 - 옵션: 벡터 인덱스 (큰 두뇌 시)
 - 향후: Embedding 모델 로컬 (sentence-transformers)
@@ -348,7 +348,7 @@ LLM system prompt 에 컨텍스트로 주입
         └── "끝났나?" (불확실 → 답답)
 ```
 
-**Connect AI 의 4가지 시각 패턴:**
+**Agent OS 의 4가지 시각 패턴:**
 
 | 패턴 | 인지 효과 (학술) |
 |---|---|
@@ -375,7 +375,7 @@ LLM system prompt 에 컨텍스트로 주입
 - 사용자가 명령보다 *대화*로 인식 → 깊은 인지 참여
 - 실패 시 *책임 분산* 효과 ("코다리가 헤맸구나" vs "AI가 망했다")
 
-**Connect AI 의 의인화 디자인:**
+**Agent OS 의 의인화 디자인:**
 ```
 이름:    한국 친근감 (코다리·현빈·영숙·루나)
 이모지:  💻 🧠 🎵 📺 — 한 글자에 정체성
@@ -443,8 +443,8 @@ window.addEventListener('message', e => {
 
 **문제:**
 ```
-창 1: Connect AI 활성화 → Bridge :4825 점유
-창 2: Connect AI 활성화 시도 → "EADDRINUSE" 충돌
+창 1: Agent OS 활성화 → Bridge :4825 점유
+창 2: Agent OS 활성화 시도 → "EADDRINUSE" 충돌
        → 사이드바 아이콘 사라짐 (webview 등록 실패)
 ```
 
@@ -535,9 +535,9 @@ Bridge /ping 응답 확장:
 
 ---
 
-## 📚 F-2. "AGI 가 오면? — Connect AI 의 적응 전략"
+## 📚 F-2. "AGI 가 오면? — Agent OS 의 적응 전략"
 
-**큰 질문:** "5년 후 AI 가 모든 걸 할 수 있으면 Connect AI 가 필요해?"
+**큰 질문:** "5년 후 AI 가 모든 걸 할 수 있으면 Agent OS 가 필요해?"
 
 **예측:**
 ```
@@ -548,7 +548,7 @@ Bridge /ping 응답 확장:
 2030: AGI?
 ```
 
-**Connect AI 의 영원성:**
+**Agent OS 의 영원성:**
 - **시각화 + UX** 는 LLM 능력 무관
 - **로컬 워크플로** 는 클라우드 LLM 보강
 - **개인 두뇌 + 메모리** 는 사용자 자산

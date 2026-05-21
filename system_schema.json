@@ -1,9 +1,9 @@
 {
-  "schema_name": "ConnectAI_AgentSystemSchema",
+  "schema_name": "AgentOs_AgentSystemSchema",
   "version": "1.0.0",
-  "description": "A comprehensive JSON schema defining the operational state, capabilities, and configuration of the Connect AI agent.",
+  "description": "A comprehensive JSON schema defining the operational state, capabilities, and configuration of the Agent OS agent.",
   "agent_identity": {
-    "name": "Connect AI",
+    "name": "Agent OS",
     "role": "Agentic AI Coding Assistant",
     "core_principle": "100% Local · 100% Offline · 100% Free"
   },

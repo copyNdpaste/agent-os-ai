@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons'
 const items = [
   { id: '1', emoji: '🎯', title: '오늘 목표', sub: 'AI 1인 기업 콘텐츠 1개 작성', accent: '#10B981' },
   { id: '2', emoji: '📊', title: '이번 주 매출', sub: '$2,840 · 평균 +20%', accent: '#3B82F6' },
-  { id: '3', emoji: '🚀', title: '런칭 D-7', sub: 'Connect AI v3.0 출시 준비', accent: '#F59E0B' },
+  { id: '3', emoji: '🚀', title: '런칭 D-7', sub: 'Agent OS v3.0 출시 준비', accent: '#F59E0B' },
   { id: '4', emoji: '💌', title: '오늘 답변할 이메일', sub: '4건 대기 중', accent: '#EF4444' },
 ]
 

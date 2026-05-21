@@ -1,4 +1,4 @@
-# 🎬 Connect AI — 시연 풀 가이드 (v2.89.150)
+# 🎬 Agent OS — 시연 풀 가이드 (v2.89.150)
 
 > 7분 안에 "AI 1인 기업"의 모든 임팩트 모먼트를 보여주는 시연 시나리오.
 
@@ -170,7 +170,7 @@ curl -s http://127.0.0.1:4825/ping | python3 -m json.tool
 | 코다리가 멈춤 | LM Studio Context 16K 이상 확인 + 재시도 |
 | `<read_file>` 노출 | v2.89.146 이상 + reload — shortcut 강제 발동 |
 | PayPal 403 | App Features → ☑ Transaction Search → Save Changes |
-| 가상 사무실 캐릭터 안 보임 | 명령 팔레트 → "Connect AI: 가상 사무실" |
+| 가상 사무실 캐릭터 안 보임 | 명령 팔레트 → "Agent OS: 가상 사무실" |
 
 ---
 

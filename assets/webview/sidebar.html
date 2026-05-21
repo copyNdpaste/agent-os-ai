@@ -1461,7 +1461,7 @@ function renderOnboarding(){
     + '</div>'
     + '<div class="onboard-actions">'
     +   '<button class="onboard-btn" id="ob-pick-brain" title="제2의 두뇌 폴더 위치 직접 선택">📁 폴더 선택</button>'
-    +   '<button class="onboard-btn secondary" id="ob-skip-brain" title="홈 디렉토리의 ~/.connect-ai-brain 사용">기본값 사용</button>'
+    +   '<button class="onboard-btn secondary" id="ob-skip-brain" title="홈 디렉토리의 ~/.agent-os-brain 사용 (기존 ~/.connect-ai-brain 있으면 그쪽)">기본값 사용</button>'
     + '</div>';
   } else if (cur === 3) {
     stepHtml =
@@ -3841,7 +3841,7 @@ function showOnboardingCard(){
     +   '<div class="boot-options">'
     +     '<button class="boot-opt recommended" data-choice="default">'
     +       '<span class="bo-icon">🏠</span>'
-    +       '<span class="bo-text"><span class="bo-title">기존 두뇌 폴더 그대로 사용 <span class="bo-recpill">권장</span></span><span class="bo-desc">~/.connect-ai-brain/ 안에 _shared, _agents, sessions가 만들어집니다.</span></span>'
+    +       '<span class="bo-text"><span class="bo-title">기존 두뇌 폴더 그대로 사용 <span class="bo-recpill">권장</span></span><span class="bo-desc">~/.agent-os-brain/ (또는 기존 ~/.connect-ai-brain/) 안에 _shared, _agents, sessions가 만들어집니다.</span></span>'
     +       '<span class="bo-arrow">→</span>'
     +     '</button>'
     +     '<button class="boot-opt" data-choice="pick">'

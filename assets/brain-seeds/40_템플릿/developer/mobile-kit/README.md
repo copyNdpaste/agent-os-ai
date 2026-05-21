@@ -15,7 +15,7 @@
 ## 사용 (사용자 머신)
 ### 1. 셋업 (`web_init` TEMPLATE=expo)
 ```bash
-# Connect AI 의 web_init 도구가 자동으로:
+# Agent OS 의 web_init 도구가 자동으로:
 npx create-expo-app@latest my-app --template blank-typescript
 cd my-app
 ```

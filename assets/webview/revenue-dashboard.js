@@ -309,7 +309,7 @@ function render(state) {
       <p>${esc(state.error)}</p>
       <p style="margin-top:10px;">
         외부 연결 패널에서 <code>PayPal Client ID</code> + <code>Secret</code> 설정 필요.<br>
-        또는 <code>connectAiLab.apiConnections.open</code> 명령으로 직접.
+        또는 <code>agentOs.apiConnections.open</code> 명령으로 직접.
       </p>
     </div>`;
     return;

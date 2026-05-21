@@ -17,7 +17,7 @@ export default function Sidebar() {
       <div className="p-6 border-b border-slate-800">
         <h2 className="font-bold text-lg tracking-tight">
           {/* TODO: 회사·서비스명 */}
-          Connect AI
+          Agent OS
         </h2>
         <p className="text-xs text-slate-400 mt-1">v2.89 · 1인 기업</p>
       </div>
