@@ -85,6 +85,11 @@ import * as tg from './telegram';
 import * as st from './agent-state';
 import * as cal from './calendar';
 import * as cmp from './company';
+import * as trk from './tracker';
+import * as apv from './approvals';
+import * as clog from './conversation-log';
+import * as dsp from './dispatch';
+import * as sch from './scheduler';
 
 async function _ensureBrainDir(): Promise<string | null> {
     if (_isBrainDirExplicitlySet()) {
@@ -648,63 +653,23 @@ let _telegramPolling = false;
    본체는 src/telegram/history.ts 로 추출. extension 측에서는 cross-cutting
    concern (appendConversationLog 호출) 만 wrapper 에서 처리. */
 
-/* v2.88 — 디스패치 중복 감지 + 진행 상태 추적. 사용자가 "유튜브 분석"을
-   30초 안에 두 번 보내면 두 번 다 디스패치되고 둘 다 "처리 중" 답해서
-   AI가 멍청해 보임. 활성 디스패치를 키(prompt+5분 ts)로 추적하고, 같은
-   요청이 들어오면 새로 시작 안 하고 진행 상황만 알림. */
-interface ActiveDispatch {
-  promptKey: string;
-  startedAt: number;
-  step: string;        /* 현재 단계 — "계획 중", "에이전트 분배 중", etc */
-  heartbeatTimer: NodeJS.Timeout | null;
-  heartbeatCount: number;
-  fromTelegram: boolean;
-}
-const _activeDispatches: Map<string, ActiveDispatch> = new Map();
-const ACTIVE_DISPATCH_TTL_MS = 5 * 60 * 1000; /* 5분 */
-function _normalizeForDispatchKey(s: string): string {
-  /* 공백·구두점 제거하고 첫 80자만 — 사용자가 "유튜브 분석" / "유튜브  분석!"
-     를 같은 의도로 묶기 위해. 너무 짧으면 다른 요청도 충돌해서 80자. */
-  return (s || '').toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, '').slice(0, 80);
-}
+// ──────────────────────────────────────────────────────────────────
+// Active dispatch — extension-side thin wrappers
+// 본문은 src/dispatch/active.ts. 중복 디스패치 감지 + step 추적.
+// ──────────────────────────────────────────────────────────────────
+type ActiveDispatch = dsp.ActiveDispatch;
+
 function _findActiveDispatch(prompt: string): ActiveDispatch | null {
-  const now = Date.now();
-  const key = _normalizeForDispatchKey(prompt);
-  /* TTL 청소 */
-  for (const [k, v] of _activeDispatches.entries()) {
-    if (now - v.startedAt > ACTIVE_DISPATCH_TTL_MS) {
-      if (v.heartbeatTimer) clearInterval(v.heartbeatTimer);
-      _activeDispatches.delete(k);
-    }
-  }
-  return _activeDispatches.get(key) || null;
+  return dsp.find(prompt);
 }
 function _startActiveDispatch(prompt: string, fromTelegram: boolean): ActiveDispatch {
-  const key = _normalizeForDispatchKey(prompt);
-  /* 같은 키가 이미 있으면 우선 정리 (방어) */
-  const old = _activeDispatches.get(key);
-  if (old?.heartbeatTimer) clearInterval(old.heartbeatTimer);
-  const entry: ActiveDispatch = {
-    promptKey: key,
-    startedAt: Date.now(),
-    step: '준비 중',
-    heartbeatTimer: null,
-    heartbeatCount: 0,
-    fromTelegram,
-  };
-  _activeDispatches.set(key, entry);
-  return entry;
+  return dsp.start(prompt, fromTelegram);
 }
 function _updateActiveDispatchStep(prompt: string, step: string) {
-  const key = _normalizeForDispatchKey(prompt);
-  const entry = _activeDispatches.get(key);
-  if (entry) entry.step = step;
+  dsp.updateStep(prompt, step);
 }
 function _endActiveDispatch(prompt: string) {
-  const key = _normalizeForDispatchKey(prompt);
-  const entry = _activeDispatches.get(key);
-  if (entry?.heartbeatTimer) clearInterval(entry.heartbeatTimer);
-  _activeDispatches.delete(key);
+  dsp.end(prompt);
 }
 function _pushTelegramHistory(role: 'user' | 'assistant', text: string) {
   if (!text || !text.trim()) return;
@@ -1554,37 +1519,16 @@ async function handleTelegramViaSecretary(userText: string): Promise<void> {
          days: [0,1,2,3,4,5,6], action: 'tool', tool: 'channel_full_analysis',
          agentId: 'youtube', enabled: true },
      ] } */
-interface ReportScheduleEntry {
-    id: string;
-    label: string;
-    hour: number;          /* 0-23 */
-    minute: number;        /* 0-59 */
-    days: number[];        /* 0=일 ~ 6=토 */
-    action: 'briefing' | 'tool';
-    tool?: string;
-    agentId?: string;
-    enabled: boolean;
-    lastFiredAt?: string;  /* ISO 날짜 — 같은 날 두 번 실행 방지 */
-}
-function _reportSchedulePath(): string {
-    return path.join(getCompanyDir(), '_shared', 'report_schedule.json');
-}
-function readReportSchedule(): { entries: ReportScheduleEntry[] } {
-    try {
-        const p = _reportSchedulePath();
-        if (!fs.existsSync(p)) return { entries: [] };
-        const data = JSON.parse(fs.readFileSync(p, 'utf-8') || '{}');
-        return { entries: Array.isArray(data.entries) ? data.entries : [] };
-    } catch { return { entries: [] }; }
-}
-function writeReportSchedule(s: { entries: ReportScheduleEntry[] }) {
-    try {
-        fs.mkdirSync(path.dirname(_reportSchedulePath()), { recursive: true });
-        fs.writeFileSync(_reportSchedulePath(), JSON.stringify(s, null, 2));
-    } catch (e: any) {
-        console.warn('[reportSchedule] write failed:', e?.message || e);
-    }
-}
+// ──────────────────────────────────────────────────────────────────
+// Report scheduler — extension-side thin wrappers (storage + types)
+// 본문은 src/scheduler/{storage,planner,types}.ts. _runScheduledReportEntry
+// / _scheduleTick / startReportScheduler 는 vscode + setTimeout 의존이라 잔류.
+// ──────────────────────────────────────────────────────────────────
+type ReportScheduleEntry = sch.ReportScheduleEntry;
+
+function _reportSchedulePath(): string { return sch.schedulePath(getCompanyDir()); }
+function readReportSchedule(): { entries: ReportScheduleEntry[] } { return sch.readSchedule(getCompanyDir()); }
+function writeReportSchedule(s: { entries: ReportScheduleEntry[] }) { sch.writeSchedule(getCompanyDir(), s); }
 let _reportSchedulerTimer: NodeJS.Timeout | null = null;
 async function _runScheduledReportEntry(entry: ReportScheduleEntry) {
     try {
@@ -2445,58 +2389,21 @@ function stopRevenueWatcherLoop() {
        owner ∈ 'agent' | 'user' | 'mixed'
        status ∈ 'pending' | 'in_progress' | 'done' | 'cancelled' */
 
-type TaskPriority = 'urgent' | 'high' | 'normal' | 'low';
-const TASK_PRIORITY_ORDER: Record<TaskPriority, number> = { urgent: 0, high: 1, normal: 2, low: 3 };
-const TASK_PRIORITY_LABEL: Record<TaskPriority, string> = {
-  urgent: '🔴 긴급',
-  high:   '🟠 높음',
-  normal: '⚪ 보통',
-  low:    '🔵 낮음',
-};
+// ──────────────────────────────────────────────────────────────────
+// Tracker — extension-side thin wrappers + EventEmitter glue
+// 본문은 src/tracker/{types,io,mutations,recurrence}.ts. EventEmitter 는
+// vscode 의존이라 여기 남아서 writeTracker wrapper 가 fire(). 캘린더 사이드
+// 이펙트(addTask·updateTask 후 createCalendarEventForTask/delete/patch) 도
+// 여기서 합성한다.
+// ──────────────────────────────────────────────────────────────────
+type TaskPriority = trk.TaskPriority;
+const TASK_PRIORITY_ORDER = trk.TASK_PRIORITY_ORDER;
+const TASK_PRIORITY_LABEL = trk.TASK_PRIORITY_LABEL;
+type TrackerTask = trk.TrackerTask;
 
-interface TrackerTask {
-  id: string;
-  title: string;
-  description?: string;
-  owner: 'agent' | 'user' | 'mixed';
-  agentIds?: string[];
-  createdAt: string;
-  dueAt?: string;
-  status: 'pending' | 'in_progress' | 'done' | 'cancelled';
-  completedAt?: string;
-  sessionDir?: string;
-  nudges?: number; /* how many telegram nudges sent for stale user tasks */
-  evidence?: string;
-  calendarEventId?: string; /* Google Calendar event id (when auto-created) */
-  priority?: TaskPriority; /* added v2.78 — defaults to 'normal' on read */
-  /* P1-6: recurrence — when set, the task is a template that auto-spawns
-     fresh copies after each completion. cadence is a simple semantic key,
-     nextRunAt is computed by the recurrence loop. */
-  recurrence?: 'daily' | 'weekly' | 'monthly';
-  nextRunAt?: string;
-  /* P1-7: pre-alarms — track which "due-N" reminders we've already sent
-     so the alarm loop doesn't re-fire every cycle. 't1d' = "1 day before",
-     't1h' = "1 hour before". */
-  preAlarmsSent?: string[];
-}
-
-function _coercePriority(v: unknown): TaskPriority {
-  return v === 'urgent' || v === 'high' || v === 'low' ? v : 'normal';
-}
-
-function _trackerPath(): string {
-  return path.join(getCompanyDir(), '_shared', 'tracker.json');
-}
-
-function readTracker(): { tasks: TrackerTask[] } {
-  try {
-    const p = _trackerPath();
-    if (!fs.existsSync(p)) return { tasks: [] };
-    const raw = fs.readFileSync(p, 'utf-8');
-    const parsed = JSON.parse(raw || '{}');
-    return { tasks: Array.isArray(parsed.tasks) ? parsed.tasks : [] };
-  } catch { return { tasks: [] }; }
-}
+function _coercePriority(v: unknown): TaskPriority { return trk.coercePriority(v); }
+function _trackerPath(): string { return trk.trackerPath(getCompanyDir()); }
+function readTracker(): { tasks: TrackerTask[] } { return trk.readTracker(getCompanyDir()); }
 
 /* Module-level event emitter so the sidebar Task TreeView auto-refreshes
    whenever the tracker file is modified through writeTracker (no matter who
@@ -2513,173 +2420,76 @@ const onTrackerChanged = _trackerChangeEmitter.event;
      - Survives restarts (no in-memory state)
      - Visible in git history (audit log)
      - User can grep/edit before approving */
-interface PendingApproval {
-    id: string;
-    agentId: string;
-    title: string;          /* one-line description */
-    summary: string;        /* short rationale */
-    payload: any;           /* opaque blob the executor needs */
-    kind: string;           /* e.g. 'youtube.comment_reply', 'deploy.prod', 'instagram.post' */
-    createdAt: string;
-}
+// ──────────────────────────────────────────────────────────────────
+// Approvals gate — extension-side thin wrappers + side effects
+// 본문 파일 IO 는 src/approvals/*. spawnSync executor / Telegram card /
+// conversation log / panel refresh / agent pulse 같은 vscode/integration
+// 사이드 이펙트는 wrapper 에서 합성한다.
+// ──────────────────────────────────────────────────────────────────
+type PendingApproval = apv.PendingApproval;
 
-function _approvalsPendingDir(): string {
-    return path.join(getCompanyDir(), 'approvals', 'pending');
-}
-function _approvalsHistoryDir(): string {
-    return path.join(getCompanyDir(), 'approvals', 'history');
-}
-function _approvalsExecutorsDir(): string {
-    /* Optional executors (`{kind}.js`) — when an approval is ✅, we look
-       here for a script to run. Keeps the gate decoupled from any specific
-       integration; agents register an executor when they ship. */
-    return path.join(getCompanyDir(), 'approvals', 'executors');
-}
-
-function _approvalNewId(): string {
-    const stamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
-    const rand = Math.random().toString(36).slice(2, 6);
-    return `apr-${stamp}-${rand}`;
-}
+function _approvalsPendingDir(): string { return apv.pendingDir(getCompanyDir()); }
+function _approvalsHistoryDir(): string { return apv.historyDir(getCompanyDir()); }
+function _approvalsExecutorsDir(): string { return apv.executorsDir(getCompanyDir()); }
+function _approvalNewId(): string { return apv.newApprovalId(); }
 
 function createApproval(req: Omit<PendingApproval, 'id' | 'createdAt'>): PendingApproval {
-    const dir = _approvalsPendingDir();
-    fs.mkdirSync(dir, { recursive: true });
-    const ap: PendingApproval = {
-        id: _approvalNewId(),
-        createdAt: new Date().toISOString(),
-        ...req,
-    };
-    /* Markdown front for human-readable preview (so opening the file in VS
-       Code shows what's about to happen), JSON fence for the executor. */
+    const ap = apv.createApproval(getCompanyDir(), req, {
+        agentLabel: (id: string) => AGENTS[id]?.name ? `${AGENTS[id].emoji} ${AGENTS[id].name}` : undefined,
+    });
     const a = AGENTS[ap.agentId];
     const ownerLine = a ? `${a.emoji} ${a.name}` : ap.agentId;
-    const md = `# ⏳ 승인 대기 — ${ap.title}
-
-- **에이전트:** ${ownerLine}
-- **종류:** \`${ap.kind}\`
-- **요청 시각:** ${ap.createdAt}
-- **id:** \`${ap.id.slice(-9)}\`
-
-## 요약
-
-${ap.summary || '_(없음)_'}
-
-## 사용자 결정
-
-텔레그램에서 \`/approve ${ap.id.slice(-9)}\` 또는 \`/reject ${ap.id.slice(-9)}\` —
-사이드바 "승인 대기" 패널에서도 가능합니다.
-
-## payload (실행기에 전달)
-
-\`\`\`json
-${JSON.stringify(ap.payload, null, 2)}
-\`\`\`
-`;
-    fs.writeFileSync(path.join(dir, `${ap.id}.md`), md);
-    fs.writeFileSync(path.join(dir, `${ap.id}.json`), JSON.stringify(ap, null, 2));
-    /* Telegram card so the user knows something needs them — only fires
-       when bot is configured. Daily briefing also surfaces this list. */
+    /* Telegram card + conversation log + panel refresh — 모두 vscode/통합
+       사이드 이펙트라 wrapper 측에서 처리. */
     sendTelegramReport(`⏳ *승인 대기 (${ownerLine})*\n\n${ap.title}\n\n${ap.summary.slice(0, 300)}\n\n_승인: \`/approve ${ap.id.slice(-9)}\` · 거부: \`/reject ${ap.id.slice(-9)}\`_`).catch(() => { /* silent */ });
     try { appendConversationLog({ speaker: ownerLine, emoji: '⏳', section: '승인 요청', body: `${ap.title} (${ap.kind})\n${ap.summary.slice(0, 300)}` }); } catch { /* ignore */ }
-    /* Office indicator — secretary's desk gets ⏳ pulse since secretary owns
-       the user-facing approval workflow. The originating agent ALSO pulses
-       so user sees who requested it. Both decay quickly so the office
-       doesn't get cluttered. */
     try {
         _activeChatProvider?.pulseAgent?.(ap.agentId, '⏳', 3500, `${ap.title} 승인 요청`);
         _activeChatProvider?.pulseAgent?.('secretary', '🔔', 3500);
     } catch { /* ignore */ }
-    /* v2.82: removed chat sidebar injection — approvals now surface via
-       (1) telegram card, (2) status bar "⚠️ 승인 N건" badge, (3) dashboard
-       "⏳ 승인 대기" section. Chat stays clean for actual conversation. */
-    /* Refresh the dedicated approvals webview if it's open. */
     try { _approvalsPanelProvider?.refresh(); } catch { /* ignore */ }
     return ap;
 }
 
-function listPendingApprovals(): PendingApproval[] {
-    const dir = _approvalsPendingDir();
-    if (!fs.existsSync(dir)) return [];
-    const out: PendingApproval[] = [];
-    for (const f of fs.readdirSync(dir)) {
-        if (!f.endsWith('.json')) continue;
-        try {
-            const txt = fs.readFileSync(path.join(dir, f), 'utf-8');
-            const ap = JSON.parse(txt);
-            if (ap && ap.id) out.push(ap);
-        } catch { /* skip malformed */ }
-    }
-    out.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-    return out;
-}
+function listPendingApprovals(): PendingApproval[] { return apv.listPending(getCompanyDir()); }
 
 function findApprovalByShortId(short: string): PendingApproval | null {
-    const all = listPendingApprovals();
-    return all.find(a => a.id === short) || all.find(a => a.id.endsWith(short)) || null;
+    return apv.findByShortId(getCompanyDir(), short);
 }
 
 async function resolveApproval(id: string, decision: 'approved' | 'rejected', reason: string = ''): Promise<{ ok: boolean; message: string; ap?: PendingApproval }> {
-    const ap = findApprovalByShortId(id);
-    if (!ap) return { ok: false, message: '해당 id 승인 요청을 찾지 못했어요.' };
-    const pendingDir = _approvalsPendingDir();
-    const histDir = _approvalsHistoryDir();
-    fs.mkdirSync(histDir, { recursive: true });
-    /* Move both files (md + json) to history with decision suffix. */
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16);
-    const tag = decision === 'approved' ? 'OK' : 'NO';
-    const baseSrc = path.join(pendingDir, ap.id);
-    const baseDst = path.join(histDir, `${stamp}_${tag}_${ap.id}`);
-    let executorOutput = '';
-    let executorOk = true;
-    if (decision === 'approved') {
-        /* Try to dispatch the executor — file `approvals/executors/{kind}.js`.
-           Best-effort: if missing or it throws, we still record the approval
-           but warn the user. No executor means "approval recorded, do it
-           manually" — useful for early stage when integrations land in
-           waves. */
-        const execPath = path.join(_approvalsExecutorsDir(), `${ap.kind}.js`);
-        if (fs.existsSync(execPath)) {
-            try {
-                /* Use spawnSync for isolation — no shared module cache. */
-                const res = spawnSync('node', [execPath], {
-                    cwd: getCompanyDir(),
-                    encoding: 'utf-8',
-                    timeout: 60000,
-                    input: JSON.stringify(ap.payload),
-                });
-                executorOutput = (res.stdout || '') + (res.stderr ? `\n[stderr]\n${res.stderr}` : '');
-                executorOk = res.status === 0;
-            } catch (e: any) {
-                executorOk = false;
-                executorOutput = `executor error: ${e?.message || e}`;
-            }
-        } else {
-            executorOutput = `(no executor for ${ap.kind} — approval recorded, manual follow-up)`;
+    /* Executor callback — approved 시에만 호출됨. spawnSync 기반 격리 실행은
+       VS Code 측 책임이라 wrapper 에서 주입. throw 해도 ok:true 로 끝남
+       (모듈이 FAIL 마커 audit md 에 기록). */
+    const executor: apv.ApprovalExecutor = async (approval) => {
+        const execPath = path.join(_approvalsExecutorsDir(), `${approval.kind}.js`);
+        if (!fs.existsSync(execPath)) {
+            return { ok: true, output: `(no executor for ${approval.kind} — approval recorded, manual follow-up)` };
         }
-    }
-    /* Append decision to the markdown for audit. */
-    try {
-        const mdPath = `${baseSrc}.md`;
-        if (fs.existsSync(mdPath)) {
-            const append = `\n---\n\n## 결정: **${decision === 'approved' ? '✅ 승인' : '✖️ 거부'}**\n- 시각: ${new Date().toISOString()}\n- 사유: ${reason || '_(없음)_'}\n${decision === 'approved' ? `- 실행 결과: ${executorOk ? 'OK' : 'FAIL'}\n\n\`\`\`\n${executorOutput.slice(0, 1500)}\n\`\`\`\n` : ''}`;
-            fs.appendFileSync(mdPath, append);
-        }
-    } catch { /* ignore */ }
-    /* Move pending → history. */
-    try {
-        for (const ext of ['.md', '.json']) {
-            const src = `${baseSrc}${ext}`;
-            const dst = `${baseDst}${ext}`;
-            if (fs.existsSync(src)) fs.renameSync(src, dst);
-        }
-    } catch { /* ignore */ }
+        const res = spawnSync('node', [execPath], {
+            cwd: getCompanyDir(),
+            encoding: 'utf-8',
+            timeout: 60000,
+            input: JSON.stringify(approval.payload),
+        });
+        const output = (res.stdout || '') + (res.stderr ? `\n[stderr]\n${res.stderr}` : '');
+        return { ok: res.status === 0, output };
+    };
+    const result = await apv.resolveApproval(getCompanyDir(), id, decision, reason, executor);
+    if (!result.ok || !result.ap) return result;
+    /* Audit 한 줄도 wrapper 에서 — conversation log 는 vscode 측 sink. */
+    const ap = result.ap;
     const a = AGENTS[ap.agentId];
     const ownerLine = a ? `${a.emoji} ${a.name}` : ap.agentId;
-    try { appendConversationLog({ speaker: ownerLine, emoji: decision === 'approved' ? '✅' : '✖️', section: '승인 결과', body: `${ap.title} (${ap.kind}) → ${decision}${reason ? '\n사유: ' + reason : ''}${decision === 'approved' && !executorOk ? '\n실행 실패' : ''}` }); } catch { /* ignore */ }
-    return { ok: true, ap, message: decision === 'approved'
-        ? `✅ 승인됨 — ${ap.title}${executorOutput ? `\n\n${executorOutput.slice(0, 600)}` : ''}`
-        : `✖️ 거부됨 — ${ap.title}` };
+    try {
+        appendConversationLog({
+            speaker: ownerLine,
+            emoji: decision === 'approved' ? '✅' : '✖️',
+            section: '승인 결과',
+            body: `${ap.title} (${ap.kind}) → ${decision}${reason ? '\n사유: ' + reason : ''}`,
+        });
+    } catch { /* ignore */ }
+    return result;
 }
 
 /* P1-9: YouTube comment-reply queue ──────────────────────────────────────
@@ -2951,81 +2761,39 @@ async function _youtubeCommentReplyDraftBatch(opts: { maxComments?: number; maxP
     return { drafted, skipped };
 }
 
+/* Tracker IO wrappers — emitter + calendar side effects 합성. 본문은
+   trk 모듈. wrapper 만 vscode/calendar 의존 결합. */
 function writeTracker(t: { tasks: TrackerTask[] }) {
-  try {
-    const dir = path.join(getCompanyDir(), '_shared');
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(_trackerPath(), JSON.stringify(t, null, 2));
-    try { _trackerChangeEmitter.fire(); } catch { /* no listeners — fine */ }
-  } catch { /* never let tracker errors break flow */ }
+  trk.writeTracker(getCompanyDir(), t);
+  try { _trackerChangeEmitter.fire(); } catch { /* no listeners — fine */ }
 }
 
-function _trackerNewId(): string {
-  const stamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
-  const rand = Math.random().toString(36).slice(2, 6);
-  return `${stamp}-${rand}`;
-}
+function _trackerNewId(): string { return trk.newTaskId(); }
 
 function addTrackerTask(partial: Partial<TrackerTask> & { title: string; owner: TrackerTask['owner'] }): TrackerTask {
-  const t = readTracker();
-  const task: TrackerTask = {
-    id: partial.id || _trackerNewId(),
-    title: partial.title.slice(0, 200),
-    description: partial.description?.slice(0, 1000),
-    owner: partial.owner,
-    agentIds: partial.agentIds,
-    createdAt: partial.createdAt || new Date().toISOString(),
-    dueAt: partial.dueAt,
-    status: partial.status || (partial.owner === 'agent' ? 'in_progress' : 'pending'),
-    sessionDir: partial.sessionDir,
-    nudges: 0,
-    priority: _coercePriority(partial.priority),
-    recurrence: partial.recurrence,
-    nextRunAt: partial.nextRunAt,
-    preAlarmsSent: partial.preAlarmsSent || [],
-  };
-  t.tasks.push(task);
-  /* Keep file from growing unbounded — drop very old completed/cancelled. */
-  const cutoff = Date.now() - 30 * 86_400_000;
-  t.tasks = t.tasks.filter(x => {
-    if (x.status === 'done' || x.status === 'cancelled') {
-      const at = new Date(x.completedAt || x.createdAt).getTime();
-      return at >= cutoff;
-    }
-    return true;
-  });
-  writeTracker(t);
+  const task = trk.addTask(getCompanyDir(), partial);
+  try { _trackerChangeEmitter.fire(); } catch { /* no listeners — fine */ }
   /* Auto-create Google Calendar event when due is set + Calendar is wired.
-     Fire-and-forget — never blocks tracker creation. Updates the tracker
-     entry with the eventId once the API call returns. */
+     Fire-and-forget — never blocks tracker creation. */
   if (task.dueAt && isCalendarWriteConnected()) {
     createCalendarEventForTask(task).then(eventId => {
-      if (eventId) {
-        updateTrackerTask(task.id, { calendarEventId: eventId });
-      }
+      if (eventId) updateTrackerTask(task.id, { calendarEventId: eventId });
     }).catch(() => { /* silent — calendar errors shouldn't break tracker */ });
   }
   return task;
 }
 
 function updateTrackerTask(id: string, patch: Partial<TrackerTask>): TrackerTask | null {
-  const t = readTracker();
-  const idx = t.tasks.findIndex(x => x.id === id);
-  if (idx < 0) return null;
-  const prev = t.tasks[idx];
-  t.tasks[idx] = { ...prev, ...patch };
-  const cur = t.tasks[idx];
-  if ((patch.status === 'done' || patch.status === 'cancelled') && !cur.completedAt) {
-    cur.completedAt = new Date().toISOString();
-  }
-  writeTracker(t);
-  /* Mirror tracker state to Google Calendar so the user's calendar isn't
-     stuck on stale plans. Cancelled → delete event; status/title/due change
-     while still active → patch event. Best-effort, never blocks. */
-  if (cur.calendarEventId && isCalendarWriteConnected()) {
-    const becameCancelled = patch.status === 'cancelled' && prev.status !== 'cancelled';
-    const titleOrDueChanged = (patch.title && patch.title !== prev.title) || (patch.dueAt && patch.dueAt !== prev.dueAt);
-    const becameDone = patch.status === 'done' && prev.status !== 'done';
+  const before = readTracker().tasks.find(x => x.id === id) || null;
+  const cur = trk.updateTask(getCompanyDir(), id, patch);
+  if (!cur) return null;
+  try { _trackerChangeEmitter.fire(); } catch { /* no listeners — fine */ }
+  /* Mirror tracker state to Google Calendar. Cancelled → delete; status/title/
+     dueAt 변경 → patch. Best-effort. */
+  if (before && cur.calendarEventId && isCalendarWriteConnected()) {
+    const becameCancelled = patch.status === 'cancelled' && before.status !== 'cancelled';
+    const titleOrDueChanged = (patch.title && patch.title !== before.title) || (patch.dueAt && patch.dueAt !== before.dueAt);
+    const becameDone = patch.status === 'done' && before.status !== 'done';
     if (becameCancelled) {
       deleteCalendarEvent(cur.calendarEventId).then(ok => {
         if (ok) updateTrackerTask(cur.id, { calendarEventId: undefined });
@@ -3034,65 +2802,15 @@ function updateTrackerTask(id: string, patch: Partial<TrackerTask>): TrackerTask
       updateCalendarEventForTask(cur).catch(() => { /* silent */ });
     }
   }
-  return t.tasks[idx];
+  return cur;
 }
 
-function listOpenTrackerTasks(): TrackerTask[] {
-  return readTracker().tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled');
-}
+function listOpenTrackerTasks(): TrackerTask[] { return trk.listOpen(getCompanyDir()); }
 
-/* P1-8: Forgiving date parser for /reschedule. Covers the four shapes the
-   user actually types in chat: ISO ("2026-05-10 14:00"), Korean relative
-   ("내일", "내일 15:00", "오늘 18:00"), positive offset ("+2h", "+90m",
-   "+1d"). Returns null when nothing matches so the caller can ask again. */
-function _parseLooseDate(input: string): Date | null {
-    const s = input.trim();
-    if (!s) return null;
-    /* +Nh / +Nm / +Nd offset */
-    const off = s.match(/^\+(\d+)\s*(h|m|d|시간|분|일)$/i);
-    if (off) {
-        const n = parseInt(off[1], 10);
-        const u = off[2].toLowerCase();
-        const ms = (u === 'h' || u === '시간') ? n * 3600_000
-                 : (u === 'm' || u === '분')   ? n * 60_000
-                 : (u === 'd' || u === '일')   ? n * 86_400_000
-                 : 0;
-        if (ms > 0) return new Date(Date.now() + ms);
-    }
-    /* "내일 [HH:MM]" / "오늘 [HH:MM]" */
-    const rel = s.match(/^(내일|오늘|모레)\s*(\d{1,2}):(\d{2})?$/);
-    if (rel) {
-        const offsetDays = rel[1] === '내일' ? 1 : rel[1] === '모레' ? 2 : 0;
-        const d = new Date();
-        d.setDate(d.getDate() + offsetDays);
-        const hh = parseInt(rel[2], 10);
-        const mm = rel[3] ? parseInt(rel[3], 10) : 0;
-        d.setHours(hh, mm, 0, 0);
-        return d;
-    }
-    /* Bare "내일" / "오늘" / "모레" → 09:00 default */
-    if (/^(내일|오늘|모레)$/.test(s)) {
-        const offsetDays = s === '내일' ? 1 : s === '모레' ? 2 : 0;
-        const d = new Date();
-        d.setDate(d.getDate() + offsetDays);
-        d.setHours(9, 0, 0, 0);
-        return d;
-    }
-    /* ISO-ish — let Date constructor try. Reject NaN. */
-    const iso = new Date(s.replace(/[ T]/, 'T'));
-    if (!isNaN(iso.getTime())) return iso;
-    return null;
-}
-
-/* P1-6: Compute the next run time for a recurring task based on cadence.
-   Uses local time so "매일 09:00" lands at 09:00 in the user's timezone,
-   which is what the user expects when they say "매일 아침". */
+/* Recurrence helpers — 본문 trk.parseLooseDate / trk.computeNextRunAt. */
+function _parseLooseDate(input: string): Date | null { return trk.parseLooseDate(input); }
 function _computeNextRunAt(prev: Date, cadence: 'daily' | 'weekly' | 'monthly'): Date {
-  const next = new Date(prev);
-  if (cadence === 'daily')   next.setDate(next.getDate() + 1);
-  if (cadence === 'weekly')  next.setDate(next.getDate() + 7);
-  if (cadence === 'monthly') next.setMonth(next.getMonth() + 1);
-  return next;
+  return trk.computeNextRunAt(prev, cadence);
 }
 
 /* P1-6: Recurrence loop — every minute, scans tracker for tasks whose
@@ -4837,54 +4555,19 @@ function setToolEnabled(agentId: string, toolName: string, enabled: boolean) {
  *  Lives at `<brain>/00_Raw/conversations/` so it joins the existing
  *  Second-Brain raw-knowledge convention — visible to the brain graph,
  *  synced by GitHub auto-sync, browsable in the user's note-taking app. */
-function getConversationsDir(): string {
-  const brain = getCompanyDir(); // unified with brain folder
-  return path.join(brain, '00_Raw', 'conversations');
-}
+// ──────────────────────────────────────────────────────────────────
+// Conversation log — extension-side thin wrappers
+// 본문은 src/conversation-log/log.ts. 모든 에이전트 산출물·대화가 누적되는
+// 일자별 living transcript.
+// ──────────────────────────────────────────────────────────────────
+function getConversationsDir(): string { return clog.conversationsDir(getCompanyDir()); }
 
-/** Append one entry to the day's running conversation log. Living transcript
- *  of every interaction in the company — user commands, CEO briefs, each
- *  agent's output, confer turns, final reports. Stored in 00_Raw alongside
- *  other raw knowledge so it participates in brain queries. */
 function appendConversationLog(entry: { speaker: string; emoji?: string; section?: string; body: string }) {
-  try {
-    const convDir = getConversationsDir();
-    fs.mkdirSync(convDir, { recursive: true });
-    const today = new Date().toISOString().slice(0, 10);
-    const dayFile = path.join(convDir, `${today}.md`);
-    if (!fs.existsSync(dayFile)) {
-      fs.writeFileSync(dayFile, `# 📜 ${today} 회사 대화록\n\n_모든 명령·분배·산출물·대화가 시간순으로 누적됩니다. 두뇌가 자동 인덱싱·동기화합니다._\n`);
-    }
-    const ts = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-    const emoji = entry.emoji || '🗨️';
-    const sectionLine = entry.section ? ` · _${entry.section}_` : '';
-    const block = `\n## [${ts}] ${emoji} **${entry.speaker}**${sectionLine}\n\n${entry.body}\n`;
-    fs.appendFileSync(dayFile, block);
-  } catch { /* logging must never break the flow */ }
+  clog.appendLog(getCompanyDir(), entry);
 }
 
-/** Read the last N chars (across today + yesterday) of the conversation log
- *  for use as system-prompt context. Lets CEO recall what the company has
- *  recently been working on without needing the full file. */
 function readRecentConversations(maxChars = 2500): string {
-  try {
-    const convDir = getConversationsDir();
-    if (!fs.existsSync(convDir)) return '';
-    const today = new Date().toISOString().slice(0, 10);
-    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-    let combined = '';
-    for (const day of [yesterday, today]) {
-      const f = path.join(convDir, `${day}.md`);
-      if (fs.existsSync(f)) {
-        try { combined += fs.readFileSync(f, 'utf-8'); } catch { /* ignore */ }
-      }
-    }
-    if (!combined) return '';
-    const tail = combined.slice(-maxChars);
-    return `\n\n[최근 회사 대화 요약 (참고용)]\n${tail}\n`;
-  } catch {
-    return '';
-  }
+  return clog.readRecent(getCompanyDir(), maxChars);
 }
 
 function makeSessionDir(): string {
@@ -13284,9 +12967,9 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
     private _dispatchWorkerRunning: boolean = false;
     private _currentDispatch: { prompt: string; priority: 'user' | 'auto'; startedAt: number } | null = null;
     public enqueueDispatch(prompt: string, modelName: string, priority: 'user' | 'auto', fromTelegram: boolean): boolean {
-        const key = _normalizeForDispatchKey(prompt);
+        const key = dsp.normalizeKey(prompt);
         /* 같은 키가 이미 큐에 있거나 진행 중이면 추가 안 함 (자율 사이클 중복 방지) */
-        if (this._currentDispatch && _normalizeForDispatchKey(this._currentDispatch.prompt) === key) return false;
+        if (this._currentDispatch && dsp.normalizeKey(this._currentDispatch.prompt) === key) return false;
         if (this._dispatchQueue.some(j => j.promptKey === key)) return false;
         const job = { promptKey: key, prompt, modelName, priority, fromTelegram, enqueuedAt: Date.now() };
         if (priority === 'user') {
@@ -14011,10 +13694,9 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
             } catch { /* ignore */ }
         }
         /* 활성 디스패치 추적도 정리 — 하트비트 timer 끄고 제거 */
-        for (const [key, entry] of _activeDispatches.entries()) {
-            if (entry.heartbeatTimer) clearInterval(entry.heartbeatTimer);
-            what = entry.step;
-            _activeDispatches.delete(key);
+        const cancelledSteps = dsp.cancelAll();
+        if (cancelledSteps.length > 0) {
+            what = cancelledSteps[cancelledSteps.length - 1];
             cancelled = true;
         }
         if (cancelled) {
