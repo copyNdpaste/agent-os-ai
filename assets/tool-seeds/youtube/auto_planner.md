@@ -22,7 +22,7 @@
 ```json
 { "INTERVAL_HOURS": 6, "TOTAL_RUN_HOURS": 0 }
 ```
-사용자가 멈출 때까지 6시간마다 무한 실행. 24시간 자율 사이클(설정의 `connectAiLab.autoCycleEnabled`) 과 호환.
+사용자가 멈출 때까지 6시간마다 무한 실행. 24시간 자율 사이클(설정의 `agentOsAiLab.autoCycleEnabled`) 과 호환.
 
 **📌 제한 모드 (테스트용)**
 ```json

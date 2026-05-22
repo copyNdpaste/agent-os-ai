@@ -10,7 +10,7 @@ import axios from 'axios';
 import { spawn } from 'child_process';
 
 export const MAX_HTTP_BODY = 5 * 1024 * 1024;
-export const CONNECT_AI_VERSION = '2.89.156';
+export const AGENT_OS_AI_VERSION = '2.90.0';
 
 /** semver-ish 비교 — a < b 이면 true (a 가 옛 버전). */
 export function versionLessThan(a: string, b: string): boolean {
@@ -25,7 +25,7 @@ export function versionLessThan(a: string, b: string): boolean {
 
 /**
  * 포트 4825 에 떠있는 Bridge 가 우리 것인지 식별.
- *  - ours: connect-ai-bridge 식별자
+ *  - ours: agent-os-ai-bridge 식별자
  *  - version: 그 인스턴스 버전
  *  - pid: 종료 대상 PID
  */
@@ -33,7 +33,7 @@ export async function probeExistingBridge(): Promise<{ ours: boolean; version: s
     try {
         const r = await axios.get('http://127.0.0.1:4825/ping', { timeout: 1500 });
         const d = r.data;
-        if (d && d.app === 'connect-ai-bridge') {
+        if (d && d.app === 'agent-os-ai-bridge') {
             return { ours: true, version: String(d.version || ''), pid: Number(d.pid || 0) };
         }
     } catch { /* not running or different app */ }

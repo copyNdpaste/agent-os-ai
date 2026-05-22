@@ -29,6 +29,57 @@ import type {
     BrainSnippet,
 } from './types';
 
+const VALIDATION_GROUPS: Array<{ group: string; tags: string[]; patterns: RegExp[] }> = [
+    { group: '아이디어', tags: ['idea', '아이디어'], patterns: [/아이디어|idea|컨셉|서비스|앱|제품|MVP/i] },
+    { group: '고객', tags: ['customer', 'target', '고객'], patterns: [/타깃|고객|사용자|유저|페르소나|audience|customer|target/i] },
+    { group: '문제', tags: ['problem', 'pain', '문제'], patterns: [/문제|불편|pain|고통|니즈|숨겨진 정보|정보 비대칭/i] },
+    { group: '가설', tags: ['hypothesis', '가설'], patterns: [/가설|검증|assumption|hypothesis|검증할/i] },
+    { group: '실험', tags: ['experiment', 'sns', '실험'], patterns: [/실험|게시|SNS|Threads|Instagram|인스타|릴스|X\(|트위터|숏츠|CTA|랜딩/i] },
+    { group: '반응', tags: ['signal', 'reaction', '반응'], patterns: [/반응|댓글|DM|클릭|저장|공유|대기자|가입|신청|전환|signal|score/i] },
+    { group: '수익화', tags: ['bm', 'revenue', '수익화'], patterns: [/BM|가격|매출|수익|결제|구독|유료|가격|revenue|pricing/i] },
+    { group: '리스크', tags: ['risk', '리스크'], patterns: [/리스크|법률|약관|정책|위험|금지|주의|개인정보|저작권|규제/i] },
+    { group: 'MVP', tags: ['mvp', 'build'], patterns: [/MVP|프로토타입|구현|개발|빌드|launch|출시/i] },
+];
+
+const STAGE_PATTERNS: Array<{ stage: string; patterns: RegExp[] }> = [
+    { stage: 'idea', patterns: [/아이디어|원문 아이디어|컨셉/i] },
+    { stage: 'hypothesis', patterns: [/가설|타깃|문제 정의|검증/i] },
+    { stage: 'experiment', patterns: [/SNS 실험|게시|실험 문구|CTA|랜딩/i] },
+    { stage: 'signal', patterns: [/반응|댓글|DM|클릭|대기자|신청|Idea Score|signal/i] },
+    { stage: 'mvp', patterns: [/MVP|구현|프로토타입|출시/i] },
+];
+
+const KEYWORD_STOP = new Set([
+    '그리고', '하지만', '해서', '있는', '없는', '하기', '하면', '으로', '에서', '에게',
+    'the', 'and', 'for', 'with', 'that', 'this', 'from', 'you', 'your'
+]);
+
+function inferValidationMeta(content: string, rel: string, base: string): { group: string; stage: string; tags: string[]; keywords: string[] } {
+    const hay = `${rel}\n${base}\n${content.slice(0, 20_000)}`;
+    let best = { group: '지식', tags: [] as string[], score: 0 };
+    for (const g of VALIDATION_GROUPS) {
+        const score = g.patterns.reduce((sum, re) => sum + ((hay.match(re) || []).length || (re.test(hay) ? 1 : 0)), 0);
+        if (score > best.score) best = { group: g.group, tags: g.tags, score };
+    }
+    let stage = '';
+    for (const s of STAGE_PATTERNS) {
+        if (s.patterns.some(re => re.test(hay))) { stage = s.stage; break; }
+    }
+    const words = hay
+        .replace(/https?:\/\/\S+/g, ' ')
+        .replace(/[^\p{L}\p{N}_-]+/gu, ' ')
+        .split(/\s+/)
+        .map(w => w.trim().toLowerCase())
+        .filter(w => w.length >= 2 && w.length <= 24 && !KEYWORD_STOP.has(w));
+    const freq = new Map<string, number>();
+    for (const w of words) freq.set(w, (freq.get(w) || 0) + 1);
+    const keywords = [...freq.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 8)
+        .map(([w]) => w);
+    return { group: best.group, stage, tags: best.tags, keywords };
+}
+
 export function buildKnowledgeGraph(brainDir: string): BrainGraph {
     const nodes: BrainNode[] = [];
     const nodeByPath = new Map<string, BrainNode>();
@@ -130,6 +181,12 @@ export function buildKnowledgeGraph(brainDir: string): BrainGraph {
         while ((m = tagRe.exec(content)) !== null) {
             localTags.add(m[1]);
         }
+        const inferred = inferValidationMeta(content, node.id, node.name);
+        node.group = inferred.group;
+        node.stage = inferred.stage;
+        node.keywords = inferred.keywords;
+        inferred.tags.forEach(t => localTags.add(t));
+        if (inferred.stage) localTags.add(`stage-${inferred.stage}`);
         node.tags = [...localTags];
         localTags.forEach(t => tagSet.add(t));
     }
@@ -178,6 +235,35 @@ export function buildKnowledgeGraph(brainDir: string): BrainGraph {
         for (let i = 0; i < nodesWithTag.length; i++) {
             for (let j = i + 1; j < nodesWithTag.length; j++) {
                 links.push({ source: nodesWithTag[i].id, target: nodesWithTag[j].id, type: 'tag' });
+            }
+        }
+    }
+
+    // --- Pass 3.5: validation-similarity edges ---
+    // Idea validation docs often don't have explicit wikilinks yet. Connect
+    // nodes in the same inferred group when they share high-signal keywords,
+    // so the graph shows real clusters before the user manually curates links.
+    const groupToNodes = new Map<string, BrainNode[]>();
+    for (const node of nodes) {
+        const group = node.group || node.folder || '지식';
+        const list = groupToNodes.get(group) || [];
+        list.push(node);
+        groupToNodes.set(group, list);
+    }
+    for (const [, groupNodes] of groupToNodes) {
+        if (groupNodes.length < 2 || groupNodes.length > 60) continue;
+        let added = 0;
+        for (let i = 0; i < groupNodes.length && added < 120; i++) {
+            const a = groupNodes[i];
+            const aKw = new Set(a.keywords || []);
+            for (let j = i + 1; j < groupNodes.length && added < 120; j++) {
+                const b = groupNodes[j];
+                const bKw = b.keywords || [];
+                const shared = bKw.filter(k => aKw.has(k));
+                if (shared.length >= 2 || (a.stage && a.stage === b.stage && shared.length >= 1)) {
+                    links.push({ source: a.id, target: b.id, type: 'related' });
+                    added++;
+                }
             }
         }
     }

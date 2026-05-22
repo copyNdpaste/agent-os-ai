@@ -57,7 +57,7 @@ def _load_operator_credentials(brain_root):
          __GEMINI_TEXT_MODEL__      → 텍스트 모델명
          __GEMINI_IMAGE_MODEL__     → 이미지 모델명
          __PAYPAL_CLIENT_ID__       → PayPal Live/Sandbox Client ID
-       자격증명은 외부 연결 패널 (Connect AI) 에서 입력. 키트 사용자(고객) 는
+       자격증명은 외부 연결 패널 (Agent OS AI) 에서 입력. 키트 사용자(고객) 는
        이 키를 볼 일이 없음 — 운영자가 빌드 시점에 박힘. """
     creds = {
         "__GEMINI_API_KEY__": "",
@@ -160,8 +160,8 @@ def _copy_tree(src_dir, dst_dir, creds=None):
         _log(f"🔐 운영자 자격증명 {injected}개 파일에 자동 inline (Gemini/PayPal placeholder 교체)", "ok")
     if missing_placeholders:
         guide = {
-            "__GEMINI_API_KEY__": "Connect AI → 외부 연결 → ✨ Google Gemini → API Key 입력",
-            "__PAYPAL_CLIENT_ID__": "Connect AI → 외부 연결 → 💰 PayPal → Client ID 입력",
+            "__GEMINI_API_KEY__": "Agent OS AI → 외부 연결 → ✨ Google Gemini → API Key 입력",
+            "__PAYPAL_CLIENT_ID__": "Agent OS AI → 외부 연결 → 💰 PayPal → Client ID 입력",
         }
         _log("⚠️  운영자 자격증명 누락 — 키트는 복사됐지만 실제 호출은 안 됨:", "warn")
         for ph in sorted(missing_placeholders):
@@ -224,8 +224,8 @@ export default function App() {{
 def _find_brain_root():
     """두뇌 폴더 자동 탐색 (한국어 폴더명 포함).
 
-    v4: BRAIN_ROOT 환경변수가 가장 강함 (Connect AI 익스텐션이 직접 지정).
-    이전엔 ~/.connect-ai-brain 가 빈 폴더로 존재만 해도 우선 매칭돼서
+    v4: BRAIN_ROOT 환경변수가 가장 강함 (Agent OS AI 익스텐션이 직접 지정).
+    이전엔 ~/.agent-os-ai-brain 가 빈 폴더로 존재만 해도 우선 매칭돼서
     실제 사용자 두뇌(~/Downloads/지식메모리) 의 키트를 못 찾던 사고 차단.
     """
     env = os.environ.get("BRAIN_ROOT", "").strip()
@@ -235,8 +235,8 @@ def _find_brain_root():
             return ep
     cands = [
         os.path.expanduser("~/Downloads/지식메모리"),
-        os.path.expanduser("~/.connect-ai-brain"),
-        os.path.expanduser("~/.connect-ai-brain-imported"),
+        os.path.expanduser("~/.agent-os-ai-brain"),
+        os.path.expanduser("~/.agent-os-ai-brain-imported"),
     ]
     for c in cands:
         if os.path.exists(c):
@@ -393,7 +393,7 @@ def main():
 
     if not kit_name:
         kits = _list_kits(brain_root)
-        avail = ", ".join([f"'{k['name']}'" for k in kits]) or "(두뇌에 키트 없음 — EZER 에서 먼저 주입)"
+        avail = ", ".join([f"'{k['name']}'" for k in kits]) or "(두뇌에 키트 없음 — Idea Lab 에서 먼저 주입)"
         _log(f"KIT_NAME 비어있고 USER_INTENT 도 없음.", "err")
         _log(f"  방법 1: KIT_NAME 명시 → {avail}", "info")
         _log(f"  방법 2: USER_INTENT 에 '다이어트 SaaS 랜딩' 같은 자연어 입력 → 자동 추론", "info")
@@ -413,7 +413,7 @@ def main():
     kit_dir = os.path.join(brain_root, "40_템플릿", "developer", kit_name)
     if not os.path.exists(kit_dir):
         _log(f"키트 없음: {kit_dir}", "err")
-        _log(f"먼저 EZER Pack Vault 에서 '{kit_name}' 주입하세요.", "info")
+        _log(f"먼저 Idea Lab Pack Vault 에서 '{kit_name}' 주입하세요.", "info")
         sys.exit(1)
 
     manifest_path = os.path.join(kit_dir, "manifest.json")

@@ -71,7 +71,7 @@ Meta Graph API 는 **공개 URL** 만 받습니다. 로컬 파일은 못 올림.
 
 | 서비스 | 무료 한도 | 메모 |
 |--------|-----------|------|
-| **Vercel Blob** | 1GB | Connect AI 가 Vercel 기반이라 추천 |
+| **Vercel Blob** | 1GB | Agent OS AI 가 Vercel 기반이라 추천 |
 | **Cloudinary** | 25GB / 월 | 이미지 변환 자동 |
 | **AWS S3** | 5GB 1년 | 익숙하면 좋음 |
 | **Imgur** | 무제한 | 가장 빠름, 단 비공개 불가 |

@@ -20,7 +20,7 @@ export default function ProfileScreen() {
         </Text>
         <Text style={{ fontSize: 14, color: '#64748B', marginTop: 4 }}>
           {/* TODO: 한 줄 소개 */}
-          AI 1인 기업 · Connect AI 창업
+          AI 1인 기업 · Agent OS AI 창업
         </Text>
       </View>
 
@@ -51,8 +51,8 @@ export default function ProfileScreen() {
         <View style={{ backgroundColor: '#fff', borderRadius: 14, padding: 18, borderWidth: 1, borderColor: '#E2E8F0' }}>
           <Text style={{ fontSize: 15, color: '#0F172A', lineHeight: 22 }}>
             • 5월 영상 5편 업로드 · 평균 30K 조회{'\n'}
-            • Connect AI v2.89.121 출시 · 122 예정{'\n'}
-            • EZER AI Pack Vault 3-channel 시스템 완성{'\n'}
+            • Agent OS AI v2.89.121 출시 · 122 예정{'\n'}
+            • Idea Lab Pack Vault 3-channel 시스템 완성{'\n'}
             • 매트릭스 톤 + 우와 모먼트 7종 인터랙션
           </Text>
         </View>

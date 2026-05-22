@@ -43,7 +43,7 @@ export function _seedDeveloperWebInit(toolsDir: string) {
       OUTPUT_DIR: {
         type: 'text',
         label: '🗂️ 부모 폴더',
-        hint: '비우면 ~/connect-ai-projects/. 다른 위치 원하면 절대경로.',
+        hint: '비우면 ~/agent-os-ai-projects/. 다른 위치 원하면 절대경로.',
       },
     },
   }, null, 2);

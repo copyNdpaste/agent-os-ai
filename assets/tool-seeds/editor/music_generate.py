@@ -9,7 +9,7 @@ config:
   PROMPT — 음악 묘사 (영어 권장)
   DURATION_SEC — 길이 (초)
   GENRE — 장르 힌트 (lo-fi, ambient, cinematic, edm 등)
-  OUTPUT_DIR — 저장 위치 (디폴트 ~/connect-ai-music/output/)
+  OUTPUT_DIR — 저장 위치 (디폴트 ~/agent-os-ai-music/output/)
 """
 import os, sys, json, subprocess, time
 
@@ -146,7 +146,7 @@ def main():
     if genre:
         prompt = f"{prompt}, genre: {genre}"
 
-    output_dir = cfg.get("OUTPUT_DIR") or os.path.expanduser("~/connect-ai-music/output")
+    output_dir = cfg.get("OUTPUT_DIR") or os.path.expanduser("~/agent-os-ai-music/output")
     os.makedirs(output_dir, exist_ok=True)
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     output_path = os.path.join(output_dir, f"bgm_{timestamp}.mp3")

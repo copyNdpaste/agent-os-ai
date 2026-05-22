@@ -38,7 +38,7 @@ import { handleOfficeMessage } from './office-panel-handlers';
 
 export class OfficePanel {
     public static current?: OfficePanel;
-    private static readonly viewType = 'connectAiOffice';
+    private static readonly viewType = 'agentOsAiOffice';
 
     private readonly _panel: vscode.WebviewPanel;
     private readonly _ctx: vscode.ExtensionContext;

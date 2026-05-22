@@ -2,7 +2,7 @@
  * Telegram single-instance leader lock (TTL + heartbeat).
  *
  * extension.ts 에서 분리됨 (god-file Telegram 모듈화). userBrain (e.g.
- * ~/.connect-ai-brain) 은 외부에서 주입한다.
+ * ~/.agent-os-ai-brain) 은 외부에서 주입한다.
  *
  * Multi-window guard — when the user has VS Code / Cursor open in several
  * windows simultaneously, each extension instance independently polls the
@@ -20,7 +20,7 @@ export const LOCK_TTL_MS = 15000;
 export function lockPath(userBrain: string): string {
     /* v2.89.24 — 유저 레벨로 이동. 이전엔 `_company/_shared/`(워크스페이스 단위)에
        있어서 안티그래비티 창마다 다른 워크스페이스면 락도 따로따로 → 두 창이
-       독립적으로 폴링. ~/.connect-ai-brain/ 는 모든 창이 공유하는 단일 위치. */
+       독립적으로 폴링. ~/.agent-os-ai-brain/ 는 모든 창이 공유하는 단일 위치. */
     try { fs.mkdirSync(userBrain, { recursive: true }); } catch { /* ignore */ }
     return path.join(userBrain, '.telegram_poll.lock');
 }

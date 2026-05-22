@@ -27,7 +27,7 @@ PROJECT_NAME: my-saas
 
 ### 2. 의존성 추가
 ```bash
-cd ~/connect-ai-projects/my-saas
+cd ~/agent-os-ai-projects/my-saas
 npm install lucide-react
 ```
 
@@ -101,7 +101,7 @@ export default function App() {
 
 PWA로 변환하려면 `pwa_setup` 도구 실행:
 ```
-PROJECT_PATH: ~/connect-ai-projects/my-saas
+PROJECT_PATH: ~/agent-os-ai-projects/my-saas
 APP_NAME: My SaaS
 ICON_EMOJI: 🚀
 ```

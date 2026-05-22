@@ -12,10 +12,10 @@
 - `PROMPT` — 음악 묘사 (영어가 모델에 더 잘 듣음). 기본: 차분한 한국 유튜브 인트로
 - `DURATION_SEC` — 길이 초 (기본 30)
 - `GENRE` — 장르 힌트 (lo-fi, ambient, cinematic, edm 등)
-- `OUTPUT_DIR` — 저장 위치 (기본 ~/connect-ai-music/output/)
+- `OUTPUT_DIR` — 저장 위치 (기본 ~/agent-os-ai-music/output/)
 
 ## 출력
-- MP3 파일 (~/connect-ai-music/output/bgm_<timestamp>.mp3)
+- MP3 파일 (~/agent-os-ai-music/output/bgm_<timestamp>.mp3)
 - 다음 단계 도구(`music_to_video.py`)가 자동으로 이 파일 사용
 
 ## 좋은 프롬프트 팁

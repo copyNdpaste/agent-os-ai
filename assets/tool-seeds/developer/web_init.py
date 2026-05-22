@@ -5,7 +5,7 @@
 config:
   TEMPLATE — vite-react / nextjs / astro / expo / vanilla
   PROJECT_NAME — 프로젝트 폴더 이름 (영문·하이픈, 공백 X)
-  OUTPUT_DIR — 어디에 만들지 (비우면 ~/connect-ai-projects/)
+  OUTPUT_DIR — 어디에 만들지 (비우면 ~/agent-os-ai-projects/)
 
 각 템플릿은 검증된 공식 명령어로 셋업. 5분 안에 dev server 띄울 수 있는 상태로.
 """
@@ -167,7 +167,7 @@ def _scaffold_vanilla(target_dir, name):
 <body>
 <header>
   <h1>{name}</h1>
-  <p>Connect AI · 코다리가 만든 사이트</p>
+  <p>Agent OS AI · 코다리가 만든 사이트</p>
 </header>
 <main>
   <p>여기에 콘텐츠를 추가하세요.</p>
@@ -183,11 +183,11 @@ header h1 { font-size: 48px; font-weight: 800; margin-bottom: 8px; }
 main { max-width: 720px; margin: 40px auto; padding: 0 24px; }
 ''',
         "script.js": '''// 코다리가 첨부한 스크립트
-console.log("✦ Connect AI 사이트 로드 완료");
+console.log("✦ Agent OS AI 사이트 로드 완료");
 ''',
         "README.md": f'''# {name}
 
-Connect AI 코다리가 셋업한 정적 웹사이트.
+Agent OS AI 코다리가 셋업한 정적 웹사이트.
 
 ## 미리보기
 ```
@@ -231,7 +231,7 @@ def main():
 
     # 출력 위치
     if not out_dir:
-        out_dir = os.path.expanduser("~/connect-ai-projects")
+        out_dir = os.path.expanduser("~/agent-os-ai-projects")
     out_dir = os.path.expanduser(out_dir)
     os.makedirs(out_dir, exist_ok=True)
 

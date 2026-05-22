@@ -59,7 +59,7 @@ MODELS = {
     },
 }
 
-DEFAULT_INSTALL_DIR = os.path.expanduser("~/connect-ai-music")
+DEFAULT_INSTALL_DIR = os.path.expanduser("~/agent-os-ai-music")
 
 
 def _log(msg, kind="info"):

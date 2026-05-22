@@ -6,7 +6,7 @@ export default function Hero() {
       <div className="max-w-4xl mx-auto text-center">
         <p className="text-sm font-semibold tracking-wider uppercase text-gray-500 mb-4">
           {/* TODO: 이 자리에 회사·브랜드 한 줄 */}
-          Connect AI · 1인 기업 두뇌
+          Agent OS AI · 1인 기업 두뇌
         </p>
         <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold tracking-tight text-gray-900 mb-6">
           {/* TODO: H1은 [행동] without [고통] 또는 [숫자][결과][시간] 패턴 */}

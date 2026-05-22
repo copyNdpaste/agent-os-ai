@@ -1,8 +1,8 @@
 /*
- * EZER AI ↔ Agent OS Bridge Server (Port 4825)
+ * Agent OS AI Bridge Server (Port 4825)
  *
- * HTTP bridge for external integrations (EZER, A.U platform, etc.) to talk
- * to a running Agent OS instance. Endpoints:
+ * HTTP bridge for local experiment tools and external clients to talk
+ * to a running Agent OS AI instance. Endpoints:
  *   GET  /ping                    — health check + version + brain stats
  *   POST /api/exam                — single-shot question evaluation
  *   POST /api/evaluate            — A.U benchmark answer with chat injection
@@ -24,7 +24,7 @@ import * as path from 'path';
 import { ask } from '../llm';
 import { safeBasename } from './path-safety';
 import {
-    CONNECT_AI_VERSION,
+    AGENT_OS_AI_VERSION,
     versionLessThan,
     probeExistingBridge,
     readRequestBody,
@@ -78,8 +78,8 @@ export function startBridgeServer(deps: BridgeServerDeps): void {
                 res.end(JSON.stringify({
                     status: 'ok',
                     msg: 'Agent OS Bridge Ready',
-                    app: 'connect-ai-bridge',
-                    version: CONNECT_AI_VERSION,
+                    app: 'agent-os-ai-bridge',
+                    version: AGENT_OS_AI_VERSION,
                     pid: process.pid,
                     config: getConfig(),
                     brain: { fileCount: brainCount, enabled: provider._brainEnabled }
@@ -336,7 +336,7 @@ export function startBridgeServer(deps: BridgeServerDeps): void {
                         const scriptPath = path.join(toolsDir, `${safeName}.py`);
                         fs.writeFileSync(scriptPath, script, 'utf-8');
                         // 주입 출처 표시 — _injectedAt이 있으면 "내가 주입한 스킬"로
-                        // UI에서 ✨ 배지 표시. 사용자가 만든 게 아니라 EZER/AI Univ
+                        // UI에서 ✨ 배지 표시. 사용자가 만든 게 아니라 Idea Lab/AI Univ
                         // 같은 외부 도구가 보낸 것도 모두 "Mine"으로 간주 (사용자
                         // 동의 하에 자기 PC로 들어왔으니까).
                         const stampedConfig = Object.assign({}, config || {}, {
@@ -372,7 +372,7 @@ export function startBridgeServer(deps: BridgeServerDeps): void {
                 })();
             }
             else if (req.method === 'POST' && req.url === '/api/template-inject') {
-                /* v2.89.120 — 템플릿 팩 주입. EZER 등 외부 도구가 코드 boilerplate
+                /* v2.89.120 — 템플릿 팩 주입. Idea Lab 등 외부 도구가 코드 boilerplate
                    묶음을 주면 두뇌의 40_템플릿/<agentId>/<name>/ 로 폴더 구조로 저장.
                    코다리 같은 에이전트가 다음 작업에 자동 참조.
                    payload: { agent, name, manifest, readme, files: {filename: content} } */
@@ -467,7 +467,7 @@ export function startBridgeServer(deps: BridgeServerDeps): void {
             }
         });
         /* v2.89.120 — 포트 4825 충돌 시 사용자에게 "이걸 메인으로" 선택권.
-           이전엔 그냥 에러만 띄우고 끝 → 사용자가 어느 창 닫아야 할지도 모름 + EZER
+           이전엔 그냥 에러만 띄우고 끝 → 사용자가 어느 창 닫아야 할지도 모름 + Idea Lab
            연동 깨짐. 이제: lsof / taskkill 로 점유 프로세스 PID 찾아 종료 + 재시도. */
         /* v2.89.126 — 재시작 신뢰도 ↑. 이전 v2.89.120은:
            (1) 같은 server 객체 재listen → Node가 에러 상태일 때 silent fail 가능
@@ -481,7 +481,7 @@ export function startBridgeServer(deps: BridgeServerDeps): void {
                 if (isRetry) {
                     /* 성공 명시 popup — 사용자가 분명히 봄 */
                     vscode.window.showInformationMessage(
-                        '🟢 Bridge 인계 완료! 이 인스턴스가 메인 (포트 4825). EZER 연동 정상 작동.'
+                        '🟢 Bridge 인계 완료! 이 인스턴스가 메인 (포트 4825). Idea Lab 연동 정상 작동.'
                     );
                     vscode.window.setStatusBarMessage('🟢 Agent OS Bridge: 이 인스턴스가 메인', 8000);
                 } else {
@@ -507,20 +507,20 @@ export function startBridgeServer(deps: BridgeServerDeps): void {
                    이렇게 하면 95% 사용자는 EADDRINUSE 마주칠 일 자체가 없음. */
                 const probe = await probeExistingBridge();
 
-                if (probe.ours && probe.version === CONNECT_AI_VERSION) {
+                if (probe.ours && probe.version === AGENT_OS_AI_VERSION) {
                     /* 같은 버전 — 다른 윈도우/인스턴스가 메인. 조용히 공유 모드. */
                     console.log(`[Agent OS Bridge] 공유 모드 — 다른 인스턴스(PID ${probe.pid})가 이미 메인`);
                     vscode.window.setStatusBarMessage(`🔗 Bridge 공유 모드 (메인: 다른 윈도우)`, 5000);
                     return;
                 }
 
-                if (probe.ours && probe.version && versionLessThan(probe.version, CONNECT_AI_VERSION)) {
+                if (probe.ours && probe.version && versionLessThan(probe.version, AGENT_OS_AI_VERSION)) {
                     /* 옛 버전 — 자동 인계. 사용자에게 한 줄 알림만. */
                     console.log(`[Agent OS Bridge] 옛 버전(${probe.version}) 감지 → 자동 인계 시작`);
                     const killed = killProcessesOnPort(4825);
                     if (killed.length > 0) {
                         vscode.window.setStatusBarMessage(
-                            `🔄 옛 Bridge(${probe.version}) 자동 인계 → ${CONNECT_AI_VERSION}`, 6000
+                            `🔄 옛 Bridge(${probe.version}) 자동 인계 → ${AGENT_OS_AI_VERSION}`, 6000
                         );
                         setTimeout(() => {
                             try { (server as any).close(() => _tryStartBridge(true)); }

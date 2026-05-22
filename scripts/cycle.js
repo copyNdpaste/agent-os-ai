@@ -27,7 +27,7 @@ const os = require('os');
 const axios = require('axios');
 
 // ───────────────────────── Config (env-overridable) ─────────────────────────
-const BRAIN_DIR = (process.env.BRAIN_DIR || path.join(os.homedir(), '.connect-ai-brain')).replace(/^~/, os.homedir());
+const BRAIN_DIR = (process.env.BRAIN_DIR || path.join(os.homedir(), '.agent-os-ai-brain')).replace(/^~/, os.homedir());
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const LMSTUDIO_URL = process.env.LMSTUDIO_URL || 'http://127.0.0.1:1234';
 const MODEL = process.env.MODEL || 'gemma4:e2b';
@@ -132,26 +132,26 @@ runCycle().catch((e) => {
 /* ─── Scheduling examples ─────────────────────────────────────────────────
 
 # macOS launchd — every 30 minutes
-# Save as ~/Library/LaunchAgents/com.connectai.cycle.plist
+# Save as ~/Library/LaunchAgents/com.agentosai.cycle.plist
 # <?xml version="1.0" encoding="UTF-8"?>
 # <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 # <plist version="1.0">
 # <dict>
-#   <key>Label</key><string>com.connectai.cycle</string>
+#   <key>Label</key><string>com.agentosai.cycle</string>
 #   <key>ProgramArguments</key>
 #   <array>
 #     <string>/usr/local/bin/node</string>
 #     <string>/path/to/cycle.js</string>
 #   </array>
 #   <key>StartInterval</key><integer>1800</integer>
-#   <key>StandardOutPath</key><string>/tmp/connectai.cycle.log</string>
-#   <key>StandardErrorPath</key><string>/tmp/connectai.cycle.err</string>
+#   <key>StandardOutPath</key><string>/tmp/agentosai.cycle.log</string>
+#   <key>StandardErrorPath</key><string>/tmp/agentosai.cycle.err</string>
 # </dict>
 # </plist>
-# Then: launchctl load ~/Library/LaunchAgents/com.connectai.cycle.plist
+# Then: launchctl load ~/Library/LaunchAgents/com.agentosai.cycle.plist
 
 # Linux/macOS cron — every 30 minutes
-# */30 * * * * /usr/local/bin/node /path/to/cycle.js >> ~/.connect-ai-brain/cycle.log 2>&1
+# */30 * * * * /usr/local/bin/node /path/to/cycle.js >> ~/.agent-os-ai-brain/cycle.log 2>&1
 
 # Windows Task Scheduler — create a task that runs node.exe with this script as arg
 # every 30 min, with working directory set to the brain folder.

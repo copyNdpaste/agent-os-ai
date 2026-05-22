@@ -59,7 +59,7 @@ export default function Footer() {
           <div className="col-span-2 md:col-span-1">
             <h3 className="font-bold text-gray-900 mb-3">
               {/* TODO: 회사·제품 이름 */}
-              Connect AI
+              Agent OS AI
             </h3>
             <p className="text-sm text-gray-500 leading-relaxed">
               {/* TODO: 한 줄 소개 */}
@@ -83,7 +83,7 @@ export default function Footer() {
         </div>
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-8 border-t border-gray-100">
           <p className="text-sm text-gray-500">
-            © {new Date().getFullYear()} Connect AI. All rights reserved.
+            © {new Date().getFullYear()} Agent OS AI. All rights reserved.
           </p>
           <div className="flex gap-4">
             {socials.map(({ Icon, href, label }) => (

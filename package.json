@@ -1,9 +1,9 @@
 {
   "name": "agent-os-ai",
-  "displayName": "Agent OS — 1인 기업 AI 운영 OS",
-  "description": "AI 에이전트 9명 회사 — VS Code 확장. CEO·박재범·개발신·아인슈타인 등 자율 협업.",
+  "displayName": "Agent OS AI — 아이디어 실험·수요검증 OS",
+  "description": "1인 기업을 위한 아이디어 실험·수요검증 OS. 아이디어를 기록하고 SNS 반응을 분석해 MVP 우선순위를 정합니다.",
   "version": "2.90.0",
-  "publisher": "connectailab",
+  "publisher": "agentosailab",
   "license": "MIT",
   "icon": "assets/icon.png",
   "repository": {
@@ -30,6 +30,10 @@
     "second-brain",
     "1인기업",
     "solopreneur",
+    "idea-validation",
+    "demand-validation",
+    "sns-experiment",
+    "market-research",
     "code-generation",
     "agent-os",
     "copilot"
@@ -63,19 +67,19 @@
       },
       {
         "command": "agent-os.showBrainNetwork",
-        "title": "Agent OS: Show Brain Topology 🧠"
+          "title": "Agent OS AI: 수요검증 지식 그래프 보기 🧠"
       },
       {
         "command": "agent-os.changeCompanyDir",
-        "title": "Agent OS: 회사 폴더 변경 🏢"
+          "title": "Agent OS AI: 실험 워크스페이스 폴더 변경 🧪"
       },
       {
         "command": "agent-os.connectCompanyRepo",
-        "title": "Agent OS: 회사 GitHub 연결 ☁️"
+          "title": "Agent OS AI: 실험 워크스페이스 GitHub 연결 ☁️"
       },
       {
         "command": "agent-os.connectGoogleCalendarWrite",
-        "title": "Agent OS: Google Calendar 자동 일정 연결 📅"
+          "title": "Agent OS AI: Google Calendar 자동 일정 연결 📅"
       },
       {
         "command": "agentOs.tasks.refresh",
@@ -145,7 +149,7 @@
       },
       {
         "command": "agentOs.dashboard.open",
-        "title": "우리 회사 (팀 + 오늘 + 채널)",
+          "title": "실험실 대시보드 (팀 + 오늘 + 채널)",
         "category": "Agent OS",
         "icon": "$(organization)"
       },
@@ -157,7 +161,7 @@
       },
       {
         "command": "agentOs.revenueDashboard.open",
-        "title": "💰 매출 대시보드 (PayPal 실시간)",
+          "title": "💰 수익 신호 대시보드 (PayPal 실시간)",
         "category": "Agent OS",
         "icon": "$(graph-line)"
       }

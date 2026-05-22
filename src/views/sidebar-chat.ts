@@ -592,7 +592,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
     }
 
     /** Re-scan the brain folder and push fresh node/link data to every open
-     *  graph panel. Called after brain-inject (EZER, A.U Training, etc.) so
+     *  graph panel. Called after brain-inject (Idea Lab, A.U Training, etc.) so
      *  the user sees new knowledge appear immediately, plus a brief pulse
      *  on the freshly-added node. */
     public broadcastGraphRefresh(highlightTitle?: string) {
@@ -602,7 +602,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             const graph = buildKnowledgeGraph(brainDir);
             const data = {
                 nodes: graph.nodes.map(n => ({
-                    id: n.id, name: n.name, folder: n.folder, tags: n.tags,
+                    id: n.id, name: n.name, folder: n.folder, group: n.group, stage: n.stage, keywords: n.keywords, tags: n.tags,
                     connections: n.incoming + n.outgoing
                 })),
                 links: graph.links
@@ -732,7 +732,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
 
         const assetsRoot = vscode.Uri.file(path.join(this._ctx.extensionPath, 'assets'));
         const panel = vscode.window.createWebviewPanel(
-            'connectAiThinking',
+            'agentOsAiThinking',
             '🎬 Thinking Mode — AI 사고 시각화',
             { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true },
             { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [assetsRoot] }
@@ -1002,7 +1002,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         return this._displayMessages.map(m => `[${m.role.toUpperCase()}]\n${m.text}`).join('\n\n');
     }
 
-    /** 외부에서 프롬프트 전송 (예: 코드 선택 → 설명, EZER 주입 등).
+    /** 외부에서 프롬프트 전송 (예: 코드 선택 → 설명, Idea Lab 주입 등).
      *  sidebar가 아직 mount 안 됐어도 history에는 항상 저장 — 다음에 사이드바를
      *  열면 자동 복원되어 보임. mount되어 있으면 즉시 webview에도 전달. */
     public injectSystemMessage(message: string) {
@@ -1807,7 +1807,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
                     const choice = msg.choice as string;
                     try {
                         if (choice === 'default') {
-                            // ~/.connect-ai-brain (brain dir == company dir)
+                            // ~/.agent-os-ai-brain (brain dir == company dir)
                             await setCompanyDir('');
                             ensureCompanyStructure();
                             this._sendCompanyState('두뇌 폴더에 회사 구조가 만들어졌어요.');
@@ -1836,7 +1836,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
                                 }
                             });
                             if (url) {
-                                const targetParent = path.join(os.homedir(), '.connect-ai-brain-imported');
+                                const targetParent = path.join(os.homedir(), '.agent-os-ai-brain-imported');
                                 fs.mkdirSync(targetParent, { recursive: true });
                                 const targetName = path.basename(url, '.git');
                                 const target = path.join(targetParent, targetName);
@@ -2149,7 +2149,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         try { this._sendCompanyState(); } catch { /* ignore — _sendCompanyState 내부 가드 있음 */ }
 
         // Sidebar just mounted — drain any prompts that were buffered while it
-        // was closed (e.g. EZER injected knowledge before the user opened it).
+        // was closed (e.g. Idea Lab injected knowledge before the user opened it).
         this._flushPendingPrompts();
 
         /* v2.89.91 — webview 가시성 변경(panel 다시 열림 등) 시 재동기화. 사용자가
@@ -2743,10 +2743,10 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
 
     // --------------------------------------------------------
     // v2.89.105 — Claude Code의 CLAUDE.md 호환 프로젝트 메모리 로더.
-    // 워크스페이스 루트에 AGENT.md / CONNECT-AI.md / .connect-ai/instructions.md 가
+    // 워크스페이스 루트에 AGENT.md / AGENT-OS-AI.md / .agent-os-ai/instructions.md 가
     // 있으면 자동으로 시스템 프롬프트에 주입. 부모 디렉토리도 한 단계 거슬러
     // 올라가서 모노레포 root 메모리도 캡처. 없으면 빈 문자열.
-    // 우선순위: 워크스페이스 root → 부모 → 홈(~/.connect-ai/global.md).
+    // 우선순위: 워크스페이스 root → 부모 → 홈(~/.agent-os-ai/global.md).
     // 한 파일당 8KB cap, 총 24KB cap. 같은 파일 중복 주입 방지.
     private _getProjectMemory(): string {
         return _hGetProjectMemory();
@@ -2775,7 +2775,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             TEXT_MIME.test(f.type || '') || TEXT_EXT.test(f.name || '');
         const isImage = (f: {name:string,type:string}) => (f.type || '').startsWith('image/');
 
-        const tmpDir = path.join(os.tmpdir(), `connect-ai-upload-${Date.now()}-${Math.random().toString(36).slice(2,8)}`);
+        const tmpDir = path.join(os.tmpdir(), `agent-os-ai-upload-${Date.now()}-${Math.random().toString(36).slice(2,8)}`);
         const savedPaths: string[] = [];
 
         try {
@@ -3972,7 +3972,7 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
             // 8) 자율 git 백업 — 두뇌 + (옵션)회사 별도 백업 둘 다 시도.
             //    회사가 두뇌 안 nested면 두뇌 sync 한 번으로 끝, detached면
             //    별도 push가 같이 돌아감. 락이 분리돼있어 병렬로 실행 가능.
-            const brainDir = path.join(os.homedir(), '.connect-ai-brain');
+            const brainDir = path.join(os.homedir(), '.agent-os-ai-brain');
             const sessionMsg = `chore(corporate): session ${path.basename(sessionDir)}`;
             _safeGitAutoSync(brainDir, sessionMsg, this).catch(() => { /* silent */ });
             _safeGitAutoSyncCompany(sessionMsg, this).catch(() => { /* silent */ });

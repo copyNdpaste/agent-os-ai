@@ -1680,7 +1680,7 @@ const AGENT_CONFIG_FIELDS = {
   ],
   developer: [
     { key:'github_token', label:'GitHub Personal Access Token', type:'password', help:'github.com/settings/tokens — repo + workflow 권한 필요' },
-    { key:'default_repo', label:'기본 저장소 (owner/repo)', type:'text', placeholder:'wonseokjung/connect-ai' },
+    { key:'default_repo', label:'기본 저장소 (owner/repo)', type:'text', placeholder:'yourname/agent-os-ai' },
     { key:'preferred_stack', label:'선호 기술 스택', type:'text', placeholder:'TypeScript, Next.js, PostgreSQL' },
     { key:'deploy_target', label:'배포 환경', type:'text', placeholder:'Vercel / 자체 서버' }
   ],

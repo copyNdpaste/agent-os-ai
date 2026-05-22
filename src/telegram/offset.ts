@@ -2,7 +2,7 @@
  * Telegram getUpdates polling offset persistence.
  *
  * extension.ts 에서 분리됨 (god-file Telegram 모듈화). userBrain (e.g.
- * ~/.connect-ai-brain) 은 외부에서 주입한다. 같은 이유로 offset도 유저 레벨
+ * ~/.agent-os-ai-brain) 은 외부에서 주입한다. 같은 이유로 offset도 유저 레벨
  * 파일에 저장 — globalState 의존 X, 워크스페이스 단위로 갈리지 않음.
  */
 import * as fs from 'fs';

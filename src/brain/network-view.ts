@@ -60,7 +60,7 @@ export async function showBrainNetwork(_context: vscode.ExtensionContext) {
 
         const graphJson = JSON.stringify({
             nodes: graph.nodes.map(n => ({
-                id: n.id, name: n.name, folder: n.folder, tags: n.tags,
+                id: n.id, name: n.name, folder: n.folder, group: n.group, stage: n.stage, keywords: n.keywords, tags: n.tags,
                 connections: n.incoming + n.outgoing
             })),
             links: graph.links

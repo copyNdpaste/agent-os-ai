@@ -8,7 +8,7 @@
 
 ```bash
 # 1. 익스텐션 최신 버전 설치
-code --install-extension connect-ai-lab-2.89.150.vsix --force
+code --install-extension agent-os-ai-lab-2.89.150.vsix --force
 
 # 2. Anti-Gravity Reload Window
 # Cmd+Shift+P → Developer: Reload Window
@@ -21,8 +21,8 @@ curl -s http://127.0.0.1:4825/ping | python3 -m json.tool
 - [ ] LM Studio 모델 로드됨 (qwen2.5-7b·llama-3.2-3b 권장, Context 16K+)
 - [ ] PayPal 자격증명 입력됨 (외부 연결 패널)
 - [ ] 두뇌의 키트 폴더 존재: `chick-game-kit`, `landing-kit`, `neon-survivor-kit`
-- [ ] EZER AI 빌드 호스팅됨 (또는 로컬 실행)
-- [ ] ~/connect-ai-projects/ 폴더 비워둠 (이름 충돌 방지)
+- [ ] Idea Lab 빌드 호스팅됨 (또는 로컬 실행)
+- [ ] ~/agent-os-ai-projects/ 폴더 비워둠 (이름 충돌 방지)
 
 ---
 
@@ -44,7 +44,7 @@ curl -s http://127.0.0.1:4825/ping | python3 -m json.tool
 
 | 시간 | 액션 |
 |---|---|
-| 1:00 | EZER AI 열기 → BrainPackVault 보여줌 |
+| 1:00 | Idea Lab 열기 → ExperimentPackVault 보여줌 |
 | 1:10 | 🎮 **병아리게임 샘플팩** 카드 클릭 (매트릭스 효과 + 글리프 비 + 두뇌 주입 토스트) |
 | 1:30 | 사이드바: `코다리야 병아리 게임 만들어줘` |
 | 1:35 | 가상 사무실 풀스크린 → **📋 DISPATCH PROTOCOL 글리치 배너** |
@@ -180,7 +180,7 @@ curl -s http://127.0.0.1:4825/ping | python3 -m json.tool
 
 ```bash
 # 가장 최신 vsix만 남기고 모두 삭제 (안전)
-ls ~/.antigravity/extensions/ | grep connect-ai-lab | grep -v "2.89.150" | \
+ls ~/.antigravity/extensions/ | grep agent-os-ai-lab | grep -v "2.89.150" | \
   xargs -I{} rm -rf ~/.antigravity/extensions/{}
 ```
 

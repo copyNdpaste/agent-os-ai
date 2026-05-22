@@ -104,7 +104,7 @@ python3 token_manager.py --refresh
 0 3 * * * cd /path/to/_company/_agents/instagram/tools && python3 token_manager.py --refresh
 ```
 
-또는 Connect AI 확장의 스케줄러에 도구로 등록 (자동 시드되는 `token_manager.json` 의
+또는 Agent OS AI 확장의 스케줄러에 도구로 등록 (자동 시드되는 `token_manager.json` 의
 `AUTO_REFRESH_HOURS` 옵션 활용).
 
 ---

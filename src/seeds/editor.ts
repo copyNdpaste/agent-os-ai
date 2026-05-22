@@ -38,7 +38,7 @@ export function _seedEditorMusicStudioSetup(toolsDir: string) {
       INSTALL_DIR: {
         type: 'text',
         label: '📁 설치 위치',
-        hint: '비워두면 ~/connect-ai-music/. 외장 디스크 등 변경 가능',
+        hint: '비워두면 ~/agent-os-ai-music/. 외장 디스크 등 변경 가능',
       },
     },
   }, null, 2);

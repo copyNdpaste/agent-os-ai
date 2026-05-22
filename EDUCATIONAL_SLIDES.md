@@ -451,7 +451,7 @@ window.addEventListener('message', e => {
 **해결책 (v2.89.127):**
 ```
 Bridge /ping 응답 확장:
-{ app: 'connect-ai-bridge', version: '2.89.154', pid: 12345 }
+{ app: 'agent-os-ai-bridge', version: '2.89.154', pid: 12345 }
 
 새 인스턴스 활성화:
   1. 4825 시도
@@ -585,7 +585,7 @@ Bridge /ping 응답 확장:
   📚 C-2 우리 3중 방어
   📚 C-3 RAG
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  슬라이드 17  → 시연 ACT 5 (강아지 사주)
+  슬라이드 17  → 시연 ACT 5 (결제형 미니 서비스)
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   여기에 ↓
   📚 D-1 Cognitive Load
@@ -672,4 +672,4 @@ Bridge /ping 응답 확장:
 
 ---
 
-*v1 — 2026.05.12 · Connect AI v2.89.154*
+*v1 — 2026.05.12 · Agent OS AI v2.89.154*

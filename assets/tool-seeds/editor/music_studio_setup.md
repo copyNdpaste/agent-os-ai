@@ -30,7 +30,7 @@
 - **ACE-Step**: 같음 + 더 큰 디스크/RAM
 
 ## 설치 위치
-디폴트 `~/connect-ai-music/`. ⚙️의 `INSTALL_DIR` 로 변경 가능 (외장 디스크 등).
+디폴트 `~/agent-os-ai-music/`. ⚙️의 `INSTALL_DIR` 로 변경 가능 (외장 디스크 등).
 
 ## 비용
 100% 로컬·오프라인·무료. API 키·구독 0개.

@@ -221,7 +221,7 @@ function renderTransactions(txs) {
     feed.innerHTML = `<div class="empty">
       <div class="emoji">📭</div>
       <h3>아직 거래가 없어요</h3>
-      <p>EZER 카탈로그를 공유하고 첫 결제를 기다리는 중...</p>
+      <p>Idea Lab 카탈로그를 공유하고 첫 결제를 기다리는 중...</p>
     </div>`;
     return;
   }

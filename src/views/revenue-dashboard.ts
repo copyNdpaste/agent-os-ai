@@ -132,7 +132,7 @@ export class RevenueDashboardPanel {
   <header class="hero">
     <div class="hero-mark">💰</div>
     <div class="hero-info">
-      <div class="eyebrow">CONNECT AI · REVENUE COMMAND CENTER</div>
+      <div class="eyebrow">AGENT OS AI · REVENUE COMMAND CENTER</div>
       <h1>매출 대시보드</h1>
       <div class="hero-sub">
         PayPal 거래 실시간 분석 · 게임별 매출 분해 · <span class="live">LIVE</span>

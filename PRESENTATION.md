@@ -15,7 +15,6 @@
 
   ── 인터넷 끊고도 일하는 9명 AI 직원의 회사
 
-       wonseokjung
        2026.05
 ```
 
@@ -203,7 +202,7 @@ ACT 1: 와이파이 끊기
 **전통적 코딩** → AI 가 백지에서 코드 생성 → 환각·버그·반복
 
 **Agent OS 방식** — *"Verified code as inventory"*:
-1. **키트 카탈로그** (EZER AI) — 검증된 코드 묶음
+1. **키트 카탈로그** (Idea Lab) — 검증된 코드 묶음
 2. **manifest.json** — keywords + apply 규칙
 3. **자동 매칭** — 사용자 의도 → 점수 → 최적 키트
 4. **pack_apply** — 복사 + placeholder 교체 + 의존성 설치
@@ -281,24 +280,24 @@ $0 → $1,190  (count-up 1.1s)
 
 ## 🎴 SLIDE 14 — 🎬 ACT 5 / 결제 = AI 마법 폭발
 
-### 한국 사주 × AI × PayPal (글로벌 1인 기업 케이스)
+### 수익형 웹 서비스 × AI × PayPal
 
 ```
-"AI 회사야, 강아지 사주 글로벌 서비스 만들어줘. 월 $1000 목표."
+"AI 회사야, 결제 가능한 미니 서비스를 만들어줘. 월 $1000 목표."
    ↓
 사무실 시네마틱 (5명 walk)
    ↓
-코다리 → doggie-mystic-kit 매칭 + 적용
+코다리 → 결제형 서비스 키트 매칭 + 적용
    ↓
 🔐 운영자 자격증명 자동 inline (Gemini + PayPal)
    ↓
-🌸 Doggie Mystic 사이트 등장 (K-Cute Sanrio 디자인)
+랜딩 + 입력 폼 + 결과 페이지 등장
    ↓
-강아지 사진 + 이름 → Gemini 3-카드 무료 사주
+무료 샘플 결과 생성
    ↓
-"$4.99 Generate AI Mystic Card" → PayPal 결제
+"$4.99 Generate Premium Result" → PayPal 결제
    ↓
-Imagen 3 카드 PNG 생성 + 풀 5섹션 사주
+프리미엄 리포트 또는 디지털 파일 생성
    ↓
 매출 대시보드: $0 → $4.99 + burst alert
 ```
@@ -307,28 +306,26 @@ Imagen 3 카드 PNG 생성 + 풀 5섹션 사주
 
 ---
 
-## 🎴 SLIDE 15 — 📚 THEORY 6 / K-Culture + AI 글로벌 모델
+## 🎴 SLIDE 15 — 📚 THEORY 6 / AI 서비스 글로벌 모델
 
-### Why K-Mystic for Dogs Works
+### Why Micro AI Services Work
 
 | 트렌드 | 데이터 |
 |---|---|
-| K-pop 글로벌 시장 | $12B (2024) |
-| Pet industry | $260B 글로벌 |
-| AI consumer apps | $50B (Co-Star, Replika 등) |
+| AI consumer apps | 빠르게 성장 중 |
+| Creator economy | 개인 단위 판매 채널 확대 |
+| Digital goods | 배송·재고 없는 즉시 판매 |
 
 **3개 교차점:**
 ```
-K-culture × AI × Pet
+AI 생성 결과 × 즉시 결제 × 공유 가능한 결과물
      ↓
-"미국·유럽엔 없는 신선함"
-+ "AI 분석의 권위"
-+ "내 강아지에 대한 무한 애정"
+"작게 만들고 빠르게 검증"
++ "결제 전환 데이터 즉시 확인"
++ "성공한 키트는 반복 판매"
      ↓
 높은 conversion rate
 ```
-
-**참고**: Pew Research (2023). *Generational shifts in pet ownership: 70% of Gen Z own a pet, 53% identify as "pet parent".*
 
 ---
 
@@ -415,7 +412,7 @@ External APIs
 | 멀티 에이전트 | ❌ | 부분 | ✅ 9명 |
 | 비주얼 사무실 | ❌ | ❌ | ✅ |
 | 자율 사이클 | ❌ | ❌ | ✅ 24h |
-| 키트 카탈로그 | ❌ | ❌ | ✅ EZER |
+| 키트 카탈로그 | ❌ | ❌ | ✅ Idea Lab |
 | 결제 통합 | ❌ | ❌ | ✅ PayPal |
 | 매출 대시보드 | ❌ | ❌ | ✅ |
 | 한국어 우선 | 부분 | 부분 | ✅ |
@@ -457,10 +454,9 @@ External APIs
 🐤 병아리게임 샘플팩       — 첫 결과물 (vanilla HTML)
 🌌 네온서바이버 샘플팩     — 게임 + PayPal 결제
 🏠 Landing Kit              — SaaS 랜딩 (React 6 섹션)
-🔮 강아지사주 (Doggie Mystic) — Gemini × PayPal × K-culture
 ```
 
-**EZER AI 카탈로그에서 클릭 한 번으로 자기 두뇌에 주입.**
+**Idea Lab 카탈로그에서 클릭 한 번으로 자기 두뇌에 주입.**
 
 ---
 
@@ -471,14 +467,14 @@ External APIs
 https://antigravity.google/
 
 # 2. Agent OS vsix 다운로드 + 설치
-code --install-extension connect-ai-lab-2.89.153.vsix --force
+code --install-extension agent-os-ai-lab-2.89.153.vsix --force
 
 # 3. LM Studio (또는 Ollama) 설치 + 모델 다운로드
 qwen2.5-7b-instruct 또는 llama-3.2-3b (16K context)
 
-# 4. EZER AI 열기 → 키트 클릭 → 두뇌 주입
+# 4. Idea Lab 열기 → 키트 클릭 → 두뇌 주입
 
-# 5. 채팅: "AI 회사야, 강아지 사주 서비스 만들어줘"
+# 5. 채팅: "AI 회사야, 결제 가능한 미니 서비스 만들어줘"
 
 → 30초 안에 첫 결과물 + 결제 가능한 사이트
 ```
@@ -498,9 +494,9 @@ qwen2.5-7b-instruct 또는 llama-3.2-3b (16K context)
 | 두뇌 시크릿 | _agents/*/oauth.local.json 자동 .gitignore |
 
 **윤리:**
-- 사주는 *오락 목적* (의료 조언 X)
 - Gemini · PayPal 이용약관 준수
 - 사용자 데이터 = 사용자 PC 에만
+- 결제형 결과물은 과장 광고와 민감 영역 오남용을 피함
 
 ---
 
@@ -546,7 +542,7 @@ qwen2.5-7b-instruct 또는 llama-3.2-3b (16K context)
 → vsix 무료 + LM Studio 무료 + Ollama 무료. PayPal/Gemini 만 운영자가 발급 (둘 다 무료 tier).
 
 **Q3. 매출 어디서?**  
-→ 키트로 만든 사이트 (사주·게임 등) 에서 PayPal 결제. 운영자 계정으로 입금.
+→ 키트로 만든 사이트 (게임·리포트·디지털 파일 등) 에서 PayPal 결제. 운영자 계정으로 입금.
 
 **Q4. 윈도우 됨?**  
 → v2.89.152 부터 윈도우 호환 (mkdir, env vars, open 자동 분기).
@@ -559,13 +555,11 @@ qwen2.5-7b-instruct 또는 llama-3.2-3b (16K context)
 ## 🎴 SLIDE 28 — 📥 다운로드 + 연락
 
 ```
-🌐 https://github.com/wonseokjung/connect-ai
-📧 wonseokjung1987@gmail.com
-🎥 YouTube: @wonseokjung
-📦 Latest: connect-ai-lab-2.89.153.vsix
+🌐 프로젝트 저장소
+📧 연락처
+🎥 YouTube
+📦 Latest: agent-os-ai-lab-2.89.153.vsix
 ```
-
-**Made with 💕 in Korea — for the world.**
 
 ---
 
@@ -600,7 +594,6 @@ Typography:
   한국미: Nanum Pen Script (액센트만)
 
 Imagery:
-  - 강아지 SVG 마스코트
   - 글리프 비 (한복명운태극음양오행)
   - 별자리 라인
   - 매트릭스 카드 reveal
@@ -609,4 +602,4 @@ Imagery:
 
 ---
 
-*v1 — 2026.05.12 · Connect AI v2.89.153*
+*v1 — 2026.05.12 · Agent OS AI v2.89.153*

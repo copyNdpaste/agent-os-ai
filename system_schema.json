@@ -1,14 +1,14 @@
 {
-  "schema_name": "ConnectAI_AgentSystemSchema",
+  "schema_name": "AgentOSAI_IdeaValidationSchema",
   "version": "1.0.0",
-  "description": "A comprehensive JSON schema defining the operational state, capabilities, and configuration of the Connect AI agent.",
+  "description": "A JSON schema defining the operational state, capabilities, and configuration of Agent OS AI for idea experimentation and demand validation.",
   "agent_identity": {
-    "name": "Connect AI",
-    "role": "Agentic AI Coding Assistant",
-    "core_principle": "100% Local · 100% Offline · 100% Free"
+    "name": "Agent OS AI",
+    "role": "Idea Experimentation and Demand Validation OS",
+    "core_principle": "Local-first · Markdown memory · SNS experiments · Build only validated ideas"
   },
   "environment": {
-    "workspace_path": "/Users/jay/로컬테스트/local-ai-coder",
+    "workspace_path": "/Users/hoony/projects/agent-os-ai",
     "file_system_access": "Direct, offline access to the local file system via agent actions.",
     "context_source": "Local workspace files and optional GitHub knowledge base."
   },
@@ -57,7 +57,7 @@
     },
     "knowledge_base": {
       "second_brain_repo_url": "",
-      "data_location": "~/.connect-ai-brain/"
+      "data_location": "~/.agent-os-ai-brain/"
     }
   },
   "workspace_snapshot": {

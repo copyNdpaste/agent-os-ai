@@ -23,6 +23,9 @@ assets/tool-seeds/instagram/.env
 
 *.env
 
+# 개인 사업 아이디어 문서 — 공개 저장소에 올리지 않음
+IDEAS.md
+
 # Claude Code 개인 설정 — 사용자별 개별 보관
 .claude/
 

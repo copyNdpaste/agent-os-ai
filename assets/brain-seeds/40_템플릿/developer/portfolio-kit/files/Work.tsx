@@ -2,14 +2,14 @@ import { ExternalLink } from 'lucide-react'
 
 const works = [
   {
-    title: 'Connect AI',
+    title: 'Agent OS AI',
     desc: 'AI 1인 기업 두뇌 — 9명 에이전트 + 로컬 LLM',
     img: 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=600&q=80',
     link: '#',
     tag: 'Product',
   },
   {
-    title: 'EZER AI',
+    title: 'Idea Lab',
     desc: '드래그앤드롭 AI 워크플로우 빌더',
     img: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=600&q=80',
     link: '#',

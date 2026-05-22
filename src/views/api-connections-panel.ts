@@ -101,7 +101,7 @@ export class ApiConnectionsPanel {
   <div class="hero-inner">
     <div class="hero-mark">🔌</div>
     <div>
-      <div class="eyebrow">CONNECT AI · 외부 연결</div>
+      <div class="eyebrow">AGENT OS AI · 외부 연결</div>
       <h1>API 키 한 곳에서 관리</h1>
       <div class="hero-sub">텔레그램 · YouTube · Google Calendar · GitHub · Instagram — 모든 자격증명을 한 패널에서 입력하고 저장합니다. 같은 값이 <code>_agents/&lt;id&gt;/config.md</code>로 저장돼요.</div>
     </div>

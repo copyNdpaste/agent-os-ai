@@ -37,7 +37,7 @@ export { runCommandCaptured } from './infra/process';
 export { pythonCmd as _pythonCmd } from './infra/python';
 import {
     MAX_HTTP_BODY,
-    CONNECT_AI_VERSION as _CONNECT_AI_VERSION,
+    AGENT_OS_AI_VERSION as _AGENT_OS_AI_VERSION,
     versionLessThan as _versionLessThan,
     probeExistingBridge as _probeExistingBridge,
     readRequestBody,
@@ -339,7 +339,7 @@ import {
 // ------------------------------------------------------------
 // CEO + 5 specialist agents share a "Company" subtree under
 // the existing brain folder:
-//   ~/.connect-ai-brain/Company/
+//   ~/.agent-os-ai-brain/Company/
 //     _shared/        ← 공동 목표, 회사 정체성 (모두 매번 읽음)
 //     _agents/<id>/   ← 각 에이전트 개인 메모리 (자기만 읽고 씀)
 //     sessions/<ts>/  ← 세션별 산출물 + CEO 종합 보고
@@ -555,7 +555,7 @@ export function writeCompanyConfig(cfg: Partial<CompanyConfig>) {
 // companyDir / userBrain 주입은 여기서 처리.
 // ──────────────────────────────────────────────────────────────────
 
-const _TELEGRAM_USER_BRAIN = path.join(os.homedir(), '.connect-ai-brain');
+const _TELEGRAM_USER_BRAIN = path.join(os.homedir(), '.agent-os-ai-brain');
 
 export function readTelegramConfig(): tg.TelegramConfig {
   return tg.readTelegramConfig(getCompanyDir());
@@ -626,7 +626,7 @@ export function _renderTelegramHistory(maxTurns = 8): string {
 }
 
 /* Multi-window guard + polling offset persistence — 본체는 src/telegram/{lock,offset}.ts
-   로 추출. _TELEGRAM_USER_BRAIN 은 유저 레벨 공유 위치 (~/.connect-ai-brain) 로
+   로 추출. _TELEGRAM_USER_BRAIN 은 유저 레벨 공유 위치 (~/.agent-os-ai-brain) 로
    안티그래비티 창마다 다른 워크스페이스라도 락이 단일하게 유지된다. */
 export function _readTelegramOffset(): number { return tg.readOffset(_TELEGRAM_USER_BRAIN); }
 export function _writeTelegramOffset(offset: number): void { tg.writeOffset(_TELEGRAM_USER_BRAIN, offset); }
@@ -1273,7 +1273,7 @@ export function activate(context: vscode.ExtensionContext) {
     _runFirstRunWizard(context);
 
     // ==========================================
-    // EZER AI <-> Agent OS Bridge Server (Port 4825)
+    // Idea Lab <-> Agent OS Bridge Server (Port 4825)
     // ==========================================
     startBridgeServer({
         provider,

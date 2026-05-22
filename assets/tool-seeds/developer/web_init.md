@@ -18,7 +18,7 @@
 설정 (web_init.json):
 - `TEMPLATE`: 위 5개 중 하나
 - `PROJECT_NAME`: 영문·숫자·하이픈 (예: `my-blog`)
-- `OUTPUT_DIR`: 비우면 `~/connect-ai-projects/`
+- `OUTPUT_DIR`: 비우면 `~/agent-os-ai-projects/`
 
 실행:
 ```

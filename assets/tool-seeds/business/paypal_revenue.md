@@ -13,7 +13,7 @@
 - **Apps & Credentials** 메뉴
 - 처음 사용자 → 'Default Application' 이미 있음. 그거 써도 됨.
 - 새 앱 원하면 **Create App** 클릭
-- 앱 이름: "Connect AI Business Agent" 같은 식
+- 앱 이름: "Agent OS AI Business Agent" 같은 식
 
 ### 3. 키 복사
 - 앱 상세 페이지에서:
@@ -76,7 +76,7 @@
 ## 보안
 
 - `CLIENT_SECRET` 은 도구 설정 (password 필드) 에 저장. `.gitignore` 적용된 `_agents/business/tools/*.json` 에만 있음.
-- API 호출은 Connect AI 익스텐션이 로컬에서 직접 → 외부 서버 경유 없음.
+- API 호출은 Agent OS AI 익스텐션이 로컬에서 직접 → 외부 서버 경유 없음.
 - token 메모리에만 존재, 디스크 저장 X.
 
 ## 다음 단계 (계획)

@@ -180,12 +180,12 @@ export function readBrainFile(filename: string): string {
 
 // ---------------------------------------------------------------------------
 // CLAUDE.md-compatible project memory loader. Scans workspace + parents +
-// global ~/.connect-ai/global.md for project-scoped rules / preferences.
+// global ~/.agent-os-ai/global.md for project-scoped rules / preferences.
 // ---------------------------------------------------------------------------
 export function getProjectMemory(): string {
     const candidatePaths: string[] = [];
     const tried = new Set<string>();
-    const filenames = ['AGENT.md', 'CONNECT-AI.md', 'CONNECTAI.md', 'CLAUDE.md', '.connect-ai/instructions.md'];
+    const filenames = ['AGENT.md', 'AGENT-OS-AI.md', 'AGENTOSAI.md', 'CLAUDE.md', '.agent-os-ai/instructions.md'];
     const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     const editor = vscode.window.activeTextEditor;
     const roots: string[] = [];
@@ -206,7 +206,7 @@ export function getProjectMemory(): string {
     }
     /* 홈 디렉토리 글로벌 메모리 */
     try {
-        candidatePaths.push(path.join(os.homedir(), '.connect-ai', 'global.md'));
+        candidatePaths.push(path.join(os.homedir(), '.agent-os-ai', 'global.md'));
     } catch { /* ignore */ }
     const blocks: string[] = [];
     let totalChars = 0;
@@ -450,7 +450,7 @@ export function tryKitShortcut(agentId: string, userPrompt: string): string | nu
        폴더 (기존 파일 덮어쓰지만 .backup 자동 보존). */
     const escapedIntent = userPrompt.replace(/"/g, '\\"');
     const projectName = best.kit.replace(/-kit$/, '');
-    const projectDir = path.join(os.homedir(), 'connect-ai-projects', projectName);
+    const projectDir = path.join(os.homedir(), 'agent-os-ai-projects', projectName);
     const toolsDir = path.join(getCompanyDir(), '_agents', 'developer', 'tools').replace(/\\/g, '/');
     const projectDirShell = projectDir.replace(/\\/g, '/');
     const brainRootShell = brainDir.replace(/\\/g, '/');

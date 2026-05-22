@@ -10,7 +10,7 @@
 
 ## 셋업 (한 번만, 5~10분)
 
-명령 팔레트 → **`Connect AI: Google Calendar 자동 일정 연결 📅`** 실행하면 마법사가 안내합니다:
+명령 팔레트 → **`Agent OS AI: Google Calendar 자동 일정 연결 📅`** 실행하면 마법사가 안내합니다:
 
 1. Google Cloud Console에서 OAuth 클라이언트 만들기 (가이드 따라 클릭)
 2. Client ID + Secret 붙여넣기

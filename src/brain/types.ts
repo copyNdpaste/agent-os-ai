@@ -17,6 +17,9 @@ export interface BrainNode {
     id: string;            // relative path inside brainDir
     name: string;          // display name (basename without .md)
     folder: string;        // top-level folder (for color clustering)
+    group?: string;        // inferred validation group (idea/customer/problem/experiment/etc.)
+    stage?: string;        // inferred experiment stage (idea/hypothesis/posted/signal/mvp)
+    keywords?: string[];   // high-signal keywords extracted from title/content
     tags: string[];
     incoming: number;      // backlink count (for size)
     outgoing: number;
@@ -26,7 +29,7 @@ export interface BrainNode {
 export interface BrainLink {
     source: string;
     target: string;
-    type: 'wikilink' | 'mdlink' | 'tag' | 'semantic';
+    type: 'wikilink' | 'mdlink' | 'tag' | 'semantic' | 'related';
 }
 
 export interface BrainGraph {

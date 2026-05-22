@@ -113,8 +113,8 @@ def main():
     _log(f"명령: {dev_cmd}", "info")
 
     # PID 파일
-    pid_file = os.path.join(project_path, ".connect-ai-dev.pid")
-    log_file = os.path.join(project_path, ".connect-ai-dev.log")
+    pid_file = os.path.join(project_path, ".agent-os-ai-dev.pid")
+    log_file = os.path.join(project_path, ".agent-os-ai-dev.log")
     _kill_old_pid(pid_file)
 
     # 백그라운드 실행

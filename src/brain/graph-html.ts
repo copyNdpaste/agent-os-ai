@@ -172,39 +172,43 @@ export function _RENDER_GRAPH_HTML(graphJson: string, isEmpty: boolean, forceGra
     const data = ${graphJson};
     const tooltip = document.getElementById('tooltip');
 
-    // Folder palette — Obsidian-style desaturated tones, optimized for dark canvas.
+    // Validation-group palette — similar ideas cluster by meaning, not only by folder.
     const PALETTE = ['#7DA8E6','#8FD3A8','#E89B6E','#C28BE5','#E5C07B','#7FCBC0','#E68FB0','#A8B2D1','#9DC4A0','#D9A89B'];
-    const folders = [...new Set(data.nodes.map(n => n.folder))].sort();
-    const folderColor = {};
-    folders.forEach((f, i) => { folderColor[f] = PALETTE[i % PALETTE.length]; });
+    const groups = [...new Set(data.nodes.map(n => n.group || n.folder || '지식'))].sort();
+    const groupColor = {};
+    groups.forEach((g, i) => { groupColor[g] = PALETTE[i % PALETTE.length]; });
 
     // Edge color by type — softer, more "neural" (cyan synapse / lilac bridge / faint tag mist)
     const EDGE_COLOR = {
       wikilink: 'rgba(125,200,232,0.55)',
       mdlink:   'rgba(168,155,217,0.40)',
       tag:      'rgba(180,180,200,0.10)',
-      semantic: 'rgba(93,224,230,0.15)' // Faint cyan for implicit brain connections
+      semantic: 'rgba(93,224,230,0.15)', // Faint cyan for implicit brain connections
+      related:  'rgba(229,192,123,0.20)'
     };
-    const EDGE_WIDTH = { wikilink: 1.2, mdlink: 0.9, tag: 0.4, semantic: 0.6 };
+    const EDGE_WIDTH = { wikilink: 1.2, mdlink: 0.9, tag: 0.4, semantic: 0.6, related: 0.7 };
     // Active synapse color used during thinking
     const SYNAPSE = '#5DE0E6';   // electric cyan — "fired" feeling
     const TRAIL   = '#FFB266';   // warm amber — "this knowledge was used"
 
     document.getElementById('stats').textContent =
-      data.nodes.length + ' 지식 · ' + data.links.length + ' 연결 · ' + folders.length + ' 폴더';
+      data.nodes.length + ' 지식 · ' + data.links.length + ' 연결 · ' + groups.length + ' 그룹';
 
-    // ── Folder chip list in legend (informational; folder→color mapping) ──
+    // ── Group chip list in legend (informational; group→color mapping) ──
     (() => {
       const el = document.getElementById('folders-list');
       if (!el) return;
       const counts = {};
-      data.nodes.forEach(n => { counts[n.folder] = (counts[n.folder] || 0) + 1; });
-      folders.forEach(f => {
+      data.nodes.forEach(n => {
+        const g = n.group || n.folder || '지식';
+        counts[g] = (counts[g] || 0) + 1;
+      });
+      groups.forEach(f => {
         const row = document.createElement('div');
         row.className = 'folder-row';
         const dot = document.createElement('div');
         dot.className = 'folder-dot';
-        dot.style.background = folderColor[f] || '#888';
+        dot.style.background = groupColor[f] || '#888';
         const name = document.createElement('div');
         name.className = 'folder-name';
         name.textContent = f || '/';
@@ -375,9 +379,11 @@ export function _RENDER_GRAPH_HTML(graphJson: string, isEmpty: boolean, forceGra
         if (node) {
           tooltip.style.display = 'block';
           const tagsHtml = (node.tags || []).slice(0, 5).map(t => '<span class="t-tag">#' + t + '</span>').join('');
+          const keywordsHtml = (node.keywords || []).slice(0, 6).map(t => '<span class="t-tag">' + t + '</span>').join('');
           tooltip.innerHTML =
             '<div class="t-name">' + (node.name || '(이름 없음)') + '</div>' +
-            '<div class="t-meta">' + (node.folder || '/') + ' · ' + (node.connections || 0) + '개 연결</div>' +
+            '<div class="t-meta">' + (node.group || node.folder || '/') + (node.stage ? ' · ' + node.stage : '') + ' · ' + (node.connections || 0) + '개 연결</div>' +
+            (keywordsHtml ? '<div class="t-tags">' + keywordsHtml + '</div>' : '') +
             (tagsHtml ? '<div class="t-tags">' + tagsHtml + '</div>' : '');
         } else {
           tooltip.style.display = 'none';
@@ -470,8 +476,8 @@ export function _RENDER_GRAPH_HTML(graphJson: string, isEmpty: boolean, forceGra
       }
       const matches = new Set();
       data.nodes.forEach(n => {
-        const hay = ((n.name || '') + ' ' + (n.folder || '') + ' ' +
-                     (n.tags || []).map(t => '#' + t).join(' ')).toLowerCase();
+        const hay = ((n.name || '') + ' ' + (n.folder || '') + ' ' + (n.group || '') + ' ' + (n.stage || '') + ' ' +
+                     (n.keywords || []).join(' ') + ' ' + (n.tags || []).map(t => '#' + t).join(' ')).toLowerCase();
         if (hay.includes(q)) matches.add(n.id);
       });
       searchCount.textContent = matches.size + '개';
@@ -587,7 +593,7 @@ export function _RENDER_GRAPH_HTML(graphJson: string, isEmpty: boolean, forceGra
       const isDone   = thinkingDoneOrder.has(node.id);
       const isOrphan = node.connections === 0;
       const hub      = isHub(node);
-      const color    = folderColor[node.folder] || '#9aa0a6';
+      const color    = groupColor[node.group || node.folder] || '#9aa0a6';
 
       // ── 1. Active synapse halo: pulsing electric cyan ──
       if (isActive) {
@@ -829,7 +835,7 @@ export function _RENDER_GRAPH_HTML(graphJson: string, isEmpty: boolean, forceGra
           break;
         }
         case 'graphData': {
-          // Live refresh — new knowledge was injected (EZER / A.U Training).
+          // Live refresh — new knowledge was injected (Idea Lab / A.U Training).
           // Replace data + tell force-graph to layout incrementally so existing
           // nodes keep their positions and only new nodes settle in.
           if (!msg.data || !Array.isArray(msg.data.nodes)) break;
@@ -855,23 +861,26 @@ export function _RENDER_GRAPH_HTML(graphJson: string, isEmpty: boolean, forceGra
           // Push new graph data into force-graph
           Graph.graphData(data);
           // Stats refresh
-          const newFolders = [...new Set(data.nodes.map(n => n.folder))].sort();
-          newFolders.forEach((f, i) => { if (!folderColor[f]) folderColor[f] = PALETTE[i % PALETTE.length]; });
+          const newFolders = [...new Set(data.nodes.map(n => n.group || n.folder || '지식'))].sort();
+          newFolders.forEach((f, i) => { if (!groupColor[f]) groupColor[f] = PALETTE[i % PALETTE.length]; });
           document.getElementById('stats').textContent =
-            data.nodes.length + ' 지식 · ' + data.links.length + ' 연결 · ' + newFolders.length + ' 폴더';
+            data.nodes.length + ' 지식 · ' + data.links.length + ' 연결 · ' + newFolders.length + ' 그룹';
           // Append any newly seen folders to legend chip list
           const folderListEl = document.getElementById('folders-list');
           if (folderListEl) {
             const existing = new Set([...folderListEl.querySelectorAll('.folder-name')].map(el => el.textContent));
             const counts = {};
-            data.nodes.forEach(n => { counts[n.folder] = (counts[n.folder] || 0) + 1; });
+            data.nodes.forEach(n => {
+              const g = n.group || n.folder || '지식';
+              counts[g] = (counts[g] || 0) + 1;
+            });
             newFolders.forEach(f => {
               if (existing.has(f || '/')) return;
               const row = document.createElement('div');
               row.className = 'folder-row';
               const dot = document.createElement('div');
               dot.className = 'folder-dot';
-              dot.style.background = folderColor[f] || '#888';
+              dot.style.background = groupColor[f] || '#888';
               const name = document.createElement('div');
               name.className = 'folder-name';
               name.textContent = f || '/';

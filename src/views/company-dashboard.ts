@@ -832,7 +832,7 @@ export class CompanyDashboardPanel {
         </svg>
       </div>
       <div>
-        <div class="hero-eyebrow">CONNECT AI · 직원 에이전트 보기</div>
+        <div class="hero-eyebrow">AGENT OS AI · 직원 에이전트 보기</div>
         <div class="hero-title" id="companyName">불러오는 중…</div>
         <div class="hero-meta">
           <span class="meta-pill" id="todayLabel"></span>

@@ -1461,7 +1461,7 @@ function renderOnboarding(){
     + '</div>'
     + '<div class="onboard-actions">'
     +   '<button class="onboard-btn" id="ob-pick-brain" title="제2의 두뇌 폴더 위치 직접 선택">📁 폴더 선택</button>'
-    +   '<button class="onboard-btn secondary" id="ob-skip-brain" title="홈 디렉토리의 ~/.connect-ai-brain 사용">기본값 사용</button>'
+    +   '<button class="onboard-btn secondary" id="ob-skip-brain" title="홈 디렉토리의 ~/.agent-os-ai-brain 사용">기본값 사용</button>'
     + '</div>';
   } else if (cur === 3) {
     stepHtml =
@@ -1722,7 +1722,7 @@ function showSkillLibrary(){
     const totalAll = _groups.reduce((sum,g)=>sum+g.tools.length,0);
     const totalMine = _groups.reduce((sum,g)=>sum+g.tools.filter(t=>t.injectedAt).length,0);
     if(totalAll === 0){
-      body.innerHTML = '<div class="empty-state"><div class="es-icon">🧰</div><div class="es-title">아직 스킬이 없어요</div><div class="es-sub">EZER 또는 AI University에서 스킬팩을 주입하면 여기에 모입니다.</div></div>';
+      body.innerHTML = '<div class="empty-state"><div class="es-icon">🧰</div><div class="es-title">아직 스킬이 없어요</div><div class="es-sub">Idea Lab 또는 AI University에서 스킬팩을 주입하면 여기에 모입니다.</div></div>';
       return;
     }
     body.innerHTML = '<div class="sl-summary">총 <strong>'+totalAll+'</strong>개 스킬 · <span style="color:#FFB266">✨ Mine '+totalMine+'</span></div>'
@@ -3841,7 +3841,7 @@ function showOnboardingCard(){
     +   '<div class="boot-options">'
     +     '<button class="boot-opt recommended" data-choice="default">'
     +       '<span class="bo-icon">🏠</span>'
-    +       '<span class="bo-text"><span class="bo-title">기존 두뇌 폴더 그대로 사용 <span class="bo-recpill">권장</span></span><span class="bo-desc">~/.connect-ai-brain/ 안에 _shared, _agents, sessions가 만들어집니다.</span></span>'
+    +       '<span class="bo-text"><span class="bo-title">기존 두뇌 폴더 그대로 사용 <span class="bo-recpill">권장</span></span><span class="bo-desc">~/.agent-os-ai-brain/ 안에 _shared, _agents, sessions가 만들어집니다.</span></span>'
     +       '<span class="bo-arrow">→</span>'
     +     '</button>'
     +     '<button class="boot-opt" data-choice="pick">'
@@ -4295,10 +4295,10 @@ function isAgentHired(id){
     return !!_backendHiredAgents[id];
   }
   /* fallback: localStorage (backend 도달 전 즉시 반영) */
-  try { return localStorage.getItem('connectai_hired_'+id) === '1'; } catch { return false; }
+  try { return localStorage.getItem('agentosai_hired_'+id) === '1'; } catch { return false; }
 }
 function markAgentHired(id){
-  try { localStorage.setItem('connectai_hired_'+id, '1'); } catch { /* private mode */ }
+  try { localStorage.setItem('agentosai_hired_'+id, '1'); } catch { /* private mode */ }
   if (!_backendHiredAgents) _backendHiredAgents = {};
   _backendHiredAgents[id] = { hiredAt: new Date().toISOString() };
 }

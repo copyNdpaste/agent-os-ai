@@ -174,29 +174,31 @@ export function ensureCompanyStructure(): string {
   const goalsPath = path.join(dir, '_shared', 'goals.md');
   if (!fs.existsSync(goalsPath)) {
     fs.writeFileSync(goalsPath,
-`# 🎯 공동 목표 (Company Goals)
+`# 🎯 실험 목표 (Validation Goals)
 
-_이 파일은 **모든 에이전트가 매번 읽는** 회사의 북극성입니다. 자유롭게 편집하세요._
+_이 파일은 **모든 에이전트가 매번 읽는** 아이디어 실험실의 북극성입니다. 자유롭게 편집하세요._
 
 ## 장기 목표 (1년)
-- [ ] (예) 유튜브 구독자 10만 달성
-- [ ] (예) 인스타그램 팔로워 5만
-- [ ] (예) 월 수익 500만원
+- [ ] 아이디어를 매주 5개 이상 SNS로 검증
+- [ ] 강한 수요 신호가 확인된 MVP 3개 출시
+- [ ] 반복 가능한 아이디어 실험/대행 프로세스 구축
 
 ## 단기 목표 (1개월)
-- [ ] (예) 영상 4개 업로드
-- [ ] (예) 릴스 12개 게시
+- [ ] 아이디어별 타깃/문제/가설 문서화
+- [ ] Instagram/X/Threads 실험 콘텐츠 30개 게시
+- [ ] 댓글·DM·클릭·대기자 등록 기반 Idea Score 기록
 `);
   }
   const idPath = path.join(dir, '_shared', 'identity.md');
   if (!fs.existsSync(idPath)) {
     fs.writeFileSync(idPath,
-`# 🏢 회사 정체성 / 톤앤매너
+`# 🧪 실험실 정체성 / 톤앤매너
 
 _브랜드 보이스, 톤, 절대 금지어 등을 적으세요. 모든 에이전트가 매번 참조합니다._
 
-- **회사 이름:**
-- **대표자:**
+- **실험실 이름:**
+- **운영자:**
+- **검증할 핵심 시장:**
 - **타깃 청중:**
 - **핵심 가치:**
 - **브랜드 톤:**
@@ -271,7 +273,7 @@ ${presets}
   // .gitignore — 시크릿과 캐시 보호
   const giPath = path.join(dir, '.gitignore');
   const desiredGi =
-`# 자동 생성 — Agent OS 1인 기업 모드
+`# 자동 생성 — Agent OS AI 아이디어 실험 모드
 # 시크릿·API 키 보호
 _agents/*/config.md
 # 도구 설정 JSON 안에 API 키·텔레그램 봇 토큰이 들어갈 수 있어 git에서 제외
@@ -310,15 +312,15 @@ _tmp/
   const sysPath = path.join(dir, '_shared', '_system.md');
   if (!fs.existsSync(sysPath)) {
     fs.writeFileSync(sysPath,
-`# 🧬 1인 기업 OS — 자가 매뉴얼
+`# 🧬 Agent OS AI — 아이디어 실험실 자가 매뉴얼
 
 ## 이 폴더는 무엇인가요?
-당신의 1인 기업의 두뇌입니다. 7명의 AI 에이전트가 여기서 일합니다.
+당신의 아이디어 실험·수요검증 두뇌입니다. AI 에이전트들이 아이디어, 가설, SNS 실험, 반응, MVP 결정 로그를 이곳에 누적합니다.
 
 ## 폴더 구조
 - \`_shared/\` — 모든 에이전트가 매번 읽는 공동 메모리
-  - \`identity.md\` — 회사 정체성 (이름, 톤, 가치)
-  - \`goals.md\` — 목표
+  - \`identity.md\` — 실험실 정체성 (이름, 톤, 금기)
+  - \`goals.md\` — 수요검증 목표
   - \`decisions.md\` — 의사결정 로그 (자가학습이 자동 누적)
   - \`_system.md\` — 이 파일
 - \`_agents/<id>/\` — 각 에이전트 개인 공간
@@ -345,7 +347,7 @@ _tmp/
 - \`_shared/\`, \`_agents/*/memory.md\`, \`_agents/*/prompt.md\`, \`sessions/\` → git sync ✅
 - \`_agents/*/config.md\`, \`_cache/\` → git sync ❌ (시크릿·캐시)
 
-## 7명의 에이전트
+## 에이전트
 ${AGENT_ORDER.map(id => `- ${AGENTS[id].emoji} **${AGENTS[id].name}** (${AGENTS[id].role}): ${AGENTS[id].specialty}`).join('\n')}
 `);
   }
