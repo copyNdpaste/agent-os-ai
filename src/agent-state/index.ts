@@ -38,3 +38,15 @@ export {
     AUTONOMY_MAX,
     readAutonomyLevel,
 } from './autonomy';
+
+export type { RagMode } from './rag-mode';
+export {
+    readAgentRagMode,
+    writeAgentRagMode,
+    readAgentSelfRagCriteria,
+} from './rag-mode';
+
+export {
+    writeToolConfig,
+    setToolEnabled,
+} from './tool-config';

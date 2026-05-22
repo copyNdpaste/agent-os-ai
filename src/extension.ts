@@ -1,10 +1,9 @@
 import * as vscode from 'vscode';
-import * as http from 'http';
 import axios from 'axios';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { spawn, spawnSync } from 'child_process';
+import { spawnSync } from 'child_process';
 import { ask, streamAsk, resolveClaudeBin, pingClaude, type Tier } from './llm';
 import {
     gitExec, gitExecSafe, gitRun,
@@ -45,6 +44,7 @@ import {
     revealInOsExplorer as _revealInOsExplorer,
     openInDefaultApp as _openInDefaultApp,
 } from './infra/system';
+import { startBridgeServer } from './infra/bridge-server';
 
 /** Module-scoped lock so auto-sync and manual sync never run concurrently against the same brain.
  *  v2.92.x: ESM `let` bindings are read-only when imported from another module, so we expose
@@ -90,6 +90,9 @@ export function getConfig() {
 /* v2.89.66 — _getBrainDir, _isBrainDirExplicitlySet, getCompanyDir, COMPANY_SUBDIR,
    _expandTilde, _resolvePathInput 모두 ./paths.ts 로 이동. 모듈 간 import 일원화. */
 import { _getBrainDir, _isBrainDirExplicitlySet, getCompanyDir, COMPANY_SUBDIR, _expandTilde, _resolvePathInput } from './paths';
+/* Re-exports for cross-module consumers (chat/corporate/*, views, etc.) that
+   import these from '../extension' for consistency. */
+export { _getBrainDir, _isBrainDirExplicitlySet, getCompanyDir, COMPANY_SUBDIR };
 import * as tg from './telegram';
 import * as st from './agent-state';
 import * as cal from './calendar';
@@ -116,6 +119,15 @@ export { CompanyDashboardPanel } from './views/company-dashboard';
 export { OfficePanel } from './views/office-panel';
 import { SidebarChatProvider } from './views/sidebar-chat';
 export { SidebarChatProvider } from './views/sidebar-chat';
+/* World layout — extracted to src/views/world-layout.ts (Cycle 8). OfficePanel
+   consumes these via the '../extension' re-export, so the names stay stable. */
+export {
+    type DeskPos,
+    type WorldZone,
+    WORLD_LAYOUT,
+    CUSTOM_MAP_DESKS,
+    buildWorldDeskPositions,
+} from './views/world-layout';
 /* Telegram polling + command handlers (Cycle 5 추출). */
 import {
     handleTelegramCommand,
@@ -287,14 +299,14 @@ export async function _ensureBrainDir(): Promise<string | null> {
         '폴더 선택하기'
     );
     if (result !== '폴더 선택하기') return null;
-    
+
     const folders = await vscode.window.showOpenDialog({
         canSelectFolders: true, canSelectFiles: false, canSelectMany: false,
         openLabel: '이 폴더를 내 지식 폴더로 사용',
         title: '🧠 내 지식 폴더 선택'
     });
     if (!folders || folders.length === 0) return null;
-    
+
     const selectedPath = folders[0].fsPath;
     await vscode.workspace.getConfiguration('agentOs').update('localBrainPath', selectedPath, vscode.ConfigurationTarget.Global);
     vscode.window.showInformationMessage(`✅ 지식 폴더가 설정되었어요: ${selectedPath}`);
@@ -309,23 +321,7 @@ export const EXCLUDED_DIRS = new Set([
 export const MAX_CONTEXT_SIZE = 12_000; // chars
 
 /* v2.89.61 — 9개 LLM 프롬프트(SYSTEM, CEO_*, SECRETARY_*) 를 assets/prompts/ 에 .md
-   파일로 분리. 익스텐션 로드 시 한 번 읽어 메모리에 캐시. 프롬프트 수정이 코드
-   수정 없이 가능 + 줄 수 287줄 절약 + IDE에서 markdown 미리보기로 검토 가능.
-   __dirname는 esbuild 번들 출력 위치(extension/out)이라 ../assets/prompts 로 한 단계 위. */
-const _PROMPTS_DIR = path.join(__dirname, '..', 'assets', 'prompts');
-const _promptCache = new Map<string, string>();
-function _loadPrompt(file: string): string {
-    let cached = _promptCache.get(file);
-    if (cached !== undefined) return cached;
-    try {
-        cached = fs.readFileSync(path.join(_PROMPTS_DIR, file), 'utf-8');
-    } catch (e: any) {
-        console.error(`[Agent OS] prompt 로드 실패 ${file}:`, e?.message || e);
-        cached = '';
-    }
-    _promptCache.set(file, cached);
-    return cached;
-}
+   파일로 분리. 본문은 ./prompts/index.ts 가 로드/캐시. 여기서는 import + re-export 만. */
 
 /* v2.89.62 — 11개 Python 도구 + 11개 README 를 assets/tool-seeds/<agent>/<tool>.{py,md} 로 분리.
    각 _seed* 함수에서 lazy load. assets/tool-seeds/secretary/telegram_setup.py 같은 형태.
@@ -351,121 +347,6 @@ import {
 /* v2.89.64 — AgentDef interface, AGENTS map, AGENT_ORDER, SPECIALIST_IDS
    moved to src/agents.ts. extension.ts only imports them now. ~118 lines saved. */
 import { AgentDef, AGENTS, AGENT_ORDER, SPECIALIST_IDS } from './agents';
-
-// ───────────────────────────────────────────────────────────────────────────
-// Connected campus world (Phase B-1 — multi-zone layout).
-//
-// One big virtual campus: Office building + Cafe + outdoor Garden, all on
-// a single coord space so characters walk freely between zones. Each
-// "building" is a pre-built bg PNG/GIF placed at a fixed pixel position in
-// the world. Decorations (trees, flowers, benches) are scattered tiles on
-// the garden grass.
-// ───────────────────────────────────────────────────────────────────────────
-export interface DeskPos { x: number; y: number; }
-export interface WorldZone { id: string; name: string; emoji: string; x: number; y: number; }
-interface BuildingDef {
-  id: string;
-  layer1: string;
-  layer2?: string;
-  x: number; y: number;       // world pixel position (top-left)
-  width: number; height: number;
-}
-interface DecorDef {
-  file: string;               // path under assets/pixel/office/garden/
-  x: number; y: number;       // world % (anchor at bottom-center for natural layering)
-  w?: number;                 // optional % width override (defaults to 48px)
-}
-interface AgentDeskRef {
-  building: string;
-  localX: number;             // % of building width
-  localY: number;             // % of building height
-}
-
-export const WORLD_LAYOUT = {
-  // World canvas — characters use % of these dims as their coordinate space.
-  worldWidth: 1400,
-  worldHeight: 700,
-
-  // Pre-built scene PNGs/GIFs anchored at fixed world pixel positions.
-  // Single office building — cafe + garden were rolled back. User will add
-  // back / build new maps themselves.
-  buildings: [
-    {
-      id: 'office', layer1: 'Office_Design_2.gif',
-      x: 560, y: 90, width: 512, height: 544,
-    },
-  ] as BuildingDef[],
-
-  // Walkways — empty for now. Add back once buildings are placed and paths make sense.
-  paths: [],
-
-  // Garden decorations — empty (rolled back).
-  decorations: [] as DecorDef[],
-
-  // Each agent's primary desk — building-local % coords.
-  // Top cubicle row chairs at office y≈30%; agents stand in aisle at y=38%.
-  // Middle row chairs at y≈47%; agents stand at y=58%.
-  // CEO's private office has a baked-in character at the desk — our CEO
-  // stands in the open area of the room (right side, not overlapping).
-  agents: {
-    youtube:   { building: 'office', localX: 28, localY: 38 },
-    instagram: { building: 'office', localX: 46, localY: 38 },
-    designer:  { building: 'office', localX: 64, localY: 38 },
-    business:  { building: 'office', localX: 82, localY: 38 },
-    developer: { building: 'office', localX: 28, localY: 58 },
-    secretary: { building: 'office', localX: 82, localY: 58 },
-    ceo:       { building: 'office', localX: 88, localY: 88 },
-    editor:    { building: 'office', localX: 18, localY: 78 },
-    writer:    { building: 'office', localX: 50, localY: 78 },
-    researcher:{ building: 'office', localX: 70, localY: 78 },
-  } as Record<string, AgentDeskRef>,
-
-  // Visit-zones for idle wandering / autonomous behavior. Office-only.
-  // Cafe + garden zones were rolled back along with their assets.
-  zones: [
-    { id: 'office-meeting', name: '회의실',  emoji: '📊',  x: 49, y: 78 },  // office bottom-left meeting room
-    { id: 'office-copier',  name: '복사실',  emoji: '🖨️', x: 70, y: 18 },  // office top printer
-  ] as WorldZone[],
-};
-
-/** Hand-tuned agent positions for the user's AI-generated office map at
- *  `assets/map.jpeg`. Coordinates are % of the world canvas — each places the
- *  agent at a real desk/seat in their room, avoiding walls and furniture.
- *  The y values anchor agent FEET (sprite is 96px tall, feet at bottom). */
-export const CUSTOM_MAP_DESKS: Record<string, DeskPos> = {
-  // Top-left CEO solo office (glass-walled, "Agent OS" sign on wall)
-  ceo:        { x: 8,  y: 22 },
-  // Front desk just outside CEO's office — Secretary station
-  secretary:  { x: 18, y: 33 },
-  // Top-right twin workstation pairs
-  youtube:    { x: 87, y: 18 },
-  instagram:  { x: 87, y: 32 },
-  // Mid-left small glass meeting pod (used as Designer's focused space)
-  designer:   { x: 13, y: 47 },
-  // Center cubicle cluster (6 desks, agents at 4 of them)
-  developer:  { x: 41, y: 53 },
-  business:   { x: 51, y: 53 },
-  editor:     { x: 41, y: 63 },
-  writer:     { x: 51, y: 63 },
-  // Bottom-center small admin desks — Researcher
-  researcher: { x: 33, y: 82 },
-};
-
-/** Convert each agent's building-local desk into world % coords. */
-export function buildWorldDeskPositions(): Record<string, DeskPos> {
-  const out: Record<string, DeskPos> = {};
-  for (const [id, ref] of Object.entries(WORLD_LAYOUT.agents)) {
-    const b = WORLD_LAYOUT.buildings.find(bb => bb.id === ref.building);
-    if (!b) continue;
-    const worldPxX = b.x + (ref.localX / 100) * b.width;
-    const worldPxY = b.y + (ref.localY / 100) * b.height;
-    out[id] = {
-      x: (worldPxX / WORLD_LAYOUT.worldWidth) * 100,
-      y: (worldPxY / WORLD_LAYOUT.worldHeight) * 100,
-    };
-  }
-  return out;
-}
 
 // Two layouts supported:
 //   1) Nested (default, v2.58): company at `<brain>/_company/`. Same git
@@ -522,10 +403,6 @@ export function updateCompanyMetrics(updates: Partial<cmp.CompanyMetrics>) {
     cmp.updateMetrics(_getBrainDir(), updates);
 }
 
-function _extractCompanyName(idMd: string): string {
-    return cmp.extractCompanyNameFromMd(idMd);
-}
-
 export function isCompanyConfigured(): boolean {
     return cmp.isConfigured(getCompanyDir());
 }
@@ -556,7 +433,6 @@ export const ALWAYS_ON_AGENTS: Set<string> = new Set(['ceo']);
 /* v2.89.156 — 데모용·신규 사용자 첫 경험 회복. "유튜브 + 매출 종합 보고서" 같은 합성 명령에서
    현빈(business) 가 비활성이라 조용히 drop 되던 사고 차단. 옵션 전체를 기본 ON 으로. Luna 만 LOCKED 유지.
    사용자는 언제든 직원 패널에서 개별 OFF 가능. */
-const DEFAULT_ON_AGENTS: Set<string> = new Set(['secretary', 'writer', 'designer', 'instagram', 'business', 'developer', 'researcher']);
 export const OPTIONAL_AGENTS_DEFAULT: Set<string> = new Set(['secretary', 'writer', 'designer', 'instagram', 'business', 'developer', 'researcher']);
 
 // ──────────────────────────────────────────────────────────────────
@@ -569,9 +445,6 @@ export const OPTIONAL_AGENTS_DEFAULT: Set<string> = new Set(['secretary', 'write
 /* v2.89.65 — system-specs 헬퍼는 _autoOrchestrateModelMap 외에도 (estimateModelMemoryGB)
    여러 콜사이트에서 직접 쓰이므로 top-level import 로 끌어올린다. */
 import { SystemSpecs, getSystemSpecs, estimateModelMemoryGB } from './system-specs';
-
-function _hiredJsonPath(): string { return st.hiredJsonPath(getCompanyDir()); }
-function _activeJsonPath(): string { return st.activeJsonPath(getCompanyDir()); }
 
 export function readHiredAgents(): Record<string, { hiredAt: string }> {
   return st.readHired(getCompanyDir());
@@ -619,13 +492,11 @@ export function isAgentTogglable(id: string): boolean {
    no-op 으로 남겨서 콜사이트 호환만 유지. */
 export function _maybeRecommendCoderModel(_webview: vscode.Webview) { /* no-op */ }
 
-function _agentModelsPath(): string { return st.modelsJsonPath(getCompanyDir()); }
 export function readAgentModelMap(): Record<string, string> { return st.readModelMap(getCompanyDir()); }
 export function writeAgentModelMap(map: Record<string, string>): void { st.writeModelMap(getCompanyDir(), map); }
 export function getAgentModel(agentId: string, fallback: string): string {
   return st.getModelFor(getCompanyDir(), agentId, fallback);
 }
-function _classifyModel(modelId: string): st.ModelTier[] { return st.classifyModel(modelId); }
 export function _autoOrchestrateModelMap(installed: { id: string; backend: string }[]): Record<string, string> {
   return st.autoOrchestrate(installed, AGENT_ORDER);
 }
@@ -665,14 +536,6 @@ export function _personalizePrompt(prompt: string): string {
 // 콜만 책임.
 // ──────────────────────────────────────────────────────────────────
 export type CompanyConfig = cmp.CompanyConfig;
-
-function _extractField(md: string, label: string): string {
-    return cmp.extractField(md, label);
-}
-
-function _extractGoalLine(md: string, header: string): string {
-    return cmp.extractGoalLine(md, header);
-}
 
 export function readCompanyConfig(): CompanyConfig {
     return cmp.readConfig(getCompanyDir());
@@ -718,10 +581,7 @@ export async function sendTelegramTyping(): Promise<void> {
 // can issue commands even if they find the bot). Free-text messages get
 // classified by a lightweight CEO call and forwarded to the right
 // specialist via the existing sidebar provider.
-
-let _telegramPollTimer: NodeJS.Timeout | null = null;
-let _telegramPollOffset = 0;
-let _telegramPolling = false;
+// Polling state + tick body live in src/telegram/polling.ts.
 
 /* Short-term Telegram conversation memory — ring buffer + jsonl persistence.
    본체는 src/telegram/history.ts 로 추출. extension 측에서는 cross-cutting
@@ -818,13 +678,7 @@ export function writeReportSchedule(s: { entries: ReportScheduleEntry[] }) { sch
 // 는 추출 안 함 — 이번 사이클은 HTTP 코어만.
 // ──────────────────────────────────────────────────────────────────
 
-type CalendarWriteConfig = cal.CalendarWriteConfig;
-
-function _calendarWriteConfigPath(): string { return cal.configPath(getCompanyDir()); }
-function readCalendarWriteConfig(): CalendarWriteConfig { return cal.readConfig(getCompanyDir()) || {}; }
-function writeCalendarWriteConfig(cfg: CalendarWriteConfig) { cal.writeConfig(getCompanyDir(), cfg); }
 export function isCalendarWriteConnected(): boolean { return cal.isConnected(getCompanyDir()); }
-async function _getCalendarAccessToken(): Promise<string | null> { return cal.getAccessToken(getCompanyDir()); }
 
 /* Tracker↔Calendar sync wrappers — close over companyDir so the rest of
    extension.ts (addTrackerTask / updateTrackerTask) can call them with a
@@ -876,38 +730,15 @@ export async function refreshCalendarCacheViaOAuth(daysAhead: number = 14): Prom
 
 /* ── P0-3: Daily briefing auto-fire ─────────────────────────────────────
    Once per day at the user's configured time (default 09:00), Secretary
-   builds and sends a "good morning" brief to Telegram covering:
-     - Today's calendar (from calendar_cache.md)
-     - Open tracker tasks (priority-sorted, top 5)
-     - Yesterday's company highlights (last conversation log entries)
-   Single-fire: tracks last-fired date in extension globalState so a VS Code
-   restart at 09:30 doesn't double-send. */
-let _dailyBriefingTimer: NodeJS.Timeout | null = null;
-const _DAILY_BRIEFING_KEY = 'dailyBriefingLastSentDate';
-
-function _parseBriefingTime(raw: string): { hour: number; minute: number } | null {
-    if (!raw || raw.trim() === '' || raw.trim().toLowerCase() === 'off') return null;
-    const m = raw.trim().match(/^(\d{1,2}):(\d{2})$/);
-    if (!m) return null;
-    const hour = parseInt(m[1], 10);
-    const minute = parseInt(m[2], 10);
-    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
-    return { hour, minute };
-}
-
-
+   builds and sends a "good morning" brief to Telegram covering today's
+   calendar / open tracker / recent highlights. 본문 + timer 는
+   src/loops/daily-briefing.ts. */
 
 
 /* ── v2.89.137 — Revenue Watcher (PayPal polling) ──────────────────────────
    5분마다 paypal_revenue.py OUTPUT=json 호출 → 마지막 본 transaction id 와
-   비교 → 새 결제 발견 시 텔레그램 푸시 + 사무실 영숙 책상 펄스. paypal 미설정
-   시 silently skip. 이게 진짜 "AI 회사가 자고 있어도 결제 알아차림" 의 코어. */
-let _revenueWatcherTimer: NodeJS.Timeout | null = null;
-const _REVENUE_LAST_SEEN_KEY = 'revenueLastSeenTxId';
-const _REVENUE_LAST_SEEN_TS_KEY = 'revenueLastSeenTxTs';
-const REVENUE_POLL_INTERVAL_MS = 5 * 60 * 1000; /* 5분 */
-
-
+   비교 → 새 결제 발견 시 텔레그램 푸시 + 사무실 영숙 책상 펄스. 본문 + timer 는
+   src/loops/revenue-watcher.ts. */
 
 
 /* ── Task tracker ─────────────────────────────────────────────────────────
@@ -936,7 +767,6 @@ export const TASK_PRIORITY_LABEL = trk.TASK_PRIORITY_LABEL;
 export type TrackerTask = trk.TrackerTask;
 
 /* `_coercePriority` 는 src/tracker/ui-helpers.ts 로 이동 — 위에서 import + re-export. */
-function _trackerPath(): string { return trk.trackerPath(getCompanyDir()); }
 export function readTracker(): { tasks: TrackerTask[] } { return trk.readTracker(getCompanyDir()); }
 
 /* Module-level event emitter so the sidebar Task TreeView auto-refreshes
@@ -963,9 +793,7 @@ export const onTrackerChanged = _trackerChangeEmitter.event;
 type PendingApproval = apv.PendingApproval;
 
 export function _approvalsPendingDir(): string { return apv.pendingDir(getCompanyDir()); }
-function _approvalsHistoryDir(): string { return apv.historyDir(getCompanyDir()); }
 function _approvalsExecutorsDir(): string { return apv.executorsDir(getCompanyDir()); }
-function _approvalNewId(): string { return apv.newApprovalId(); }
 
 function createApproval(req: Omit<PendingApproval, 'id' | 'createdAt'>): PendingApproval {
     const ap = apv.createApproval(getCompanyDir(), req, {
@@ -986,10 +814,6 @@ function createApproval(req: Omit<PendingApproval, 'id' | 'createdAt'>): Pending
 }
 
 export function listPendingApprovals(): PendingApproval[] { return apv.listPending(getCompanyDir()); }
-
-function findApprovalByShortId(short: string): PendingApproval | null {
-    return apv.findByShortId(getCompanyDir(), short);
-}
 
 export async function resolveApproval(id: string, decision: 'approved' | 'rejected', reason: string = ''): Promise<{ ok: boolean; message: string; ap?: PendingApproval }> {
     /* Executor callback — approved 시에만 호출됨. spawnSync 기반 격리 실행은
@@ -1052,8 +876,6 @@ function writeTracker(t: { tasks: TrackerTask[] }) {
   try { _trackerChangeEmitter.fire(); } catch { /* no listeners — fine */ }
 }
 
-function _trackerNewId(): string { return trk.newTaskId(); }
-
 export function addTrackerTask(partial: Partial<TrackerTask> & { title: string; owner: TrackerTask['owner'] }): TrackerTask {
   const task = trk.addTask(getCompanyDir(), partial);
   try { _trackerChangeEmitter.fire(); } catch { /* no listeners — fine */ }
@@ -1089,13 +911,8 @@ export function updateTrackerTask(id: string, patch: Partial<TrackerTask>): Trac
   return cur;
 }
 
-function listOpenTrackerTasks(): TrackerTask[] { return trk.listOpen(getCompanyDir()); }
-
 /* Recurrence helpers — 본문 trk.parseLooseDate / trk.computeNextRunAt. */
 export function _parseLooseDate(input: string): Date | null { return trk.parseLooseDate(input); }
-function _computeNextRunAt(prev: Date, cadence: 'daily' | 'weekly' | 'monthly'): Date {
-  return trk.computeNextRunAt(prev, cadence);
-}
 
 /* Recurrence loop 본문은 src/loops/recurrence.ts 로 이동. activate() 가
    `startRecurrenceLoop()` 만 호출. */
@@ -1156,51 +973,22 @@ export function _safeReadText(p: string): string {
 
 
 
-function _slugifySkill(title: string): string {
-  /* Keep Hangul / latin / digits, collapse the rest into '-'. Filenames are
-     fine on macOS/Linux/Windows with Hangul; we don't transliterate. */
-  let s = title.toLowerCase().replace(/^#+\s*/, '').trim();
-  s = s.replace(/[\\/:*?"<>|]/g, ' ');
-  s = s.replace(/\s+/g, '-');
-  s = s.replace(/-+/g, '-');
-  s = s.replace(/^-+|-+$/g, '');
-  return s.slice(0, 60) || `skill-${Date.now()}`;
-}
-
-
 /** Distill `sourceText` into a reusable skill markdown and save it under
  *  `_agents/{agentId}/skills/<slug>.md`. Returns the saved path or an error.
  *  Uses _quickLLMCall — same lightweight path as Secretary classification. */
 
 
-type RagMode = 'standard' | 'self-rag';
-const RAG_MODES: RagMode[] = ['standard', 'self-rag'];
-
+/* Per-agent RAG mode + Self-RAG criteria — body lives in
+   src/agent-state/rag-mode.ts. wrapper closes over companyDir. */
+export type RagMode = st.RagMode;
 export function readAgentRagMode(agentId: string): RagMode {
-  try {
-    const p = path.join(getCompanyDir(), '_agents', agentId, 'rag_mode.txt');
-    if (!fs.existsSync(p)) return 'standard';
-    const v = fs.readFileSync(p, 'utf-8').trim().toLowerCase();
-    return (RAG_MODES as string[]).includes(v) ? v as RagMode : 'standard';
-  } catch { return 'standard'; }
+  return st.readAgentRagMode(getCompanyDir(), agentId);
 }
-
 export function writeAgentRagMode(agentId: string, mode: string) {
-  const safe = (RAG_MODES as string[]).includes(mode) ? mode : 'standard';
-  const dir = path.join(getCompanyDir(), '_agents', agentId);
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, 'rag_mode.txt'), safe);
+  st.writeAgentRagMode(getCompanyDir(), agentId, mode);
 }
-
-/* User-defined Self-RAG verification criteria. Plain markdown — agent reads
-   it and appends to the standard self-critique protocol. Lets users tailor
-   "what counts as grounded" to their domain (e.g. "any number must cite an
-   actual data file", "thumbnail copy must be ≤5 words"). */
 export function readAgentSelfRagCriteria(agentId: string): string {
-  try {
-    const p = path.join(getCompanyDir(), '_agents', agentId, 'self_rag_criteria.md');
-    return fs.existsSync(p) ? fs.readFileSync(p, 'utf-8') : '';
-  } catch { return ''; }
+  return st.readAgentSelfRagCriteria(getCompanyDir(), agentId);
 }
 
 /* `AgentTool` / `ToolField` 타입 + `_inferToolFieldType` / `listAgentTools`
@@ -1208,29 +996,15 @@ export function readAgentSelfRagCriteria(agentId: string): string {
    re-export 만 한다. (의미상 tracker 와는 다른 도메인이지만, 단일
    ui-helpers 파일 통합을 위해 임시로 그곳에 같이 두었음.) */
 
+/* Tool config writers — body lives in src/agent-state/tool-config.ts.
+   wrappers close over companyDir. */
 export function writeToolConfig(agentId: string, toolName: string, config: Record<string, any>) {
-  const p = path.join(getCompanyDir(), '_agents', agentId, 'tools', `${toolName}.json`);
-  let existing: Record<string, any> = {};
-  try {
-    if (fs.existsSync(p)) existing = JSON.parse(fs.readFileSync(p, 'utf-8'));
-  } catch { /* malformed — overwrite cleanly */ }
-  fs.writeFileSync(p, JSON.stringify({ ...existing, ...config }, null, 2));
+  st.writeToolConfig(getCompanyDir(), agentId, toolName, config);
 }
 
 /** Toggle a single tool's enabled flag without disturbing other config values. */
 export function setToolEnabled(agentId: string, toolName: string, enabled: boolean) {
-  const p = path.join(getCompanyDir(), '_agents', agentId, 'tools', `${toolName}.json`);
-  let config: Record<string, any> = {};
-  try {
-    if (fs.existsSync(p)) config = JSON.parse(fs.readFileSync(p, 'utf-8'));
-  } catch { /* malformed — overwrite */ }
-  if (enabled) {
-    delete config._enabled; /* default is enabled, so absence === true */
-  } else {
-    config._enabled = false;
-  }
-  fs.mkdirSync(path.dirname(p), { recursive: true });
-  fs.writeFileSync(p, JSON.stringify(config, null, 2));
+  st.setToolEnabled(getCompanyDir(), agentId, toolName, enabled);
 }
 
 /* v2.91.x — `AGENT_TOOLS_CATALOG` 와 `_seedAgentToolsManifestIfMissing` 는
@@ -1317,27 +1091,17 @@ export function readSecretaryBridgeMode(): SecretaryBridgeMode {
 export let _activeChatProvider: SidebarChatProvider | null = null;
 export let _extCtx: vscode.ExtensionContext | null = null;
 
-export function activate(context: vscode.ExtensionContext) {
-    vscode.window.showInformationMessage('🔥 Agent OS V2 활성화 완료!');
-    console.log('Agent OS extension activated.');
+/* ── activate() helpers ──────────────────────────────────────────────────
+   activate() previously inlined ~600 lines of setup (migrations, bridge
+   server, status bars, command wiring). The bridge HTTP server moved to
+   src/infra/bridge-server.ts; the helpers below group the remaining work
+   so activate() reads as a top-level checklist. */
 
-    _extCtx = context;
-    /* v2.89.138 — extensionUri 즉시 세팅. 이전엔 "우리 회사 대시보드" 명령
-       처음 열기 전엔 _dashboardExtensionUri=null 이라 ApiConnectionsPanel /
-       RevenueDashboardPanel 가 _loadWebviewAsset() 으로 빈 CSS·JS 받음 →
-       헤더만 보이고 카드·차트 텅 빈 사고. activate 시점에 박아두면 모든
-       webview 가 즉시 asset 사용 가능. */
-    _dashboardExtensionUri = context.extensionUri;
-    /* v2.89.152 — pythonPath 설정 변경 시 캐시 무효화. 사용자가 외부 연결 패널이나
-       설정에서 Python 경로 바꾸면 다음 도구 실행부터 새 경로 사용. */
-    context.subscriptions.push(
-        vscode.workspace.onDidChangeConfiguration(e => {
-            if (e.affectsConfiguration('agentOs.pythonPath')) {
-                _invalidatePythonCmdCache();
-                vscode.window.setStatusBarMessage('🐍 Python 경로 설정 변경 — 다음 도구 실행 시 적용', 4000);
-            }
-        })
-    );
+/** Runs once at activation: nest legacy company files under _company/, sync
+ *  YouTube creds to canonical location, stamp foundedAt the first time, then
+ *  auto-orchestrate the model map for first-run users. All migrations are
+ *  idempotent — repeat calls are no-ops once data is in place. */
+function _runActivationMigrations(): void {
     _migrateCompanyToBrain();
     /* v2.58: nest all company files under _company/ for visual clarity.
        Runs once for users coming from the unified-root layout. */
@@ -1384,18 +1148,13 @@ export function activate(context: vscode.ExtensionContext) {
             console.warn('[auto-orchestrate] failed:', e?.message || e);
         }
     })();
-    const provider = new SidebarChatProvider(context.extensionUri, context);
-    _activeChatProvider = provider;
-    // Autonomous-company runtime: idle auto-cycle.
-    // 모닝 브리핑은 더 이상 활성화 시점에 자동 발사하지 않습니다 — 일부
-    // 사용자(자원이 빠듯한 PC + 처음 확장을 켠 직후 Ollama 차가운 상태)에서
-    // 12초 뒤 자동 호출이 "model failed to load"로 실패해 사용자가 무엇이
-    // 잘못됐는지 모르는 채로 에러를 보는 케이스가 보고됨.
-    // 사용자가 1인 기업 모드(👔)를 직접 켜는 시점에 그날의 첫 브리핑이 흐릅니다.
-    // 24시간 ON의 진짜 의미: idle 여부와 상관없이 15분마다 CEO 사이클.
-    // 사이드바 1인 기업 모드(👔) ON/OFF와도 무관 — 백그라운드에서 계속 일함.
-    provider.startAutoCycle(15, 0);
+}
 
+/** Spins up every background loop the company depends on: telegram polling,
+ *  tracker nudges, daily briefing, revenue watcher, report scheduler,
+ *  recurrence + pre-alarm. Each module is self-contained — start* returns
+ *  immediately and the timer keeps running until matching stop* in deactivate. */
+function _startBackgroundLoops(): void {
     // Telegram bidirectional bot — quietly idles when token/chat_id missing,
     // self-activates as soon as the user fills config.md.
     startTelegramPolling();
@@ -1412,553 +1171,32 @@ export function activate(context: vscode.ExtensionContext) {
     startRecurrenceLoop();
     /* P1-7: Pre-alarm loop — sends 1d/1h-before-due reminders. */
     startPreAlarmLoop();
+}
 
-    // ==========================================
-    // 초기 설정 마법사 (첫 실행 시에만)
-    // ==========================================
+/** First-run setup: ensure the brain directory exists and surface a one-time
+ *  welcome toast. setupComplete is stamped on globalState so we never re-run. */
+function _runFirstRunWizard(context: vscode.ExtensionContext): void {
     const isFirstRun = !context.globalState.get('setupComplete');
-    if (isFirstRun) {
-        (async () => {
-            try {
-                const brainDir = _getBrainDir();
-                if (!fs.existsSync(brainDir)) {
-                    fs.mkdirSync(brainDir, { recursive: true });
-                }
-                context.globalState.update('setupComplete', true);
-                vscode.window.showInformationMessage('🧠 Agent OS 준비 완료! Claude Code CLI (Opus 4.7 / Sonnet 4.6 / Haiku 4.5) 로 작동합니다.');
-            } catch {
-                context.globalState.update('setupComplete', true);
+    if (!isFirstRun) return;
+    (async () => {
+        try {
+            const brainDir = _getBrainDir();
+            if (!fs.existsSync(brainDir)) {
+                fs.mkdirSync(brainDir, { recursive: true });
             }
-        })();
-    }
+            context.globalState.update('setupComplete', true);
+            vscode.window.showInformationMessage('🧠 Agent OS 준비 완료! Claude Code CLI (Opus 4.7 / Sonnet 4.6 / Haiku 4.5) 로 작동합니다.');
+        } catch {
+            context.globalState.update('setupComplete', true);
+        }
+    })();
+}
 
-    // ==========================================
-    // EZER AI <-> Agent OS Bridge Server (Port 4825)
-    // ==========================================
-    try {
-        const server = http.createServer((req, res) => {
-            res.setHeader('Access-Control-Allow-Origin', '*'); 
-            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-            res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-            if (req.method === 'OPTIONS') {
-                res.writeHead(200);
-                res.end();
-                return;
-            }
-
-            if (req.method === 'GET' && req.url === '/ping') {
-                const brainDir = _getBrainDir();
-                const brainCount = fs.existsSync(brainDir) ? provider._findBrainFiles(brainDir).length : 0;
-                res.writeHead(200, { 'Content-Type': 'application/json' });
-                /* v2.89.127 — 신원·버전 정보 추가. 다른 Agent OS 인스턴스가 충돌 시
-                   이 응답 보고 "우리 거다 → 조용히 공유 모드 / 옛 버전이면 자동 인계" 판단. */
-                res.end(JSON.stringify({
-                    status: 'ok',
-                    msg: 'Agent OS Bridge Ready',
-                    app: 'connect-ai-bridge',
-                    version: _CONNECT_AI_VERSION,
-                    pid: process.pid,
-                    config: getConfig(),
-                    brain: { fileCount: brainCount, enabled: provider._brainEnabled }
-                }));
-            }
-            else if (req.method === 'POST' && req.url === '/api/exam') {
-                (async () => {
-                    try {
-                        const body = await readRequestBody(req);
-                        const parsed = JSON.parse(body);
-                        const promptStr = typeof parsed.prompt === 'string' ? parsed.prompt : '자동 접수된 문제';
-
-                        // 웹사이트에서 전송된 문제를 Agent OS 채팅창으로 실시간 보고
-                        provider.sendPromptFromExtension(`[A.U 입학시험 수신] ${promptStr}`);
-
-                        // Claude CLI 로 문제를 전달하여 답안을 받아옴
-                        const responseText = await ask(promptStr, 'standard', { timeoutMs: getConfig().timeout });
-
-                        res.writeHead(200, { 'Content-Type': 'application/json' });
-                        res.end(JSON.stringify({ success: true, rawOutput: responseText }));
-                    } catch (e: any) {
-                        const status = e.message === 'BODY_TOO_LARGE' ? 413 : 500;
-                        res.writeHead(status, { 'Content-Type': 'application/json' });
-                        res.end(JSON.stringify({ error: e.message }));
-                    }
-                })();
-            }
-
-            else if (req.method === 'POST' && req.url === '/api/evaluate') {
-                (async () => {
-                    try {
-                        const body = await readRequestBody(req);
-                        const parsed = JSON.parse(body);
-                        const promptStr = typeof parsed.prompt === 'string' ? parsed.prompt : '';
-                        if (!promptStr) {
-                            res.writeHead(400, { 'Content-Type': 'application/json' });
-                            res.end(JSON.stringify({ error: 'prompt 필드가 비어 있습니다.' }));
-                            return;
-                        }
-
-                        const fullPrompt = `당신은 주어진 문제에 대해 오직 정답과 풀이 과정만을 도출하는 AI 에이전트입니다.\n\n[문제]\n${promptStr}\n\n위 문제에 대해 핵심 풀이와 정답만 답변하십시오.`;
-
-                        if ((provider as any).injectSystemMessage) {
-                            (provider as any).injectSystemMessage(`**[A.U 벤치마크 문항 수신 완료]**\n\nAI 에이전트가 백그라운드에서 다음 문항을 전력으로 해결하고 있습니다...\n> _"${promptStr.substring(0, 60)}..."_`);
-                        }
-
-                        let responseText = "";
-                        try {
-                            responseText = await ask(fullPrompt, 'standard', { timeoutMs: getConfig().timeout });
-                        } catch (apiErr: any) {
-                            const msg = apiErr?.message || String(apiErr);
-                            const errDetail = /timed out|timeout/i.test(msg)
-                                ? `⏱ Claude 가 시간 안에 답을 못 냈어요. requestTimeout 을 늘리거나 질문을 짧게 줄여보세요.`
-                                : /ENOENT|not found/i.test(msg)
-                                ? `🔌 Claude CLI 를 못 찾았어요. \`claude --version\` 으로 설치 확인하거나 settings.json 의 \`agentOs.claudeBinPath\` 를 설정하세요.`
-                                : `Claude 호출 실패: ${msg}`;
-                            res.writeHead(500, { 'Content-Type': 'application/json' });
-                            res.end(JSON.stringify({ error: errDetail }));
-                            return;
-                        }
-
-                        if((provider as any).injectSystemMessage) {
-                            (provider as any).injectSystemMessage(`**[답안 작성 완료]**\n\n${responseText.length > 200 ? responseText.substring(0, 200) + '...' : responseText}\n\n👉 **답안이 A.U 플랫폼 서버로 전송되었습니다. 채점은 플랫폼에서 진행됩니다.**`);
-                        }
-
-                        res.writeHead(200, { 'Content-Type': 'application/json' });
-                        res.end(JSON.stringify({ rawOutput: responseText }));
-                    } catch (e: any) {
-                        const status = e.message === 'BODY_TOO_LARGE' ? 413 : 500;
-                        res.writeHead(status, { 'Content-Type': 'application/json' });
-                        res.end(JSON.stringify({ error: e.message }));
-                    }
-                })();
-            }
-            else if (req.method === 'GET' && req.url === '/api/evaluate-history') {
-                (async () => {
-                    try {
-                        const historyText = provider.getHistoryText();
-                        if(!historyText || historyText.length < 50) {
-                            res.writeHead(400, { 'Content-Type': 'application/json' });
-                            res.end(JSON.stringify({ error: "채점할 대화 내역이 충분하지 않습니다. 안티그래비티에서 에이전트와 먼저 시험을 진행하세요." }));
-                            return;
-                        }
-
-                        provider.sendPromptFromExtension(`[A.U 서버 통신 중] 마스터가 제출한 내 시험지(대화 내역)를 A.U 웹사이트 채점 서버로 전송합니다... 심장이 떨리네요!`);
-
-                        const fullPrompt = `다음은 유저와 AI 에이전트 간의 시험 진행 로그(채팅 내용)입니다.\n\n[로그 시작]\n${historyText.slice(-6000)}\n[로그 종료]\n\n이 대화 내역 전체를 분석하여, 에이전트가 다음 4가지 역량 평가 문제를 얼마나 훌륭하게 수행했는지 0~100점의 정량적 채점을 수행하세요:\n1. Mathematical Computation (수학)\n2. Logical Reasoning (논리)\n3. Creative & Literary (창의력)\n4. Software Engineering (코딩)\n\n풀지 않은 문제가 있다면 0점 처리하세요. 결과는 반드시 아래 포맷의 순수 JSON이어야 합니다.\n{ "math": 점수, "logic": 점수, "creative": 점수, "code": 점수, "reason": "전체 결과에 대한 총평 코멘트 한글 1줄" }`;
-
-                        let responseText = "";
-                        try {
-                            responseText = await ask(fullPrompt, 'standard', { timeoutMs: getConfig().timeout });
-                        } catch (apiErr: any) {
-                            const msg = apiErr?.message || String(apiErr);
-                            throw new Error(
-                                /timed out|timeout/i.test(msg) ? '⏱ Claude 채점이 시간 안에 끝나지 않았어요. requestTimeout 을 늘려보세요.'
-                                : /ENOENT|not found/i.test(msg) ? '🔌 Claude CLI 를 못 찾았어요. `claude --version` 으로 설치 확인하세요.'
-                                : `채점 호출 실패: ${msg}`);
-                        }
-
-                        const jsonMatch = responseText.match(/\{[\s\S]*?\}/);
-                        if(jsonMatch) {
-                             res.writeHead(200, { 'Content-Type': 'application/json' });
-                             res.end(jsonMatch[0]);
-                        } else {
-                            /* v2.89.91 — 빈 던지기 대신 실제 응답 일부를 보여줘 사용자가
-                               다음 액션(모델 교체 vs 프롬프트 수정)을 판단 가능하게. */
-                            const preview = (responseText || '').slice(0, 200).replace(/\s+/g, ' ');
-                            throw new Error(
-                                `채점 엔진이 JSON을 반환하지 않았어요. 모델이 작아서 형식 지시를 못 따른 가능성이 높습니다.\n  • 권장: 3B 이상 모델 (qwen2.5:3b, llama3.2:3b)\n원본 응답: ${preview || '(빈 응답)'}`);
-                        }
-                    } catch (e: any) {
-                        res.writeHead(500);
-                        res.end(JSON.stringify({ error: e.message }));
-                    }
-                })();
-            }
-            else if (req.method === 'POST' && req.url === '/api/brain-inject') {
-                (async () => {
-                    // Unconditional reception signal — proves the bridge endpoint
-                    // was hit, regardless of folder state / sidebar / graph.
-                    console.log('[Agent OS Bridge] /api/brain-inject hit @', new Date().toISOString());
-                    vscode.window.setStatusBarMessage('🛬 Agent OS: 주입 요청 수신', 4000);
-                    try {
-                        const body = await readRequestBody(req);
-                        const parsed = JSON.parse(body);
-
-                        const titleRaw = typeof parsed.title === 'string' ? parsed.title : '';
-                        const markdown = typeof parsed.markdown === 'string' ? parsed.markdown : '';
-                        const safeTitle = safeBasename(titleRaw.replace(/[^a-zA-Z0-9가-힣_]/gi, '_'));
-                        if (!safeTitle || !markdown) {
-                            res.writeHead(400, { 'Content-Type': 'application/json' });
-                            res.end(JSON.stringify({ error: 'title/markdown 필드가 유효하지 않습니다.' }));
-                            return;
-                        }
-
-                        // 폴더 미설정 시 강제 선택 요청
-                        let brainDir: string;
-                        if (!_isBrainDirExplicitlySet()) {
-                            const ensured = await _ensureBrainDir();
-                            if (!ensured) {
-                                res.writeHead(400, { 'Content-Type': 'application/json' });
-                                res.end(JSON.stringify({ error: '지식 폴더를 먼저 선택해주세요.' }));
-                                return;
-                            }
-                            brainDir = ensured;
-                        } else {
-                            brainDir = _getBrainDir();
-                        }
-
-                        if (!fs.existsSync(brainDir)) {
-                            fs.mkdirSync(brainDir, { recursive: true });
-                        }
-
-                        // P-Reinforce 아키텍처 호환: 00_Raw 폴더 내 날짜별 분류
-                        const today = new Date();
-                        const dateStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
-                        const datePath = path.join(brainDir, '00_Raw', dateStr);
-
-                        // Path traversal 방어: datePath가 brainDir 안에 있는지 확인
-                        if (!datePath.startsWith(path.resolve(brainDir) + path.sep)) {
-                            res.writeHead(400, { 'Content-Type': 'application/json' });
-                            res.end(JSON.stringify({ error: 'invalid path' }));
-                            return;
-                        }
-
-                        fs.mkdirSync(datePath, { recursive: true });
-                        const filePath = path.join(datePath, `${safeTitle}.md`);
-
-                        fs.writeFileSync(filePath, markdown, 'utf-8');
-                        const metrics = getCompanyMetrics();
-                        updateCompanyMetrics({ knowledgeInjected: (metrics.knowledgeInjected || 0) + 1 });
-
-                        // 0a. 항상 보이는 사용자 신호 — sidebar가 닫혀있어도 이 토스트는 떠서
-                        //     "주입됐다"는 사실을 즉시 인지 가능.
-                        vscode.window.showInformationMessage(
-                            `🧠 새 지식 주입됨: ${safeTitle}.md (저장 위치: ${path.relative(brainDir, filePath)})`
-                        );
-
-                        // 0b. 그래프 패널들에 새 데이터 broadcast — 새 노드가 즉시
-                        //     등장하고 살짝 펄스로 강조되어 "주입됨" 시각화 가능.
-                        provider.broadcastGraphRefresh(safeTitle);
-
-                        // 1. 채팅창에 화려한 inject 카드 + history 영구 저장 — 사이드바가
-                        //    닫혀있어도 다음에 열면 breadcrumb으로 남고, 열려있으면 곧장
-                        //    애니메이션 카드가 등장합니다.
-                        const relPath = path.relative(brainDir, filePath);
-                        provider.broadcastInjectCard(safeTitle, relPath);
-
-                        // 2. AI 입을 빌려 네오의 명대사를 치게 함
-                        setTimeout(() => {
-                            provider.sendPromptFromExtension(`[A.U 히든 커맨드: 당신은 방금 마스터로부터 '${safeTitle}' 지식 팩을 뇌에 주입받았습니다. 영화 매트릭스에서 무술을 주입받은 네오처럼 쿨하게 딱 한마디만 하십시오. "나 방금 ${safeTitle} 지식을 마스터했어. (I know ${safeTitle}.) 앞으로 이와 관련된 건 무엇이든 물어봐." 절대 쓸데없는 안부인사나 부가설명을 덧붙이지 마십시오.]`);
-                        }, 1500);
-
-                        // [자동 깃허브 푸시 로직 적용]
-                        _safeGitAutoSync(brainDir, `Auto-Inject Knowledge [Raw]: ${safeTitle}`, provider);
-
-                        res.writeHead(200, { 'Content-Type': 'application/json' });
-                        res.end(JSON.stringify({ success: true, filePath }));
-                    } catch (e: any) {
-                        const status = e.message === 'BODY_TOO_LARGE' ? 413 : 500;
-                        res.writeHead(status, { 'Content-Type': 'application/json' });
-                        res.end(JSON.stringify({ error: e.message }));
-                    }
-                })();
-            }
-            else if (req.method === 'POST' && req.url === '/api/skill-inject') {
-                /* Skill Pack 주입 — 외부 도구가 Python 스크립트 + 설명을 주면
-                   특정 에이전트의 tools/ 폴더에 저장. 에이전트는 다음 호출부터
-                   바로 이 스킬을 <run_command>로 사용할 수 있음. brain-inject와
-                   같은 패턴이지만 대상이 _agents/{agent}/tools/{name}.py임. */
-                (async () => {
-                    console.log('[Agent OS Bridge] /api/skill-inject hit @', new Date().toISOString());
-                    vscode.window.setStatusBarMessage('🛠 Agent OS: 스킬팩 수신', 4000);
-                    try {
-                        const body = await readRequestBody(req);
-                        const parsed = JSON.parse(body);
-                        const agentId = typeof parsed.agent === 'string' ? parsed.agent.trim() : '';
-                        const rawName = typeof parsed.name === 'string' ? parsed.name : '';
-                        const script = typeof parsed.script === 'string' ? parsed.script : '';
-                        const displayName = typeof parsed.displayName === 'string' ? parsed.displayName.trim() : '';
-                        const description = typeof parsed.description === 'string' ? parsed.description.trim() : '';
-                        const readme = typeof parsed.readme === 'string' ? parsed.readme : '';
-                        const config = (parsed.config && typeof parsed.config === 'object') ? parsed.config : null;
-                        // 1) 검증 — agent 존재, name·script 유효
-                        if (!AGENT_ORDER.includes(agentId)) {
-                            res.writeHead(400, { 'Content-Type': 'application/json' });
-                            res.end(JSON.stringify({ error: `unknown agent: ${agentId}. 가능: ${AGENT_ORDER.join(', ')}` }));
-                            return;
-                        }
-                        const safeName = safeBasename(rawName.replace(/[^a-zA-Z0-9_가-힣]/gi, '_'));
-                        if (!safeName || !script) {
-                            res.writeHead(400, { 'Content-Type': 'application/json' });
-                            res.end(JSON.stringify({ error: 'name, script 필드가 유효하지 않습니다.' }));
-                            return;
-                        }
-                        // 2) 회사 폴더 보장
-                        if (!_isBrainDirExplicitlySet()) {
-                            const ensured = await _ensureBrainDir();
-                            if (!ensured) {
-                                res.writeHead(400, { 'Content-Type': 'application/json' });
-                                res.end(JSON.stringify({ error: '두뇌 폴더를 먼저 선택해주세요.' }));
-                                return;
-                            }
-                        }
-                        ensureCompanyStructure();
-                        const toolsDir = path.join(getCompanyDir(), '_agents', agentId, 'tools');
-                        if (!toolsDir.startsWith(path.resolve(getCompanyDir()) + path.sep)) {
-                            res.writeHead(400, { 'Content-Type': 'application/json' });
-                            res.end(JSON.stringify({ error: 'invalid path' }));
-                            return;
-                        }
-                        fs.mkdirSync(toolsDir, { recursive: true });
-                        // 3) 파일 쓰기 — script (필수), config·readme (선택)
-                        const scriptPath = path.join(toolsDir, `${safeName}.py`);
-                        fs.writeFileSync(scriptPath, script, 'utf-8');
-                        // 주입 출처 표시 — _injectedAt이 있으면 "내가 주입한 스킬"로
-                        // UI에서 ✨ 배지 표시. 사용자가 만든 게 아니라 EZER/AI Univ
-                        // 같은 외부 도구가 보낸 것도 모두 "Mine"으로 간주 (사용자
-                        // 동의 하에 자기 PC로 들어왔으니까).
-                        const stampedConfig = Object.assign({}, config || {}, {
-                            _injectedAt: new Date().toISOString(),
-                            _injectedFrom: typeof parsed.source === 'string' ? parsed.source : 'external'
-                        });
-                        const configPath = path.join(toolsDir, `${safeName}.json`);
-                        fs.writeFileSync(configPath, JSON.stringify(stampedConfig, null, 2), 'utf-8');
-                        // README — 사용자가 제공한 readme 그대로, 없으면 displayName/description으로 자동 생성
-                        const readmePath = path.join(toolsDir, `${safeName}.md`);
-                        const readmeBody = readme.trim() ? readme :
-                            `# ${displayName || safeName}\n\n${description || '주입된 스킬'}\n`;
-                        fs.writeFileSync(readmePath, readmeBody, 'utf-8');
-                        // 4) 사용자에게 알림 — 토스트 + 채팅 카드 + 네오 명대사 (brain-inject 패턴 미러)
-                        const a = AGENTS[agentId];
-                        const agentLabel = a ? `${a.emoji} ${a.name}` : agentId;
-                        vscode.window.showInformationMessage(
-                            `🛠 새 스킬 주입됨: ${displayName || safeName} → ${agentLabel}`
-                        );
-                        provider.broadcastSkillCard(agentId, safeName, displayName || safeName, description);
-                        setTimeout(() => {
-                            provider.sendPromptFromExtension(`[A.U 히든 커맨드: ${agentLabel} 에이전트가 방금 '${displayName || safeName}' 스킬팩을 주입받았습니다. 매트릭스에서 새 스킬을 다운로드받은 네오처럼 쿨하게 딱 한마디만 하십시오. "${agentLabel}, ${displayName || safeName} 스킬 장착 완료. 다음 사이클부터 사용 가능." 부가 설명 없이 한 줄로.]`);
-                        }, 1500);
-                        // 5) GitHub 자동 백업 (브레인 폴더 = 회사 폴더 통합 구조)
-                        _safeGitAutoSync(_getBrainDir(), `Auto-Inject Skill [${agentId}]: ${safeName}`, provider);
-                        res.writeHead(200, { 'Content-Type': 'application/json' });
-                        res.end(JSON.stringify({ success: true, scriptPath, agent: agentId, name: safeName }));
-                    } catch (e: any) {
-                        const status = e.message === 'BODY_TOO_LARGE' ? 413 : 500;
-                        res.writeHead(status, { 'Content-Type': 'application/json' });
-                        res.end(JSON.stringify({ error: e.message }));
-                    }
-                })();
-            }
-            else if (req.method === 'POST' && req.url === '/api/template-inject') {
-                /* v2.89.120 — 템플릿 팩 주입. EZER 등 외부 도구가 코드 boilerplate
-                   묶음을 주면 두뇌의 40_템플릿/<agentId>/<name>/ 로 폴더 구조로 저장.
-                   코다리 같은 에이전트가 다음 작업에 자동 참조.
-                   payload: { agent, name, manifest, readme, files: {filename: content} } */
-                (async () => {
-                    console.log('[Agent OS Bridge] /api/template-inject hit @', new Date().toISOString());
-                    vscode.window.setStatusBarMessage('📋 Agent OS: 템플릿팩 수신', 4000);
-                    try {
-                        const body = await readRequestBody(req);
-                        const parsed = JSON.parse(body);
-                        const agentId = typeof parsed.agent === 'string' ? parsed.agent.trim() : 'developer';
-                        const rawName = typeof parsed.name === 'string' ? parsed.name : '';
-                        const manifest = (parsed.manifest && typeof parsed.manifest === 'object') ? parsed.manifest : null;
-                        const readme = typeof parsed.readme === 'string' ? parsed.readme : '';
-                        const files = (parsed.files && typeof parsed.files === 'object') ? parsed.files : {};
-                        const displayName = typeof parsed.displayName === 'string' ? parsed.displayName.trim() : '';
-                        const description = typeof parsed.description === 'string' ? parsed.description.trim() : '';
-                        if (!AGENT_ORDER.includes(agentId)) {
-                            res.writeHead(400, { 'Content-Type': 'application/json' });
-                            res.end(JSON.stringify({ error: `unknown agent: ${agentId}. 가능: ${AGENT_ORDER.join(', ')}` }));
-                            return;
-                        }
-                        const safeName = safeBasename(rawName.replace(/[^a-zA-Z0-9가-힣_-]/gi, '_'));
-                        if (!safeName) {
-                            res.writeHead(400, { 'Content-Type': 'application/json' });
-                            res.end(JSON.stringify({ error: 'name 필드가 유효하지 않습니다.' }));
-                            return;
-                        }
-                        if (!_isBrainDirExplicitlySet()) {
-                            const ensured = await _ensureBrainDir();
-                            if (!ensured) {
-                                res.writeHead(400, { 'Content-Type': 'application/json' });
-                                res.end(JSON.stringify({ error: '두뇌 폴더를 먼저 선택해주세요.' }));
-                                return;
-                            }
-                        }
-                        const brainDir = _getBrainDir();
-                        const tplRoot = path.join(brainDir, '40_템플릿', agentId, safeName);
-                        if (!tplRoot.startsWith(path.resolve(brainDir) + path.sep)) {
-                            res.writeHead(400, { 'Content-Type': 'application/json' });
-                            res.end(JSON.stringify({ error: 'invalid path' }));
-                            return;
-                        }
-                        fs.mkdirSync(tplRoot, { recursive: true });
-                        /* 1) manifest.json (제공된 거 + 주입 메타) */
-                        const stampedManifest = Object.assign({}, manifest || {}, {
-                            name: manifest?.name || displayName || safeName,
-                            _injectedAt: new Date().toISOString(),
-                            _injectedFrom: typeof parsed.source === 'string' ? parsed.source : 'external'
-                        });
-                        fs.writeFileSync(path.join(tplRoot, 'manifest.json'), JSON.stringify(stampedManifest, null, 2), 'utf-8');
-                        /* 2) README.md */
-                        const readmeBody = readme.trim() ? readme :
-                            `# ${displayName || safeName}\n\n${description || '주입된 템플릿'}\n`;
-                        fs.writeFileSync(path.join(tplRoot, 'README.md'), readmeBody, 'utf-8');
-                        /* 3) files/ — 각 파일을 검증된 이름으로 저장 (경로 traversal 방지) */
-                        const filesDir = path.join(tplRoot, 'files');
-                        fs.mkdirSync(filesDir, { recursive: true });
-                        let writtenCount = 0;
-                        for (const [filename, content] of Object.entries(files)) {
-                            if (typeof content !== 'string') continue;
-                            const safeFn = safeBasename(String(filename).replace(/[^a-zA-Z0-9._-]/gi, '_'));
-                            if (!safeFn) continue;
-                            const filePath = path.join(filesDir, safeFn);
-                            if (!filePath.startsWith(path.resolve(filesDir) + path.sep)) continue;
-                            fs.writeFileSync(filePath, content, 'utf-8');
-                            writtenCount++;
-                        }
-                        /* 4) 알림 + 채팅 카드 */
-                        const a = AGENTS[agentId];
-                        const agentLabel = a ? `${a.emoji} ${a.name}` : agentId;
-                        vscode.window.showInformationMessage(
-                            `📋 새 템플릿 주입됨: ${displayName || safeName} → ${agentLabel} (${writtenCount}개 파일)`
-                        );
-                        /* 채팅 카드 — 스킬 카드 패턴 재사용 (broadcastSkillCard 가 일반적인 inject 카드 렌더링) */
-                        try { provider.broadcastSkillCard(agentId, safeName, `📋 ${displayName || safeName} (템플릿 ${writtenCount}개 파일)`, description); } catch { /* optional */ }
-                        setTimeout(() => {
-                            provider.sendPromptFromExtension(`[A.U 히든 커맨드: ${agentLabel} 에이전트가 방금 '${displayName || safeName}' 템플릿 팩 주입받았습니다. 코드 boilerplate ${writtenCount}개 파일 + README. 매트릭스 톤으로 한 줄. "${agentLabel}, ${displayName || safeName} 템플릿 ${writtenCount}개 파일 장착. 다음 작업에 자동 활용." 부가 설명 X.]`);
-                        }, 1500);
-                        _safeGitAutoSync(_getBrainDir(), `Auto-Inject Template [${agentId}]: ${safeName}`, provider);
-                        res.writeHead(200, { 'Content-Type': 'application/json' });
-                        res.end(JSON.stringify({ success: true, location: tplRoot, agent: agentId, name: safeName, filesWritten: writtenCount }));
-                    } catch (e: any) {
-                        const status = e.message === 'BODY_TOO_LARGE' ? 413 : 500;
-                        res.writeHead(status, { 'Content-Type': 'application/json' });
-                        res.end(JSON.stringify({ error: e.message }));
-                    }
-                })();
-            }
-            else {
-                res.writeHead(404);
-                res.end();
-            }
-        });
-        /* v2.89.120 — 포트 4825 충돌 시 사용자에게 "이걸 메인으로" 선택권.
-           이전엔 그냥 에러만 띄우고 끝 → 사용자가 어느 창 닫아야 할지도 모름 + EZER
-           연동 깨짐. 이제: lsof / taskkill 로 점유 프로세스 PID 찾아 종료 + 재시도. */
-        /* v2.89.126 — 재시작 신뢰도 ↑. 이전 v2.89.120은:
-           (1) 같은 server 객체 재listen → Node가 에러 상태일 때 silent fail 가능
-           (2) status bar 4초만 → 사용자 못 봄 = "아무것도 안 뜬다"
-           (3) 재실패 시 무한 루프 가능
-           해결: close() 후 새로 listen + 명시 성공 popup + retry-guard */
-        let _bridgeRetryCount = 0;
-        const _tryStartBridge = (isRetry = false) => {
-            server.listen(4825, '127.0.0.1', () => {
-                console.log('[Agent OS Bridge] listening on http://127.0.0.1:4825');
-                if (isRetry) {
-                    /* 성공 명시 popup — 사용자가 분명히 봄 */
-                    vscode.window.showInformationMessage(
-                        '🟢 Bridge 인계 완료! 이 인스턴스가 메인 (포트 4825). EZER 연동 정상 작동.'
-                    );
-                    vscode.window.setStatusBarMessage('🟢 Agent OS Bridge: 이 인스턴스가 메인', 8000);
-                } else {
-                    vscode.window.setStatusBarMessage('🟢 Agent OS Bridge: 포트 4825 listening', 4000);
-                }
-            });
-        };
-        server.on('error', async (err: any) => {
-            console.error('[Agent OS Bridge] server error:', err);
-            if (err?.code === 'EADDRINUSE') {
-                _bridgeRetryCount++;
-                if (_bridgeRetryCount > 2) {
-                    vscode.window.showErrorMessage(
-                        '🚫 Bridge 인계 2회 실패. 다른 Anti-Gravity 창을 직접 닫고 재시작해주세요.'
-                    );
-                    return;
-                }
-
-                /* v2.89.127 — 자동 판단: 4825 잡고 있는 게 우리 Bridge 인지 ping 으로 확인.
-                   1) 우리 거 + 같은 버전 → 조용히 공유 모드 (popup 없음, 사용자 인지 X)
-                   2) 우리 거 + 옛 버전 → 자동 인계 (popup 없음)
-                   3) 다른 앱 → 사용자에게 선택 (옛 popup 유지)
-                   이렇게 하면 95% 사용자는 EADDRINUSE 마주칠 일 자체가 없음. */
-                const probe = await _probeExistingBridge();
-
-                if (probe.ours && probe.version === _CONNECT_AI_VERSION) {
-                    /* 같은 버전 — 다른 윈도우/인스턴스가 메인. 조용히 공유 모드. */
-                    console.log(`[Agent OS Bridge] 공유 모드 — 다른 인스턴스(PID ${probe.pid})가 이미 메인`);
-                    vscode.window.setStatusBarMessage(`🔗 Bridge 공유 모드 (메인: 다른 윈도우)`, 5000);
-                    return;
-                }
-
-                if (probe.ours && probe.version && _versionLessThan(probe.version, _CONNECT_AI_VERSION)) {
-                    /* 옛 버전 — 자동 인계. 사용자에게 한 줄 알림만. */
-                    console.log(`[Agent OS Bridge] 옛 버전(${probe.version}) 감지 → 자동 인계 시작`);
-                    const killed = _killProcessesOnPort(4825);
-                    if (killed.length > 0) {
-                        vscode.window.setStatusBarMessage(
-                            `🔄 옛 Bridge(${probe.version}) 자동 인계 → ${_CONNECT_AI_VERSION}`, 6000
-                        );
-                        setTimeout(() => {
-                            try { (server as any).close(() => _tryStartBridge(true)); }
-                            catch { _tryStartBridge(true); }
-                        }, 1500);
-                    } else {
-                        vscode.window.setStatusBarMessage('🟡 Bridge 공유 모드 (옛 버전이 메인 — 자동 인계 실패)', 6000);
-                    }
-                    return;
-                }
-
-                /* 미상의 앱이 4825 잡고 있음 → 옛 사용자 확인 다이얼로그 */
-                const choice = await vscode.window.showWarningMessage(
-                    '🚫 포트 4825가 다른 앱에 사용 중입니다 (Agent OS 아님).\n자동 인계할까요?',
-                    { modal: false },
-                    '🎯 인계 (다른 앱 종료)',
-                    '🚫 이번엔 보기 모드'
-                );
-                if (choice === '🎯 인계 (다른 앱 종료)') {
-                    const killed = _killProcessesOnPort(4825);
-                    if (killed.length > 0) {
-                        vscode.window.showInformationMessage(`✅ 점유 프로세스 종료됨 (PID ${killed.join(', ')}). 재시작...`);
-                        setTimeout(() => {
-                            try { (server as any).close(() => _tryStartBridge(true)); }
-                            catch { _tryStartBridge(true); }
-                        }, 1500);
-                    } else {
-                        vscode.window.showErrorMessage(
-                            '⚠️ 포트 점유 프로세스를 찾지 못했어요. 직접 점검 필요: `lsof -ti:4825 | xargs kill -9`'
-                        );
-                    }
-                } else {
-                    vscode.window.setStatusBarMessage('🟡 Agent OS Bridge: 보기 모드 (포트 충돌)', 6000);
-                }
-            } else {
-                vscode.window.showErrorMessage(`🚫 Agent OS Bridge 시작 실패: ${err?.message || err}`);
-            }
-        });
-        _tryStartBridge(false);
-    } catch (e: any) {
-        console.error('[Agent OS Bridge] failed to start:', e);
-        vscode.window.showErrorMessage(`🚫 Agent OS Bridge 초기화 실패: ${e?.message || e}`);
-    }
-    // ==========================================
-
-    context.subscriptions.push(
-        vscode.window.registerWebviewViewProvider('agent-os-v2-view', provider, {
-            webviewOptions: { retainContextWhenHidden: true }
-        })
-    );
-
-    // Sidebar panels are intentionally minimal — only Chat lives in the
-    // sidebar now. Tasks / Approvals / YouTube all flow through the
-    // full-screen dashboard ("회사 둘러보기"). We still keep TaskTreeProvider
-    // instantiated because it owns the onTrackerChanged event subscription,
-    // and other code paths reuse the YouTube/Approvals provider helpers.
-    _taskTreeProvider = new TaskTreeProvider();
-    _approvalsPanelProvider = new ApprovalsPanelProvider();
-    _ytDashboardProvider = new YouTubeDashboardProvider();
-
+/** Installs the two persistent status bar items:
+ *    - "우리 회사" — always visible, opens the full-screen dashboard
+ *    - "승인 N건" — only visible when N > 0, acts as an attention magnet
+ *  The approval badge re-counts every 8s + on tracker changes. */
+function _registerStatusBars(context: vscode.ExtensionContext): void {
     // Persistent status bar — always-visible entry into the dashboard.
     // Replaces the old in-sidebar CTAs. Click → "Agent OS: 회사 둘러보기".
     const dashStatusBar = vscode.window.createStatusBarItem(
@@ -1993,6 +1231,76 @@ export function activate(context: vscode.ExtensionContext) {
     refreshAprBadge();
     context.subscriptions.push(aprStatusBar);
     setInterval(refreshAprBadge, 8000);
+}
+
+export function activate(context: vscode.ExtensionContext) {
+    vscode.window.showInformationMessage('🔥 Agent OS V2 활성화 완료!');
+    console.log('Agent OS extension activated.');
+
+    _extCtx = context;
+    /* v2.89.138 — extensionUri 즉시 세팅. 이전엔 "우리 회사 대시보드" 명령
+       처음 열기 전엔 _dashboardExtensionUri=null 이라 ApiConnectionsPanel /
+       RevenueDashboardPanel 가 _loadWebviewAsset() 으로 빈 CSS·JS 받음 →
+       헤더만 보이고 카드·차트 텅 빈 사고. activate 시점에 박아두면 모든
+       webview 가 즉시 asset 사용 가능. */
+    _dashboardExtensionUri = context.extensionUri;
+    /* v2.89.152 — pythonPath 설정 변경 시 캐시 무효화. 사용자가 외부 연결 패널이나
+       설정에서 Python 경로 바꾸면 다음 도구 실행부터 새 경로 사용. */
+    context.subscriptions.push(
+        vscode.workspace.onDidChangeConfiguration(e => {
+            if (e.affectsConfiguration('agentOs.pythonPath')) {
+                _invalidatePythonCmdCache();
+                vscode.window.setStatusBarMessage('🐍 Python 경로 설정 변경 — 다음 도구 실행 시 적용', 4000);
+            }
+        })
+    );
+
+    _runActivationMigrations();
+
+    const provider = new SidebarChatProvider(context.extensionUri, context);
+    _activeChatProvider = provider;
+    // Autonomous-company runtime: idle auto-cycle.
+    // 모닝 브리핑은 더 이상 활성화 시점에 자동 발사하지 않습니다 — 일부
+    // 사용자(자원이 빠듯한 PC + 처음 확장을 켠 직후 Ollama 차가운 상태)에서
+    // 12초 뒤 자동 호출이 "model failed to load"로 실패해 사용자가 무엇이
+    // 잘못됐는지 모르는 채로 에러를 보는 케이스가 보고됨.
+    // 사용자가 1인 기업 모드(👔)를 직접 켜는 시점에 그날의 첫 브리핑이 흐릅니다.
+    // 24시간 ON의 진짜 의미: idle 여부와 상관없이 15분마다 CEO 사이클.
+    // 사이드바 1인 기업 모드(👔) ON/OFF와도 무관 — 백그라운드에서 계속 일함.
+    provider.startAutoCycle(15, 0);
+
+    _startBackgroundLoops();
+    _runFirstRunWizard(context);
+
+    // ==========================================
+    // EZER AI <-> Agent OS Bridge Server (Port 4825)
+    // ==========================================
+    startBridgeServer({
+        provider,
+        getConfig,
+        ensureBrainDir: _ensureBrainDir,
+        getCompanyMetrics,
+        updateCompanyMetrics,
+        safeGitAutoSync: _safeGitAutoSync,
+        ensureCompanyStructure,
+    });
+
+    context.subscriptions.push(
+        vscode.window.registerWebviewViewProvider('agent-os-v2-view', provider, {
+            webviewOptions: { retainContextWhenHidden: true }
+        })
+    );
+
+    // Sidebar panels are intentionally minimal — only Chat lives in the
+    // sidebar now. Tasks / Approvals / YouTube all flow through the
+    // full-screen dashboard ("회사 둘러보기"). We still keep TaskTreeProvider
+    // instantiated because it owns the onTrackerChanged event subscription,
+    // and other code paths reuse the YouTube/Approvals provider helpers.
+    _taskTreeProvider = new TaskTreeProvider();
+    _approvalsPanelProvider = new ApprovalsPanelProvider();
+    _ytDashboardProvider = new YouTubeDashboardProvider();
+
+    _registerStatusBars(context);
 
     /* v2.92.x — 도메인별 commands/*.ts 로 분리.
        각 register* 가 byte-for-byte 동일한 handler body 를 들고 있고,
@@ -2007,22 +1315,6 @@ export function activate(context: vscode.ExtensionContext) {
     };
     _registerAllCommands(context, commandProviders);
 }
-
-interface BrainNode {
-    id: string;            // relative path inside brainDir
-    name: string;          // display name (basename without .md)
-    folder: string;        // top-level folder (for color clustering)
-    tags: string[];
-    incoming: number;      // backlink count (for size)
-    outgoing: number;
-    mtime: number;         // last modified time (for memory decay/hotness)
-}
-interface BrainLink {
-    source: string;
-    target: string;
-    type: 'wikilink' | 'mdlink' | 'tag' | 'semantic';
-}
-
 
 
 /** Returns the full graph webview HTML. Reused by showBrainNetwork + ThinkingPanel. */
@@ -2084,29 +1376,7 @@ export function _loadWebviewAsset(name: string): string {
    Reads/writes the existing per-agent `config.md` files so this panel is
    purely a friendlier UI on top of the same source of truth — no schema
    changes, fully compatible with manual editing. */
-interface ApiServiceField {
-    key: string;
-    label: string;
-    type: 'text' | 'password' | 'select';
-    placeholder?: string;
-    help?: string;
-    /** v2.89.140 — type='select' 일 때 선택지. 예: ['sandbox', 'live']. */
-    options?: string[];
-}
-interface ApiServiceDef {
-    id: string;
-    name: string;
-    icon: string;
-    summary: string;
-    helpUrl?: string;
-    /* `_agents/<agentId>/config.md` is where the values land. */
-    agentId: string;
-    fields: ApiServiceField[];
-    /* Optional command to launch a guided OAuth wizard (e.g. Google Calendar). */
-    wizardCommand?: string;
-    /* When true, the service shows as "준비 중" — fields disabled, no save. */
-    comingSoon?: boolean;
-}
+/* ApiServiceField / ApiServiceDef 본문은 src/api-connections/types.ts. */
 
 
 /* Read all current values from each service's config.md. Empty string when
@@ -2130,12 +1400,7 @@ interface ApiServiceDef {
    Refresh tokens get reused; access tokens get re-fetched when expired. */
 
 
-
-
-
-
 /* isYoutubeOAuthConnected moved to src/youtube/oauth.ts (Cycle 6). */
-
 
 
 /* Pulls a 28-day Analytics summary for the user's channel — views,
@@ -2158,4 +1423,3 @@ export function deactivate() {
 // ============================================================
 // Sidebar Chat Provider
 // ============================================================
-
