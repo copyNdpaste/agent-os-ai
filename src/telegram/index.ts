@@ -33,3 +33,11 @@ export {
     sendLong,
     sendTyping,
 } from './client';
+export {
+    handleTelegramCommand,
+    handleTelegramViaSecretary,
+} from './commands';
+export {
+    startTelegramPolling,
+    stopTelegramPolling,
+} from './polling';

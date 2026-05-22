@@ -26,3 +26,5 @@ export { getAccessToken } from './token';
 export { createEvent, findEvents, deleteEvent, patchEvent } from './crud';
 
 export { refreshCache } from './cache';
+
+export { runConnectGoogleCalendarWrite } from './oauth-setup';
