@@ -81,6 +81,7 @@ function getConfig() {
 /* v2.89.66 — _getBrainDir, _isBrainDirExplicitlySet, getCompanyDir, COMPANY_SUBDIR,
    _expandTilde, _resolvePathInput 모두 ./paths.ts 로 이동. 모듈 간 import 일원화. */
 import { _getBrainDir, _isBrainDirExplicitlySet, getCompanyDir, COMPANY_SUBDIR, _expandTilde, _resolvePathInput } from './paths';
+import * as tg from './telegram';
 
 async function _ensureBrainDir(): Promise<string | null> {
     if (_isBrainDirExplicitlySet()) {
@@ -903,129 +904,29 @@ function writeCompanyConfig(cfg: Partial<CompanyConfig>) {
 `);
 }
 
-function readTelegramConfig(): { token: string; chatId: string } {
-  /* New canonical: _agents/secretary/tools/telegram_setup.json (set via the
-     UI's ⚙️ tool config modal). Falls back to legacy config.md (markdown
-     edit) for users on pre-v2.52 setups. */
-  const dir = getCompanyDir();
-  let token = '';
-  let chatId = '';
-  try {
-    const jsonPath = path.join(dir, '_agents', 'secretary', 'tools', 'telegram_setup.json');
-    if (fs.existsSync(jsonPath)) {
-      const cfg = JSON.parse(fs.readFileSync(jsonPath, 'utf-8') || '{}');
-      token = String(cfg.TELEGRAM_BOT_TOKEN || '').trim();
-      chatId = String(cfg.TELEGRAM_CHAT_ID || '').trim();
-    }
-  } catch { /* ignore malformed JSON, fall through */ }
-  if (!token || !chatId) {
-    const cfgPath = path.join(dir, '_agents', 'secretary', 'config.md');
-    const txt = _safeReadText(cfgPath);
-    if (!token) {
-      const tokenM = txt.match(/TELEGRAM_BOT_TOKEN\s*[:：=]\s*([A-Za-z0-9:_\-]+)/);
-      if (tokenM) token = tokenM[1].trim();
-    }
-    if (!chatId) {
-      const chatM = txt.match(/TELEGRAM_CHAT_ID\s*[:：=]\s*(-?\d+)/);
-      if (chatM) chatId = chatM[1].trim();
-    }
-  }
-  return { token, chatId };
-}
+// ──────────────────────────────────────────────────────────────────
+// Telegram — extension-side thin wrappers over src/telegram/*
+// 본문은 src/telegram/{config,client,markdown}.ts 로 추출됨 (god-file 분해).
+// 콜사이트 시그니처 호환을 유지하기 위해 같은 이름의 wrapper 만 남김.
+// companyDir / userBrain 주입은 여기서 처리.
+// ──────────────────────────────────────────────────────────────────
 
-/* v2.89.157 — Telegram legacy Markdown 은 ## / ### 헤더·- 리스트·표를 지원 안 함.
-   원본 마크다운을 Telegram 이 렌더 가능한 *bold* + 깔끔한 indent 로 변환. */
-function _markdownToTelegram(src: string): string {
-  let s = src || '';
-  s = s.replace(/^#{4,6}\s+(.+)$/gm, '*$1*');
-  s = s.replace(/^###\s+(.+)$/gm, '*$1*');
-  s = s.replace(/^##\s+(.+)$/gm, '\n*━━ $1 ━━*');
-  s = s.replace(/^#\s+(.+)$/gm, '\n*『$1』*');
-  s = s.replace(/^\s*\|.*\|\s*$/gm, line => {
-    const cells = line.split('|').map(c => c.trim()).filter(c => c.length > 0);
-    if (cells.every(c => /^[-:\s]+$/.test(c))) return '';
-    return '• ' + cells.join(' · ');
-  });
-  s = s.replace(/\n\n+/g, '\n\n');
-  return s.trim();
+const _TELEGRAM_USER_BRAIN = path.join(os.homedir(), '.connect-ai-brain');
+
+function readTelegramConfig(): tg.TelegramConfig {
+  return tg.readTelegramConfig(getCompanyDir());
 }
 
 async function sendTelegramReport(text: string): Promise<boolean> {
-  const { token, chatId } = readTelegramConfig();
-  if (!token || !chatId) return false;
-  try {
-    const url = `https://api.telegram.org/bot${token}/sendMessage`;
-    await axios.post(url, {
-      chat_id: chatId,
-      text: _markdownToTelegram(text).slice(0, 4000),
-      parse_mode: 'Markdown',
-      disable_web_page_preview: true
-    }, { timeout: 8000 });
-    return true;
-  } catch {
-    return false;
-  }
+  return tg.sendReport(text, readTelegramConfig());
 }
 
-/* Send arbitrarily long text by splitting at natural boundaries (paragraphs,
-   then lines, then hard 3800-char chunks). Each chunk preserves Markdown
-   formatting where possible. Returns true if every chunk was delivered.
-   Falls back to plain text if Markdown parsing fails — Telegram rejects
-   messages with malformed markdown. */
 async function sendTelegramLong(text: string): Promise<boolean> {
-  const { token, chatId } = readTelegramConfig();
-  if (!token || !chatId) return false;
-  const clean = _markdownToTelegram((text || '').trim());
-  if (!clean) return false;
-  const MAX = 3800; // safety margin under Telegram's 4096 cap
-  const chunks: string[] = [];
-  let remaining = clean;
-  while (remaining.length > MAX) {
-    /* Prefer to split at a double-newline boundary, then a single newline,
-       then a sentence end. Falls back to a hard cut when nothing else fits. */
-    let splitAt = remaining.lastIndexOf('\n\n', MAX);
-    if (splitAt < MAX * 0.6) splitAt = remaining.lastIndexOf('\n', MAX);
-    if (splitAt < MAX * 0.6) splitAt = remaining.lastIndexOf('. ', MAX);
-    if (splitAt < MAX * 0.4) splitAt = MAX;
-    chunks.push(remaining.slice(0, splitAt).trimEnd());
-    remaining = remaining.slice(splitAt).trimStart();
-  }
-  if (remaining) chunks.push(remaining);
-  const url = `https://api.telegram.org/bot${token}/sendMessage`;
-  let allOk = true;
-  for (let i = 0; i < chunks.length; i++) {
-    const part = chunks.length > 1 ? `${chunks[i]}\n\n_(${i + 1}/${chunks.length})_` : chunks[i];
-    let ok = false;
-    try {
-      const r = await axios.post(url, {
-        chat_id: chatId, text: part, parse_mode: 'Markdown', disable_web_page_preview: true,
-      }, { timeout: 10000, validateStatus: () => true });
-      ok = r.status >= 200 && r.status < 300;
-      if (!ok) {
-        // Markdown parse error → retry as plain text so the user still gets something
-        const r2 = await axios.post(url, {
-          chat_id: chatId, text: part.replace(/[*_`\[\]]/g, ''), disable_web_page_preview: true,
-        }, { timeout: 10000, validateStatus: () => true });
-        ok = r2.status >= 200 && r2.status < 300;
-      }
-    } catch { ok = false; }
-    if (!ok) allOk = false;
-    /* Throttle ~25/s globally; we send a few in a row, sleep just enough */
-    if (i < chunks.length - 1) await new Promise(r => setTimeout(r, 350));
-  }
-  return allOk;
+  return tg.sendLong(text, readTelegramConfig());
 }
 
-/* Send the "typing…" chat action so the user sees the bot is working.
-   Action expires after ~5s, so for longer operations call this periodically. */
 async function sendTelegramTyping(): Promise<void> {
-  const { token, chatId } = readTelegramConfig();
-  if (!token || !chatId) return;
-  try {
-    await axios.post(`https://api.telegram.org/bot${token}/sendChatAction`, {
-      chat_id: chatId, action: 'typing'
-    }, { timeout: 4000, validateStatus: () => true });
-  } catch { /* ignore */ }
+  return tg.sendTyping(readTelegramConfig());
 }
 
 // ============================================================
@@ -1041,14 +942,9 @@ let _telegramPollTimer: NodeJS.Timeout | null = null;
 let _telegramPollOffset = 0;
 let _telegramPolling = false;
 
-/* Short-term Telegram conversation memory — small ring buffer that gives
-   Secretary just enough context to handle follow-ups like "그 일정 4시로",
-   "방금 그거 취소", "그래 진행해줘". Without this, every Telegram message is
-   processed in isolation and the user has to re-state what they meant.
-   Cap intentionally small (last 12 turns) so we don't bloat the prompt or
-   leak old conversations into unrelated requests. */
-const TELEGRAM_HISTORY_MAX = 12;
-const _telegramConversationHistory: Array<{ role: 'user' | 'assistant'; text: string; ts: number }> = [];
+/* Short-term Telegram conversation memory — ring buffer + jsonl persistence.
+   본체는 src/telegram/history.ts 로 추출. extension 측에서는 cross-cutting
+   concern (appendConversationLog 호출) 만 wrapper 에서 처리. */
 
 /* v2.88 — 디스패치 중복 감지 + 진행 상태 추적. 사용자가 "유튜브 분석"을
    30초 안에 두 번 보내면 두 번 다 디스패치되고 둘 다 "처리 중" 답해서
@@ -1108,56 +1004,13 @@ function _endActiveDispatch(prompt: string) {
   if (entry?.heartbeatTimer) clearInterval(entry.heartbeatTimer);
   _activeDispatches.delete(key);
 }
-let _telegramHistoryHydrated = false;
-
-/** Disk path for Telegram conversation log. Persists short-term context so
- *  the bot survives an extension restart without losing the thread. Lives
- *  alongside Secretary's other files so it git-syncs naturally. */
-function _telegramHistoryPath(): string {
-  return path.join(getCompanyDir(), '_agents', 'secretary', 'telegram_history.jsonl');
-}
-
-/** Lazy-load history on first access. Called from both push and render so
- *  whichever happens first hydrates the in-memory ring buffer. */
-function _hydrateTelegramHistoryFromDisk() {
-  if (_telegramHistoryHydrated) return;
-  _telegramHistoryHydrated = true;
-  try {
-    const txt = _safeReadText(_telegramHistoryPath());
-    if (!txt.trim()) return;
-    const lines = txt.split('\n').filter(l => l.trim());
-    /* Only restore the tail — the file may have grown across many sessions
-       but we still cap working memory at TELEGRAM_HISTORY_MAX. */
-    for (const line of lines.slice(-TELEGRAM_HISTORY_MAX)) {
-      try {
-        const e = JSON.parse(line);
-        if ((e.role === 'user' || e.role === 'assistant') && typeof e.text === 'string' && typeof e.ts === 'number') {
-          _telegramConversationHistory.push({ role: e.role, text: e.text, ts: e.ts });
-        }
-      } catch { /* skip malformed line */ }
-    }
-  } catch { /* ignore — first run, no file yet */ }
-}
-
 function _pushTelegramHistory(role: 'user' | 'assistant', text: string) {
   if (!text || !text.trim()) return;
-  _hydrateTelegramHistoryFromDisk();
-  const entry = { role, text: text.trim().slice(0, 500), ts: Date.now() };
-  _telegramConversationHistory.push(entry);
-  if (_telegramConversationHistory.length > TELEGRAM_HISTORY_MAX) {
-    _telegramConversationHistory.splice(0, _telegramConversationHistory.length - TELEGRAM_HISTORY_MAX);
-  }
-  /* JSONL ring buffer — fast restart-recovery, structured. */
-  try {
-    const p = _telegramHistoryPath();
-    fs.mkdirSync(path.dirname(p), { recursive: true });
-    fs.appendFileSync(p, JSON.stringify(entry) + '\n');
-  } catch { /* never let disk write block the bot */ }
-  /* Daily company-wide conversation log — same file CEO planner / autonomous
-     chatter / corporate dispatches all write to. Putting Telegram turns in
-     here means every other agent picks them up via readRecentConversations,
-     so the user can say "그 영상 어떻게 됐어?" via Telegram and Secretary's
-     answer references the same context Developer/Writer used in sidebar. */
+  tg.pushHistory(role, text, getCompanyDir());
+  /* Cross-cutting concern preserved — 같은 파일을 CEO planner / 자율
+     chatter / corporate dispatches 가 다 읽기 때문에, Telegram turn 도
+     여기 함께 기록해야 다른 에이전트가 "그 영상 어떻게 됐어?" 같은
+     follow-up 을 자연스럽게 잇는다. */
   try {
     if (role === 'user') {
       appendConversationLog({ speaker: '사용자(텔레그램)', emoji: '📱', body: text.trim() });
@@ -1168,101 +1021,16 @@ function _pushTelegramHistory(role: 'user' | 'assistant', text: string) {
 }
 
 function _renderTelegramHistory(maxTurns = 8): string {
-  _hydrateTelegramHistoryFromDisk();
-  if (_telegramConversationHistory.length === 0) return '';
-  /* Widened from 30m → 4h so multi-hour follow-ups ("아까 그 일정 4시로")
-     still resolve. After 4h the user is plausibly starting a new thread.
-     Persisted history means a VS Code restart no longer empties this. */
-  const cutoff = Date.now() - 4 * 60 * 60_000;
-  const recent = _telegramConversationHistory.filter(e => e.ts >= cutoff).slice(-maxTurns);
-  if (recent.length === 0) return '';
-  return recent.map(e => `${e.role === 'user' ? '👤 사용자' : '💬 비서'}: ${e.text}`).join('\n');
+  return tg.renderHistory(getCompanyDir(), maxTurns);
 }
 
-/* Multi-window guard — when the user has VS Code / Cursor open in several
-   windows simultaneously, each extension instance independently polls the
-   same bot, so the user's "안녕" gets answered N times. We elect a single
-   "leader" via a TTL lockfile in the company dir. The leader refreshes its
-   heartbeat on every successful poll; followers see the fresh heartbeat and
-   skip polling entirely. If the leader dies, its lock goes stale (>15s) and
-   any other window can take over on its next tick. */
-const TELEGRAM_LOCK_TTL_MS = 15000;
-function _telegramLockPath(): string {
-  /* v2.89.24 — 유저 레벨로 이동. 이전엔 `_company/_shared/`(워크스페이스 단위)에
-     있어서 안티그래비티 창마다 다른 워크스페이스면 락도 따로따로 → 두 창이
-     독립적으로 폴링. ~/.connect-ai-brain/ 는 모든 창이 공유하는 단일 위치. */
-  const userBrain = path.join(os.homedir(), '.connect-ai-brain');
-  try { fs.mkdirSync(userBrain, { recursive: true }); } catch { /* ignore */ }
-  return path.join(userBrain, '.telegram_poll.lock');
-}
-function _telegramOffsetPath(): string {
-  /* 같은 이유로 offset도 유저 레벨 파일에 저장. globalState 의존 X. */
-  const userBrain = path.join(os.homedir(), '.connect-ai-brain');
-  try { fs.mkdirSync(userBrain, { recursive: true }); } catch { /* ignore */ }
-  return path.join(userBrain, '.telegram_offset.json');
-}
-function _readTelegramOffset(): number {
-  try {
-    const p = _telegramOffsetPath();
-    if (!fs.existsSync(p)) return 0;
-    const data = JSON.parse(fs.readFileSync(p, 'utf-8') || '{}');
-    return Number(data.offset) || 0;
-  } catch { return 0; }
-}
-function _writeTelegramOffset(offset: number) {
-  try {
-    fs.writeFileSync(_telegramOffsetPath(), JSON.stringify({ offset, ts: Date.now() }));
-  } catch { /* ignore */ }
-}
-function _tryAcquireTelegramLock(): boolean {
-  const lockPath = _telegramLockPath();
-  const now = Date.now();
-  /* v2.89.4 — 원자적(atomic) 잠금. fs.openSync(path, 'wx')는 파일이 이미 있으면
-     실패하므로 두 프로세스가 동시에 호출해도 한 명만 락 잡음. 이전 구현은
-     exists() → write() 사이 race window에서 둘 다 락 잡을 수 있었음. */
-  try {
-    try { fs.mkdirSync(path.dirname(lockPath), { recursive: true }); } catch { /* ignore */ }
-    /* 1) 락 파일이 이미 있으면 — ours? stale? */
-    if (fs.existsSync(lockPath)) {
-      try {
-        const data = JSON.parse(fs.readFileSync(lockPath, 'utf-8') || '{}');
-        if (data.pid === process.pid) {
-          /* 우리가 가진 락 — heartbeat 갱신 */
-          fs.writeFileSync(lockPath, JSON.stringify({ pid: process.pid, heartbeat: now }));
-          return true;
-        }
-        if (typeof data.heartbeat === 'number' && now - data.heartbeat < TELEGRAM_LOCK_TTL_MS) {
-          return false; /* 다른 창이 살아있음 */
-        }
-      } catch { /* 손상된 파일 — 강제 인계 */ }
-      /* stale 또는 손상 — 삭제 후 atomic 생성 시도 */
-      try { fs.unlinkSync(lockPath); } catch { /* race — already gone */ }
-    }
-    /* 2) atomic create-exclusive — 둘 이상 동시 시도해도 한 명만 성공 */
-    try {
-      const fd = fs.openSync(lockPath, 'wx');
-      fs.writeSync(fd, JSON.stringify({ pid: process.pid, heartbeat: now }));
-      fs.closeSync(fd);
-      return true;
-    } catch (e: any) {
-      if (e?.code === 'EEXIST') {
-        /* 같은 순간에 다른 창이 잡았음 — 양보 */
-        return false;
-      }
-      throw e;
-    }
-  } catch {
-    return true; /* fail-open — 락 메커니즘 자체 깨졌으면 차라리 중복 한 번 */
-  }
-}
-function _releaseTelegramLockIfOwned(): void {
-  const lockPath = _telegramLockPath();
-  try {
-    if (!fs.existsSync(lockPath)) return;
-    const data = JSON.parse(fs.readFileSync(lockPath, 'utf-8') || '{}');
-    if (data.pid === process.pid) fs.unlinkSync(lockPath);
-  } catch { /* ignore */ }
-}
+/* Multi-window guard + polling offset persistence — 본체는 src/telegram/{lock,offset}.ts
+   로 추출. _TELEGRAM_USER_BRAIN 은 유저 레벨 공유 위치 (~/.connect-ai-brain) 로
+   안티그래비티 창마다 다른 워크스페이스라도 락이 단일하게 유지된다. */
+function _readTelegramOffset(): number { return tg.readOffset(_TELEGRAM_USER_BRAIN); }
+function _writeTelegramOffset(offset: number): void { tg.writeOffset(_TELEGRAM_USER_BRAIN, offset); }
+function _tryAcquireTelegramLock(): boolean { return tg.tryAcquireLock(_TELEGRAM_USER_BRAIN); }
+function _releaseTelegramLockIfOwned(): void { tg.releaseLockIfOwned(_TELEGRAM_USER_BRAIN); }
 
 const TELEGRAM_HELP = `🤖 *Agent OS 봇* — 비서가 24시간 대기 중
 
