@@ -202,7 +202,7 @@ export function _seedInstagramSlackNotifier(toolsDir: string) {
 }
 
 /* v2.91.x — Slack 승인 워커 (Socket Mode 데몬). launchd 로 백그라운드 상주.
-   plist: ~/Library/LaunchAgents/com.moneyai.slack-worker.plist */
+   plist: ~/Library/LaunchAgents/com.agentosai.slack-worker.plist */
 export function _seedInstagramSlackWorker(toolsDir: string) {
   const py = _loadToolSeed('instagram/slack_approval_worker.py');
   const md = _loadToolSeed('instagram/slack_approval_worker.md');

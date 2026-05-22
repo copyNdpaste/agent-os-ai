@@ -137,7 +137,7 @@ python3 token_manager.py --refresh
 
 ## 보안 경고
 
-- **`.env` 는 반드시 `.gitignore` 에 추가하세요** (money-ai 의 `.gitignore` 에 이미 등록됨)
+- **`.env` 는 반드시 `.gitignore` 에 추가하세요** (agent-os-ai 의 `.gitignore` 에 이미 등록됨)
 - **`tokens.json` 도 `.gitignore` 대상** — 절대 깃에 올리지 마세요
 - **앱 시크릿은 어디에도 공유 X** — 이 도구는 stdout/stderr 에 평문으로 노출하지 않습니다
 - `tokens.json` 은 자동으로 `0600` 권한 (owner-only read/write)

@@ -16,7 +16,7 @@
     SLACK_CHANNEL_ID  C0...     (선택; 메시지 갱신은 payload 의 채널 사용)
 
 이 워커는 launchd 로 백그라운드 데몬화하는 것을 권장한다.
-    plist: ~/Library/LaunchAgents/com.moneyai.slack-worker.plist
+    plist: ~/Library/LaunchAgents/com.agentosai.slack-worker.plist
 """
 from __future__ import annotations
 
@@ -461,7 +461,7 @@ def main():
     sm = SocketModeClient(app_token=app_token, web_client=web)
     sm.socket_mode_request_listeners.append(on_request)
 
-    sys.stdout.write("🟢 money-ai slack worker 시작\n")
+    sys.stdout.write("🟢 agent-os-ai slack worker 시작\n")
     sys.stdout.flush()
     sm.connect()
 

@@ -18,7 +18,7 @@
   # 3) 상태 확인 (언제든지)
   python3 token_manager.py --status
 
-  # 4) 자동 갱신 (cron 또는 money-ai 스케줄러에 등록 권장)
+  # 4) 자동 갱신 (cron 또는 agent-os-ai 스케줄러에 등록 권장)
   python3 token_manager.py --refresh
 
 .env 템플릿 (계정 4개 예시):

@@ -27,7 +27,7 @@
 ## 1. Slack App 만들기
 
 1. <https://api.slack.com/apps> 접속 → **Create New App** → **From scratch**
-2. App Name: `MoneyAI Approver` (자유) / Workspace: 본인 워크스페이스
+2. App Name: `Agent OS AI Approver` (자유) / Workspace: 본인 워크스페이스
 3. 좌측 메뉴 진행:
 
 ### 1-1. OAuth & Permissions
@@ -59,8 +59,8 @@
 
 ## 2. 채널에 봇 초대 + 채널 ID 복사
 
-1. Slack 워크스페이스에서 채널 만들기 (예: `#money-ai-approval`)
-2. 채널에서 `/invite @MoneyAI Approver` (앱 이름)
+1. Slack 워크스페이스에서 채널 만들기 (예: `#agent-os-ai-approval`)
+2. 채널에서 `/invite @Agent OS AI Approver` (앱 이름)
 3. 채널 우클릭 → **View channel details** → 맨 아래 **Channel ID** (`C0...`) 복사
 
 ## 3. .env 채우기
@@ -84,11 +84,11 @@ SLACK_CHANNEL_ID=C0여기에-붙여넣기
 
 ```bash
 # 처음 한 번 (또는 plist 수정 시)
-launchctl unload ~/Library/LaunchAgents/com.moneyai.slack-worker.plist 2>/dev/null
-launchctl load   ~/Library/LaunchAgents/com.moneyai.slack-worker.plist
+launchctl unload ~/Library/LaunchAgents/com.agentosai.slack-worker.plist 2>/dev/null
+launchctl load   ~/Library/LaunchAgents/com.agentosai.slack-worker.plist
 
 # 로그 확인
-tail -f /tmp/moneyai-slack-worker.log /tmp/moneyai-slack-worker.err
+tail -f /tmp/agentosai-slack-worker.log /tmp/agentosai-slack-worker.err
 ```
 
 > launchd 는 plist 의 `EnvironmentVariables` 만 봅니다.
@@ -129,10 +129,10 @@ python3 assets/tool-seeds/instagram/slack_notifier.py \
 | 증상 | 원인 / 해결 |
 |------|--------------|
 | 메시지가 안 옴 | `SLACK_BOT_TOKEN` 미설정 또는 봇이 채널 미가입. `/invite @봇` 재실행. |
-| 버튼 눌러도 무반응 | 워커 미실행 (`launchctl list \| grep moneyai`) 또는 App-Level Token `connections:write` 누락. |
+| 버튼 눌러도 무반응 | 워커 미실행 (`launchctl list \| grep agentosai`) 또는 App-Level Token `connections:write` 누락. |
 | `not_in_channel` 에러 | 채널에 봇 초대. |
 | `invalid_auth` | `xoxb-` 토큰 재발급 (App 재설치). |
-| 업로드 실패 | `tail /tmp/moneyai-slack-worker.err`, `token_manager.py --status` 로 토큰 확인. |
+| 업로드 실패 | `tail /tmp/agentosai-slack-worker.err`, `token_manager.py --status` 로 토큰 확인. |
 | 워커 자꾸 죽음 | `KeepAlive true` 라 자동 재시작. err 로그로 원인 파악. |
 
 ## 보안 메모

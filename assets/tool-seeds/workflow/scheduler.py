@@ -12,7 +12,7 @@ env (.env 또는 launchd):
   TELEGRAM_BOT_TOKEN/CHAT_ID  알림 폴백
   SLACK_BOT_TOKEN/CHANNEL_ID  Slack 알림용 (notifier 에 위임)
 
-로그: /tmp/moneyai-content-scheduler.log
+로그: /tmp/agentosai-content-scheduler.log
 """
 import json
 import os
@@ -30,7 +30,7 @@ PIPELINE = os.path.join(HERE, "content_pipeline.py")
 ENV_PATH = os.path.join(REPO_ROOT, "_company", "_agents", "instagram", ".env")
 
 PYTHON_BIN = sys.executable or "/opt/homebrew/bin/python3"
-LOG_PATH = "/tmp/moneyai-content-scheduler.log"
+LOG_PATH = "/tmp/agentosai-content-scheduler.log"
 
 _STOP = False
 

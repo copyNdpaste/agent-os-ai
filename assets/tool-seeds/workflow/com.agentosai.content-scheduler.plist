@@ -3,16 +3,16 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.moneyai.content-scheduler</string>
+    <string>com.agentosai.content-scheduler</string>
 
     <key>ProgramArguments</key>
     <array>
         <string>/opt/homebrew/bin/python3</string>
-        <string>/Users/hoony/projects/money-ai/assets/tool-seeds/workflow/scheduler.py</string>
+        <string>/Users/hoony/projects/agent-os-ai/assets/tool-seeds/workflow/scheduler.py</string>
     </array>
 
     <key>WorkingDirectory</key>
-    <string>/Users/hoony/projects/money-ai</string>
+    <string>/Users/hoony/projects/agent-os-ai</string>
 
     <key>RunAtLoad</key>
     <true/>
@@ -24,10 +24,10 @@
     <integer>60</integer>
 
     <key>StandardOutPath</key>
-    <string>/tmp/moneyai-content-scheduler.log</string>
+    <string>/tmp/agentosai-content-scheduler.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/tmp/moneyai-content-scheduler.err</string>
+    <string>/tmp/agentosai-content-scheduler.err</string>
 
     <key>EnvironmentVariables</key>
     <dict>

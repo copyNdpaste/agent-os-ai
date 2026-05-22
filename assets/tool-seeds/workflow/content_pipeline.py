@@ -104,7 +104,7 @@ def _fetch_trends(lang: str, limit: int = 8) -> list:
     if not url:
         return []
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 moneyai-bot"})
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 agentosai-bot"})
         with urllib.request.urlopen(req, timeout=8) as r:
             body = r.read().decode("utf-8", errors="replace")
     except Exception:
@@ -465,7 +465,7 @@ def _fetch_pexels_image(keyword: str) -> str | None:
     url = f"{PEXELS_SEARCH_URL}?{qs}"
     req = urllib.request.Request(url, headers={
         "Authorization": key,
-        "User-Agent": "moneyai-content-pipeline/1.0",
+        "User-Agent": "agentosai-content-pipeline/1.0",
     })
     try:
         with urllib.request.urlopen(req, timeout=10) as r:

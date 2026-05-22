@@ -26,21 +26,21 @@ SLACK_CHANNEL_ID=C0...      # (선택, payload 채널 우선)
 
 ## 백그라운드 실행 (launchd)
 
-권장 — `~/Library/LaunchAgents/com.moneyai.slack-worker.plist` 사용.
+권장 — `~/Library/LaunchAgents/com.agentosai.slack-worker.plist` 사용.
 
 ```bash
-launchctl unload ~/Library/LaunchAgents/com.moneyai.slack-worker.plist 2>/dev/null
-launchctl load   ~/Library/LaunchAgents/com.moneyai.slack-worker.plist
-tail -f /tmp/moneyai-slack-worker.log
+launchctl unload ~/Library/LaunchAgents/com.agentosai.slack-worker.plist 2>/dev/null
+launchctl load   ~/Library/LaunchAgents/com.agentosai.slack-worker.plist
+tail -f /tmp/agentosai-slack-worker.log
 ```
 
 ## 디버깅
 
 | 증상 | 확인 |
 |------|------|
-| 워커 안 뜸 | `launchctl list \| grep moneyai`, `/tmp/moneyai-slack-worker.err` |
+| 워커 안 뜸 | `launchctl list \| grep agentosai`, `/tmp/agentosai-slack-worker.err` |
 | 메시지 안 옴 | `slack_notifier.py` 출력 JSON 확인 |
 | 버튼 클릭해도 반응 X | Slack App → Socket Mode 활성? → App-Level Token `connections:write` 스코프? |
-| 업로드 실패 | `tail /tmp/moneyai-slack-worker.err`, `token_manager.py --status` |
+| 업로드 실패 | `tail /tmp/agentosai-slack-worker.err`, `token_manager.py --status` |
 
 전체 셋업: `assets/tool-seeds/instagram/slack_setup.md`

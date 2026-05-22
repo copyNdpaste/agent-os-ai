@@ -43,7 +43,7 @@ PEXELS_API_KEY=<YOUR_PEXELS_API_KEY_HERE>
 ## 테스트
 
 ```bash
-cd /Users/hoony/projects/money-ai
+cd /Users/hoony/projects/agent-os-ai
 .venv/bin/python3 -c "
 import sys
 sys.path.insert(0, 'assets/tool-seeds/workflow')
@@ -66,7 +66,7 @@ https://images.pexels.com/photos/.../pexels-photo-....jpeg?...&w=1080&h=1080&fit
 ## 회차 테스트 (실제 IG draft 까지)
 
 ```bash
-cd /Users/hoony/projects/money-ai
+cd /Users/hoony/projects/agent-os-ai
 ./scripts/test-jp.sh instagram          # JP 계정 IG 1회차
 # 생성된 draft 확인
 ls -t _company/_agents/instagram/tools/drafts | head -1 | \

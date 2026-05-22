@@ -1,7 +1,7 @@
 [project]
-name = "money-ai-workflow"
+name = "agent-os-ai-workflow"
 version = "0.0.0"
-description = "Python workflow scripts for money-ai (Instagram/Threads/X uploaders, content pipeline)"
+description = "Python workflow scripts for agent-os-ai (Instagram/Threads/X uploaders, content pipeline)"
 requires-python = ">=3.10"
 
 [tool.pytest.ini_options]
