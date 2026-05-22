@@ -2,7 +2,7 @@ import { ExternalLink } from 'lucide-react'
 
 const works = [
   {
-    title: 'Agent OS',
+    title: 'Connect AI',
     desc: 'AI 1인 기업 두뇌 — 9명 에이전트 + 로컬 LLM',
     img: 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=600&q=80',
     link: '#',

@@ -57,7 +57,7 @@ def _load_operator_credentials(brain_root):
          __GEMINI_TEXT_MODEL__      → 텍스트 모델명
          __GEMINI_IMAGE_MODEL__     → 이미지 모델명
          __PAYPAL_CLIENT_ID__       → PayPal Live/Sandbox Client ID
-       자격증명은 외부 연결 패널 (Agent OS) 에서 입력. 키트 사용자(고객) 는
+       자격증명은 외부 연결 패널 (Connect AI) 에서 입력. 키트 사용자(고객) 는
        이 키를 볼 일이 없음 — 운영자가 빌드 시점에 박힘. """
     creds = {
         "__GEMINI_API_KEY__": "",
@@ -160,8 +160,8 @@ def _copy_tree(src_dir, dst_dir, creds=None):
         _log(f"🔐 운영자 자격증명 {injected}개 파일에 자동 inline (Gemini/PayPal placeholder 교체)", "ok")
     if missing_placeholders:
         guide = {
-            "__GEMINI_API_KEY__": "Agent OS → 외부 연결 → ✨ Google Gemini → API Key 입력",
-            "__PAYPAL_CLIENT_ID__": "Agent OS → 외부 연결 → 💰 PayPal → Client ID 입력",
+            "__GEMINI_API_KEY__": "Connect AI → 외부 연결 → ✨ Google Gemini → API Key 입력",
+            "__PAYPAL_CLIENT_ID__": "Connect AI → 외부 연결 → 💰 PayPal → Client ID 입력",
         }
         _log("⚠️  운영자 자격증명 누락 — 키트는 복사됐지만 실제 호출은 안 됨:", "warn")
         for ph in sorted(missing_placeholders):
@@ -224,10 +224,9 @@ export default function App() {{
 def _find_brain_root():
     """두뇌 폴더 자동 탐색 (한국어 폴더명 포함).
 
-    v4: BRAIN_ROOT 환경변수가 가장 강함 (Agent OS 익스텐션이 직접 지정).
-    이전엔 ~/.agent-os-brain (또는 legacy ~/.connect-ai-brain) 가 빈 폴더로
-    존재만 해도 우선 매칭돼서 실제 사용자 두뇌(~/Downloads/지식메모리) 의
-    키트를 못 찾던 사고 차단.
+    v4: BRAIN_ROOT 환경변수가 가장 강함 (Connect AI 익스텐션이 직접 지정).
+    이전엔 ~/.connect-ai-brain 가 빈 폴더로 존재만 해도 우선 매칭돼서
+    실제 사용자 두뇌(~/Downloads/지식메모리) 의 키트를 못 찾던 사고 차단.
     """
     env = os.environ.get("BRAIN_ROOT", "").strip()
     if env:
@@ -236,8 +235,6 @@ def _find_brain_root():
             return ep
     cands = [
         os.path.expanduser("~/Downloads/지식메모리"),
-        os.path.expanduser("~/.agent-os-brain"),
-        os.path.expanduser("~/.agent-os-brain-imported"),
         os.path.expanduser("~/.connect-ai-brain"),
         os.path.expanduser("~/.connect-ai-brain-imported"),
     ]

@@ -111,7 +111,7 @@ def main():
     manifest = {
         "name": app_name,
         "short_name": short_name,
-        "description": f"{app_name} — Agent OS로 만들어진 PWA",
+        "description": f"{app_name} — Connect AI로 만들어진 PWA",
         "start_url": "/",
         "display": "standalone",
         "orientation": "portrait",
@@ -136,7 +136,7 @@ def main():
 
     # 3. service worker
     sw_path = os.path.join(public, "sw.js")
-    sw_content = f'''// Agent OS PWA Service Worker
+    sw_content = f'''// Connect AI PWA Service Worker
 // version: pwa_v1 — auto-generated
 const CACHE = "{short_name}-v1";
 const ASSETS = ["/", "/manifest.json", "/icon-192.svg", "/icon-512.svg"];

@@ -1,27 +1,28 @@
-# Build / deps
 node_modules/
 out/
 *.vsix
 .vscode-test/
-.vscode/PythonImportHelper-v2-Completion.json
-
-# OS / temp
-.DS_Store
 preview.html
+.DS_Store
 releases/
-*.bak.*
-
-# 🔒 시크릿 절대 격리
 .env
-.env.*
-*.env
-_company/
-tokens.json
-**/tokens.json
-**/.env
-**/secrets.json
+*.bak.*
+.vscode/PythonImportHelper-v2-Completion.json
+assets/tool-seeds/instagram/drafts/
 
-# Python (가능성 — 다른 도구가 들어올 경우)
+# 인스타 에이전트 — 토큰·시크릿 격리 (v2.91.x token_manager)
+_company/_agents/instagram/.env
+_company/_agents/instagram/tools/.env
+_company/_agents/instagram/tools/tokens.json
+assets/tool-seeds/instagram/tokens.json
+assets/tool-seeds/instagram/.env
+.venv
+
+*.env
+
+# Claude Code 개인 설정 — 사용자별 개별 보관
+.claude/
+
+# Python __pycache__ — 빌드 산출물
 __pycache__/
 *.pyc
-.venv/

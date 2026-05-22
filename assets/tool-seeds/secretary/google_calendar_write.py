@@ -7,7 +7,7 @@
   2) ⚙️ 폼에서 CALENDAR_ID / DEFAULT_DURATION_MINUTES 같은 보조 설정 노출
 
 연결 자체는 명령 팔레트에서:
-  Cmd+Shift+P → 'Agent OS: Google Calendar 자동 일정 연결 📅'
+  Cmd+Shift+P → 'Connect AI: Google Calendar 자동 일정 연결 📅'
 """
 import os, json, sys
 
@@ -17,7 +17,7 @@ CONFIG = os.path.join(HERE, "google_calendar_write.json")
 def main():
     if not os.path.exists(CONFIG):
         print("⚠️ 아직 설정이 없어요.")
-        print("   명령 팔레트(Cmd+Shift+P) → 'Agent OS: Google Calendar 자동 일정 연결' 실행")
+        print("   명령 팔레트(Cmd+Shift+P) → 'Connect AI: Google Calendar 자동 일정 연결' 실행")
         sys.exit(1)
     try:
         with open(CONFIG, "r", encoding="utf-8") as f:
@@ -45,7 +45,7 @@ def main():
     if not (cid and cs and rt):
         print()
         print("⚠️ 셋업이 완료되지 않았어요.")
-        print("   명령 팔레트(Cmd+Shift+P) → 'Agent OS: Google Calendar 자동 일정 연결'")
+        print("   명령 팔레트(Cmd+Shift+P) → 'Connect AI: Google Calendar 자동 일정 연결'")
         sys.exit(1)
     print()
     print("✅ 연결 정상. 마감일(due) 있는 추적 작업이 등록되면 자동으로 캘린더에 일정이 생성됩니다.")

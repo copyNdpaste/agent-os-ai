@@ -20,7 +20,7 @@ export default function ProfileScreen() {
         </Text>
         <Text style={{ fontSize: 14, color: '#64748B', marginTop: 4 }}>
           {/* TODO: 한 줄 소개 */}
-          AI 1인 기업 · Agent OS 창업
+          AI 1인 기업 · Connect AI 창업
         </Text>
       </View>
 

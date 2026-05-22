@@ -1,6 +1,6 @@
 /* v2.89.66 — 경로 유틸리티 모듈.
  *
- * 두뇌 폴더(`~/.agent-os-brain/`, 기존 `~/.connect-ai-brain/` 있으면 그쪽 우선) 와 회사 폴더(`<brain>/_company/` 또는 detached path) 의
+ * 두뇌 폴더(`~/.connect-ai-brain/`) 와 회사 폴더(`<brain>/_company/` 또는 detached path) 의
  * 위치를 결정하는 함수들. 분리 이유:
  * - tracker, telegram, github-sync 등 여러 모듈이 이 경로 함수들을 의존
  * - extension.ts에 두면 의존성이 한 점에 모이는데 그 한 점이 25,000줄이라 import
@@ -38,8 +38,7 @@ export function _resolvePathInput(raw: string): string {
     return path.normalize(s);
 }
 
-/** 두뇌 폴더 위치 결정. settings.json `localBrainPath` 우선, 없으면 `~/.agent-os-brain/`.
- *  v2.90.0 리브랜드: 기존 사용자 데이터 보호 — `~/.connect-ai-brain/` 가 이미 있으면 그쪽을 계속 사용. */
+/** 두뇌 폴더 위치 결정. settings.json `localBrainPath` 우선, 없으면 `~/.connect-ai-brain/`. */
 export function _getBrainDir(): string {
     try {
         const cfg = vscode.workspace.getConfiguration('agentOs');
@@ -47,13 +46,7 @@ export function _getBrainDir(): string {
         const resolved = _resolvePathInput(raw);
         if (resolved) return resolved;
     } catch { /* config unavailable in some hot paths — fall through */ }
-    // Backward-compat: legacy folder takes precedence if it exists with data.
-    try {
-        const fs = require('fs');
-        const legacy = path.join(os.homedir(), '.connect-ai-brain');
-        if (fs.existsSync(legacy)) return legacy;
-    } catch { /* fs unavailable — fall through */ }
-    return path.join(os.homedir(), '.agent-os-brain');
+    return path.join(os.homedir(), '.connect-ai-brain');
 }
 
 /** 사용자가 명시적으로 두뇌 폴더 경로를 설정했는지. */
