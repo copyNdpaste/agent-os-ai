@@ -28,3 +28,14 @@ export {
     readConfig,
     writeConfig,
 } from './config';
+
+/* Company directory structure + migrations + palette commands.
+   Extracted from extension.ts in cycle 8. Depends on '../extension'. */
+export {
+    _migrateCompanyToSubdir,
+    _migrateCompanyToBrain,
+    _migrateYouTubeCredsToCanonical,
+    ensureCompanyStructure,
+    runConnectCompanyRepo,
+    runChangeCompanyDir,
+} from './structure';

@@ -43,3 +43,24 @@ export {
     readAgentVerifiedKnowledge,
     readAgentCustomPrompt,
 } from './agent-context';
+
+/* Agent-tooling glue — bridges agent disk layout to LLM / tracker /
+   conversation log / prompt assembly. Extracted in cycle 8. Depends on
+   '../extension' (for `_quickLLMCall`, `readTracker`, `updateTrackerTask`,
+   `getConversationsDir`, `readTelegramConfig`, `isCalendarWriteConnected`,
+   `readCompanyName`, `isCompanyConfigured`, `_agentKeywords`, `_scoreRelevance`). */
+export {
+    appendAgentMemory,
+    _getLastSpecialistOutput,
+    saveAgentSkill,
+    countAgentVerifiedClaims,
+    promoteGroundedClaimsFromOutput,
+    routeBrainInjectionToAgents,
+    readAgentGoal,
+    writeAgentGoal,
+    writeAgentSelfRagCriteria,
+    autoMarkTrackerFromDispatch,
+    prefetchAgentRealtimeData,
+    buildAgentConfigStatus,
+    buildSpecialistPrompt,
+} from './agent-glue';

@@ -108,6 +108,32 @@ import { _getBrainDir, _isBrainDirExplicitlySet, getCompanyDir } from '../paths'
 import { AGENTS, AGENT_ORDER, SPECIALIST_IDS } from '../agents';
 import { getSystemSpecs, estimateModelMemoryGB } from '../system-specs';
 import * as dsp from '../dispatch';
+import {
+    stripActionTags as _hStripActionTags,
+    buildThinkingHtml as _hBuildThinkingHtml,
+    findBrainFiles as _hFindBrainFiles,
+    getSecondBrainContext as _hGetSecondBrainContext,
+    readBrainFile as _hReadBrainFile,
+    getProjectMemory as _hGetProjectMemory,
+    getWorkspaceContext as _hGetWorkspaceContext,
+    detectExplicitMention as _hDetectExplicitMention,
+    tryRevenueShortcut as _hTryRevenueShortcut,
+    tryKitShortcut as _hTryKitShortcut,
+    fuzzyPathHint as _hFuzzyPathHint,
+    buildRecentFilesContext as _hBuildRecentFilesContext,
+    getSidebarHtml as _hGetSidebarHtml,
+    classifyChatError as _hClassifyChatError,
+    buildActiveEditorContext as _hBuildActiveEditorContext,
+    trackFileAction as _hTrackFileAction,
+    pruneHistory as _hPruneHistory,
+    parseChatterTurns as _hParseChatterTurns,
+    readSessions as _hReadSessions,
+    writeSessions as _hWriteSessions,
+    archiveCurrentChat as _hArchiveCurrentChat,
+    archiveOrUpdateCurrentChat as _hArchiveOrUpdateCurrentChat,
+    deleteSession as _hDeleteSession,
+    currentWorkspaceMeta as _hCurrentWorkspaceMeta,
+} from '../chat';
 import { _readYtOAuthClient } from '../youtube/oauth';
 import {
     /* 상수 / 프롬프트 */
@@ -501,19 +527,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
 규칙: 2~3턴, 각 30자 이내, 자연스러움. from/to는 정확히 "${aFrom.id}"와 "${aTo.id}"만.`;
             const usr = `[참여자]\n${aFrom.emoji} ${aFrom.name} (${aFrom.role})\n${aTo.emoji} ${aTo.name} (${aTo.role})\n\n[회사 목표]\n${goals}${recent}`;
             const raw = await this._callAgentLLM(sys, usr, modelName, aFrom.id, false);
-            const m = raw.match(/\{[\s\S]*\}/);
-            if (!m) return;
-            const parsed = JSON.parse(m[0]);
-            if (!parsed || !Array.isArray(parsed.turns)) return;
-            const validIds = SPECIALIST_IDS;
-            const turns: { from: string; to: string; text: string }[] = [];
-            for (const t of parsed.turns) {
-                if (typeof t.from === 'string' && typeof t.to === 'string' && typeof t.text === 'string'
-                    && validIds.includes(t.from) && validIds.includes(t.to)
-                    && t.from !== t.to && t.text.trim().length > 0) {
-                    turns.push({ from: t.from, to: t.to, text: t.text.trim().slice(0, 80) });
-                }
-            }
+            const turns = _hParseChatterTurns(raw, SPECIALIST_IDS);
             if (turns.length === 0) return;
             post({ type: 'agentConfer', turns });
             const body = turns
@@ -640,65 +654,23 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
        세션은 워크스페이스 globalState에 저장 (모든 워크스페이스 공유 — 사용자가
        프로젝트 옮겨도 대화 보존).
        세션당 시작 첫 user 메시지 80자를 title로 사용. 최근 50개만 유지. */
-    private _sessionsKey(): string {
-        return 'chatSessionsV1';
-    }
     private _readSessions(): any[] {
-        /* v2.89.108 — 타입 any[]로 완화. v2.89.106에선 좁은 타입이었지만, preview·workspace·
-           workspaceName 메타가 추가되면서 너무 좁아짐. 내부 storage라 any로 충분. */
-        try {
-            const arr = this._ctx.globalState.get<any[]>(this._sessionsKey(), []);
-            return Array.isArray(arr) ? arr : [];
-        } catch { return []; }
+        return _hReadSessions(this._ctx);
     }
     private _writeSessions(sessions: any[]) {
-        try {
-            const trimmed = sessions.slice(0, 50);
-            this._ctx.globalState.update(this._sessionsKey(), trimmed);
-        } catch { /* ignore */ }
+        _hWriteSessions(this._ctx, sessions);
     }
-    /* v2.89.108 — 세션을 프로젝트(워크스페이스)별로 그룹화하기 위한 메타 추가 */
     private _currentWorkspaceMeta(): { workspace: string; workspaceName: string } {
-        const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
-        let name = '';
-        if (root) {
-            try { name = path.basename(root); } catch { name = root; }
-        } else {
-            name = '워크스페이스 없음';
-        }
-        return { workspace: root, workspaceName: name };
+        return _hCurrentWorkspaceMeta();
     }
     private _archiveCurrentChat(): boolean {
-        if (this._displayMessages.length === 0) return false;
-        const sessions = this._readSessions();
-        const firstUser = this._displayMessages.find(m => m.role === 'user');
-        const titleSrc = firstUser?.text || this._displayMessages[0]?.text || '대화';
-        const title = titleSrc.replace(/\s+/g, ' ').trim().slice(0, 80) || '대화';
-        const lastMsg = this._displayMessages[this._displayMessages.length - 1];
-        const preview = (lastMsg?.text || '').replace(/\s+/g, ' ').trim().slice(0, 120);
-        const now = new Date().toISOString();
-        const ws = this._currentWorkspaceMeta();
-        const session: any = {
-            id: 'sess-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
-            title,
-            preview,
-            workspace: ws.workspace,
-            workspaceName: ws.workspaceName,
-            createdAt: now,
-            updatedAt: now,
-            messageCount: this._displayMessages.length,
-            chat: this._chatHistory,
-            display: this._displayMessages
-        };
-        sessions.unshift(session);  /* 최신이 위 */
-        this._writeSessions(sessions);
-        return true;
+        return _hArchiveCurrentChat(this._ctx, this._chatHistory, this._displayMessages);
     }
     /* v2.89.107 — 현재 활성 세션의 ID. 복원 시 이 ID를 기억해두고 다음 archive
        때 "이미 archive에 있는 같은 세션" 이면 update만 (중복 방지). */
     private _activeSessionId: string | null = null;
     private _restoreSession(id: string): boolean {
-        const sessions = this._readSessions();
+        const sessions = _hReadSessions(this._ctx);
         const sess = sessions.find(s => s.id === id);
         if (!sess) return false;
         /* 현재 대화도 안 잃게 — 비어있지 않으면 archive (단, 같은 세션 이어가는 거면 skip) */
@@ -723,12 +695,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         return true;
     }
     private _deleteSession(id: string): boolean {
-        const sessions = this._readSessions();
-        const idx = sessions.findIndex(s => s.id === id);
-        if (idx < 0) return false;
-        sessions.splice(idx, 1);
-        this._writeSessions(sessions);
-        return true;
+        return _hDeleteSession(this._ctx, id);
     }
 
     // ============================================================
@@ -948,37 +915,14 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
 
     /** Build the same HTML that showBrainNetwork uses — kept inline for reuse. */
     private _buildThinkingHtml(graph: BrainGraph, forceGraphSrc: string, cspSource: string): string {
-        const graphJson = JSON.stringify({
-            nodes: graph.nodes.map(n => ({
-                id: n.id, name: n.name, folder: n.folder, tags: n.tags,
-                connections: n.incoming + n.outgoing
-            })),
-            links: graph.links
-        });
-        const isEmpty = graph.nodes.length === 0;
-        return _RENDER_GRAPH_HTML(graphJson, isEmpty, forceGraphSrc, cspSource);
+        return _hBuildThinkingHtml(graph, forceGraphSrc, cspSource);
     }
 
     /** 메모리 누수 방지: 대화 이력 길이 제한 (최근 50건만 유지, 시스템 프롬프트는 보존) */
     private _pruneHistory() {
-        const MAX_HISTORY = 50;
-        const MAX_PER_MSG = 50_000; /* v2.90.1 — 옛 PDF 깨진 base64 가 메시지에 박혀 매 요청마다
-                                       프롬프트 폭증 → Claude API 가 "Unexpected end of JSON input"
-                                       반환. 메시지 1건당 50KB 로 잘라 누적 폭주 방지. */
-        if (this._chatHistory.length > MAX_HISTORY + 1) {
-            const sysIdx = this._chatHistory.findIndex(m => m.role === 'system');
-            const sys = sysIdx >= 0 ? this._chatHistory[sysIdx] : null;
-            const tail = this._chatHistory.slice(-MAX_HISTORY);
-            this._chatHistory = sys ? [sys, ...tail] : tail;
-        }
-        for (const m of this._chatHistory) {
-            if (typeof m.content === 'string' && m.content.length > MAX_PER_MSG) {
-                m.content = m.content.slice(0, MAX_PER_MSG) + `\n\n[…메시지가 ${m.content.length} 자로 너무 커서 잘림]`;
-            }
-        }
-        if (this._displayMessages.length > MAX_HISTORY) {
-            this._displayMessages = this._displayMessages.slice(-MAX_HISTORY);
-        }
+        const pruned = _hPruneHistory(this._chatHistory, this._displayMessages);
+        this._chatHistory = pruned.chatHistory;
+        this._displayMessages = pruned.displayMessages;
     }
 
     private _initHistory() {
@@ -1008,30 +952,12 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
     /* v2.89.107 — archive 또는 update. 활성 세션 ID가 있으면 그 entry를 업데이트
        (중복 방지). 없으면 새 entry 생성. */
     private _archiveOrUpdateCurrentChat(): boolean {
-        if (this._displayMessages.length === 0) return false;
-        const sessions = this._readSessions();
-        const now = new Date().toISOString();
-        if (this._activeSessionId) {
-            const idx = sessions.findIndex(s => s.id === this._activeSessionId);
-            if (idx >= 0) {
-                const lastMsg = this._displayMessages[this._displayMessages.length - 1];
-                const preview = (lastMsg?.text || '').replace(/\s+/g, ' ').trim().slice(0, 120);
-                sessions[idx] = {
-                    ...sessions[idx],
-                    updatedAt: now,
-                    messageCount: this._displayMessages.length,
-                    preview,
-                    chat: this._chatHistory,
-                    display: this._displayMessages
-                };
-                /* 최신 위로 끌어올림 */
-                const updated = sessions.splice(idx, 1)[0];
-                sessions.unshift(updated);
-                this._writeSessions(sessions);
-                return true;
-            }
-        }
-        return this._archiveCurrentChat();
+        return _hArchiveOrUpdateCurrentChat(
+            this._ctx,
+            this._activeSessionId,
+            this._chatHistory,
+            this._displayMessages,
+        );
     }
 
     /** 대화를 Markdown 파일로 내보내기 */
@@ -2784,92 +2710,17 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
 
     // 재귀 탐색 유틸리티 (하위 폴더까지 .md/.txt 파일 긁어옴)
     public _findBrainFiles(dir: string): string[] {
-        let results: string[] = [];
-        try {
-            const list = fs.readdirSync(dir);
-            for (const file of list) {
-                const filePath = path.join(dir, file);
-                const stat = fs.statSync(filePath);
-                if (stat && stat.isDirectory()) {
-                    if (file !== '.git' && file !== 'node_modules' && file !== '.obsidian') {
-                        results = results.concat(this._findBrainFiles(filePath));
-                    }
-                } else {
-                    if (file.endsWith('.md') || file.endsWith('.txt')) {
-                        results.push(filePath);
-                    }
-                }
-            }
-        } catch (e) { /* skip unreadable dirs */ }
-        return results;
+        return _hFindBrainFiles(dir);
     }
 
     // 목차(인덱스)만 생성 — 내용은 AI가 <read_brain>으로 직접 열람
     private _getSecondBrainContext(): string {
-        const brainDir = _getBrainDir();
-        if (!fs.existsSync(brainDir)) return '';
-
-        const files = this._findBrainFiles(brainDir);
-        if (files.length === 0) return '';
-
-        // 컨텍스트 폭발 크래시(OOM)를 방지하기 위해 최대 인덱스 개수 제한
-        const MAX_INDEX = 200;
-        const index: string[] = [];
-        let truncated = false;
-
-        for (let i = 0; i < files.length; i++) {
-            if (i >= MAX_INDEX) {
-                truncated = true;
-                break;
-            }
-            const file = files[i];
-            const relativePath = path.relative(brainDir, file);
-            try {
-                const firstLine = fs.readFileSync(file, 'utf-8').split('\n').find(l => l.trim().length > 0) || '';
-                // 제목 부분만 추출 (# 헤더 또는 첫 줄)
-                const title = firstLine.replace(/^#+\s*/, '').slice(0, 80);
-                index.push(`  📄 ${relativePath}  →  "${title}"`);
-            } catch {
-                index.push(`  📄 ${relativePath}`);
-            }
-        }
-
-        const msgLimit = truncated ? `\n(⚠️ 메모리 폭발 방지를 위해 상위 ${MAX_INDEX}개 파일의 목차만 표시됩니다.)` : '';
-
-        return `\n\n[CRITICAL: SECOND BRAIN INDEX — User's Personal Knowledge Base (${files.length} documents)]\nThe user has synced a personal knowledge repository. Below is the TABLE OF CONTENTS.${msgLimit}\nIf the user's query is even slightly related to any topics in this index, YOU MUST FIRST READ the relevant document BEFORE answering.\nTo read the actual content of any document, use EXACTLY this syntax: <read_brain>filename_or_path</read_brain>\nYou can call <read_brain> multiple times. ALWAYS READ THE FULL DOCUMENT BEFORE ANSWERING.\n\n**IMPORTANT: When your answer uses knowledge from the Second Brain, you MUST end your response with a "📚 출처" section listing the file(s) you referenced. Example:\n📚 출처: MrBeast_분석.md, 마케팅_전략.md**\n\n${index.join('\n')}\n\n`;
+        return _hGetSecondBrainContext();
     }
 
     // AI가 <read_brain>태그로 요청한 파일의 실제 내용을 읽어서 반환
     private _readBrainFile(filename: string): string {
-        const brainDir = _getBrainDir();
-        if (!fs.existsSync(brainDir)) return '[ERROR] Second Brain이 동기화되지 않았습니다. 🧠 버튼을 먼저 눌러주세요.';
-
-        // Path traversal 방어: brainDir 밖으로 나가는 경로는 차단
-        const exactPath = safeResolveInside(brainDir, filename);
-        if (exactPath && fs.existsSync(exactPath) && fs.statSync(exactPath).isFile()) {
-            const content = fs.readFileSync(exactPath, 'utf-8');
-            return content.slice(0, 8000); // 파일당 최대 8000자
-        }
-
-        // 파일명만으로 퍼지 검색 (하위 폴더에 있을 수 있으므로)
-        const baseOnly = path.basename(filename);
-        const allFiles = this._findBrainFiles(brainDir);
-        const match = allFiles.find(f =>
-            path.basename(f) === baseOnly ||
-            path.basename(f) === baseOnly + '.md' ||
-            (baseOnly.length > 2 && f.includes(baseOnly))
-        );
-
-        if (match) {
-            // 결과 파일이 brainDir 안인지 한 번 더 확인
-            const resolved = path.resolve(match);
-            if (resolved.startsWith(path.resolve(brainDir) + path.sep)) {
-                const content = fs.readFileSync(resolved, 'utf-8');
-                return content.slice(0, 8000);
-            }
-        }
-
-        return `[NOT FOUND] "${filename}" 파일을 Second Brain에서 찾을 수 없습니다. 목차(INDEX)를 다시 확인해주세요.`;
+        return _hReadBrainFile(filename);
     }
 
     /** 저장된 대화 메시지를 웹뷰에 다시 전송 (복원) */
@@ -2889,126 +2740,13 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
     // 우선순위: 워크스페이스 root → 부모 → 홈(~/.connect-ai/global.md).
     // 한 파일당 8KB cap, 총 24KB cap. 같은 파일 중복 주입 방지.
     private _getProjectMemory(): string {
-        const candidatePaths: string[] = [];
-        const tried = new Set<string>();
-        const filenames = ['AGENT.md', 'CONNECT-AI.md', 'CONNECTAI.md', 'CLAUDE.md', '.connect-ai/instructions.md'];
-        const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        const editor = vscode.window.activeTextEditor;
-        const roots: string[] = [];
-        if (root) roots.push(root);
-        if (editor && editor.document.uri.scheme === 'file') {
-            const dir = path.dirname(editor.document.uri.fsPath);
-            if (!roots.includes(dir)) roots.push(dir);
-        }
-        /* 워크스페이스 root + 부모 root */
-        for (const r of roots) {
-            for (const fn of filenames) {
-                candidatePaths.push(path.join(r, fn));
-            }
-            const parent = path.dirname(r);
-            if (parent !== r) {
-                for (const fn of filenames) candidatePaths.push(path.join(parent, fn));
-            }
-        }
-        /* 홈 디렉토리 글로벌 메모리 */
-        try {
-            candidatePaths.push(path.join(os.homedir(), '.connect-ai', 'global.md'));
-        } catch { /* ignore */ }
-        const blocks: string[] = [];
-        let totalChars = 0;
-        const FILE_CAP = 8 * 1024;
-        const TOTAL_CAP = 24 * 1024;
-        for (const p of candidatePaths) {
-            if (tried.has(p)) continue;
-            tried.add(p);
-            try {
-                if (!fs.existsSync(p)) continue;
-                const stat = fs.statSync(p);
-                if (!stat.isFile() || stat.size === 0) continue;
-                const raw = fs.readFileSync(p, 'utf-8');
-                const truncated = raw.length > FILE_CAP;
-                const body = truncated ? raw.slice(0, FILE_CAP) + '\n[…잘림…]' : raw;
-                const display = p.replace(os.homedir(), '~');
-                blocks.push(`### 📌 ${display}\n${body.trim()}`);
-                totalChars += body.length;
-                if (totalChars >= TOTAL_CAP) break;
-            } catch { /* skip unreadable */ }
-        }
-        if (blocks.length === 0) return '';
-        return `\n\n[PROJECT MEMORY — 사용자가 명시적으로 정한 프로젝트 규칙·금지사항·우선순위. 절대 무시하지 말 것.]\n${blocks.join('\n\n')}`;
+        return _hGetProjectMemory();
     }
 
     // Build workspace file tree + read key files
     // --------------------------------------------------------
     private _getWorkspaceContext(): string {
-        const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        if (!root) { return ''; }
-
-        // --- 1. File tree ---
-        const lines: string[] = [];
-        let count = 0;
-
-        const walk = (dir: string, prefix: string) => {
-            if (count >= getConfig().maxTreeFiles) { return; }
-            let entries: fs.Dirent[];
-            try {
-                entries = fs.readdirSync(dir, { withFileTypes: true });
-            } catch { return; }
-
-            entries.sort((a, b) => {
-                if (a.isDirectory() && !b.isDirectory()) { return -1; }
-                if (!a.isDirectory() && b.isDirectory()) { return 1; }
-                return a.name.localeCompare(b.name);
-            });
-
-            for (const entry of entries) {
-                if (count >= getConfig().maxTreeFiles) { break; }
-                if (EXCLUDED_DIRS.has(entry.name)) { continue; }
-                if (entry.name.startsWith('.') && entry.isDirectory()) { continue; }
-
-                if (entry.isDirectory()) {
-                    lines.push(`${prefix}📁 ${entry.name}/`);
-                    count++;
-                    walk(path.join(dir, entry.name), prefix + '  ');
-                } else {
-                    lines.push(`${prefix}📄 ${entry.name}`);
-                    count++;
-                }
-            }
-        };
-        walk(root, '');
-
-        let result = '';
-        if (lines.length > 0) {
-            result += `\n\n[WORKSPACE INFO]\n📂 경로: ${root}\n\n[프로젝트 파일 구조]\n${lines.join('\n')}`;
-        }
-
-        // --- 2. Auto-read key project files ---
-        const keyFiles = [
-            'package.json', 'tsconfig.json', 'vite.config.ts', 'vite.config.js',
-            'next.config.js', 'next.config.ts', 'README.md',
-            'index.html', 'app.js', 'app.ts', 'main.ts', 'main.js',
-            'src/index.ts', 'src/index.js', 'src/App.tsx', 'src/App.jsx',
-            'src/main.ts', 'src/main.js'
-        ];
-        let totalRead = 0;
-        const MAX_AUTO_READ = 6_000; // chars total
-
-        for (const kf of keyFiles) {
-            if (totalRead >= MAX_AUTO_READ) { break; }
-            const abs = path.join(root, kf);
-            if (fs.existsSync(abs)) {
-                try {
-                    const content = fs.readFileSync(abs, 'utf-8');
-                    if (content.length < 5000) {
-                        result += `\n\n[파일 내용: ${kf}]\n\`\`\`\n${content}\n\`\`\``;
-                        totalRead += content.length;
-                    }
-                } catch { /* skip */ }
-            }
-        }
-
-        return result;
+        return _hGetWorkspaceContext();
     }
 
     // --------------------------------------------------------
@@ -3064,15 +2802,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
 
             const reqMessages = [...this._chatHistory];
             if (reqMessages.length > 0 && reqMessages[0].role === 'system') {
-                const editor = vscode.window.activeTextEditor;
-                let contextBlock = '';
-                if (editor && editor.document.uri.scheme === 'file') {
-                    const text = editor.document.getText();
-                    const name = path.basename(editor.document.fileName);
-                    if (text.trim().length > 0 && text.length < MAX_CONTEXT_SIZE) {
-                        contextBlock = `\n\n[Currently open file: ${name}]\n\`\`\`\n${text}\n\`\`\``;
-                    }
-                }
+                const contextBlock = _hBuildActiveEditorContext(MAX_CONTEXT_SIZE);
                 const workspaceCtx = this._getWorkspaceContext();
                 const brainCtx = this._brainEnabled ? this._getSecondBrainContext() : '';
                 const projectMemory = this._getProjectMemory();
@@ -3113,20 +2843,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
 
         } catch (error: any) {
             const msg = error?.message || String(error);
-            let errMsg = '';
-            if (/ENOENT|not found/i.test(msg)) {
-                errMsg = `⚠️ Claude CLI 를 찾지 못했어요.\n\n**해결 방법:**\n• 터미널에서 \`which claude\` 로 경로 확인\n• 없으면 https://docs.claude.com/en/docs/claude-code/setup 따라 설치 후 \`claude login\`\n• 설치 경로가 PATH 에 없으면 settings.json 의 \`agentOs.claudeBinPath\` 에 절대경로 입력\n\n💡 **명령 팔레트 (Cmd+Shift+P) → "Agent OS: 연결 진단"** 실행하면 자동 체크해드려요.`;
-            } else if (/timed out|timeout/i.test(msg)) {
-                errMsg = `⚠️ Claude 응답이 너무 오래 걸려요.\n\n**해결 방법:**\n• 질문을 짧게 줄여보기\n• 사용량 한도 (Claude Max 5시간 윈도우) 가 거의 다 찼는지 확인`;
-            } else if (/aborted/i.test(msg)) {
-                errMsg = `⚠️ 응답이 중간에 취소됐어요.`;
-            } else if (/Unexpected end of JSON input|Unexpected token|prompt is too long|maximum context length/i.test(msg)) {
-                /* v2.90.1 — 이전 PDF 첨부가 chatHistory 에 깨진 base64 로 박혀 있을 때 자주 발생.
-                   사용자에게 새 대화 시작을 권장. */
-                errMsg = `⚠️ 프롬프트가 너무 크거나 망가졌어요. (${msg})\n\n**해결 방법:**\n• 좌측 상단 **+ 새 대화** 버튼으로 대화 초기화\n• PDF 다시 첨부해서 시도\n\n_이전에 깨진 PDF 첨부 잔재가 히스토리에 쌓여 있을 가능성이 큽니다._`;
-            } else {
-                errMsg = `⚠️ 오류: ${msg}`;
-            }
+            const errMsg = _hClassifyChatError(msg);
 
             this._view.webview.postMessage({ type: 'error', value: errMsg });
 
@@ -3160,15 +2877,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
 
         try {
             // 1. Context: active editor content
-            const editor = vscode.window.activeTextEditor;
-            let contextBlock = '';
-            if (editor && editor.document.uri.scheme === 'file') {
-                const text = editor.document.getText();
-                const name = path.basename(editor.document.fileName);
-                if (text.trim().length > 0 && text.length < MAX_CONTEXT_SIZE) {
-                    contextBlock = `\n\n[Currently open file: ${name}]\n\`\`\`\n${text}\n\`\`\``;
-                }
-            }
+            const contextBlock = _hBuildActiveEditorContext(MAX_CONTEXT_SIZE);
 
             // 2. Context: workspace file tree + key file contents
             const workspaceCtx = this._getWorkspaceContext();
@@ -4911,22 +4620,7 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
      *  에 기록. 다음 turn 의 system prompt 에 "최근 작업한 파일" 블록으로 주입돼서
      *  코다리가 파일 위치 잊고 추측 경로 만드는 사고 차단. */
     private _trackFileAction(agentId: string | undefined, absPath: string, action: 'create' | 'edit' | 'delete') {
-        if (!agentId) return;
-        const now = Date.now();
-        /* 같은 파일·같은 액션 직전 기록 있으면 시간만 갱신 (중복 방지) */
-        const dup = this._recentFileActions.find(r => r.absPath === absPath && r.agentId === agentId);
-        if (dup) {
-            dup.action = action;
-            dup.ts = now;
-        } else {
-            this._recentFileActions.push({ agentId, absPath, action, ts: now });
-        }
-        /* 30분 묵은 건 제거 + 최대 20개 cap (오래된 것부터 잘림) */
-        const cutoff = now - 30 * 60 * 1000;
-        this._recentFileActions = this._recentFileActions.filter(r => r.ts > cutoff);
-        if (this._recentFileActions.length > 20) {
-            this._recentFileActions = this._recentFileActions.slice(-20);
-        }
+        this._recentFileActions = _hTrackFileAction(this._recentFileActions, agentId, absPath, action);
     }
 
     /** v2.89.132 — 명시적 에이전트 호출 감지. "코다리야 …"·"@developer …"·"개발자야 …"
@@ -4934,38 +4628,7 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
      *  사용자 의도 존중 + 단순 작업의 처리 시간 5배 단축 (CEO LLM 호출 1회 + 다른
      *  specialist 4명 호출 제거). 자연어로만 명령한 경우는 None 반환 → 기존 CEO 분배. */
     private _detectExplicitMention(prompt: string): { agentId: string; agentName: string } | null {
-        const lower = prompt.toLowerCase();
-        /* 호출 후보: 한글 닉네임·영문 id·역할 키워드 → agentId 매핑.
-           우선순위 높은 것부터 (코다리 같은 고유 닉네임이 일반어 "개발자"보다 강함). */
-        const candidates: Array<{ patterns: RegExp[]; agentId: string; agentName: string }> = [
-            { patterns: [/개발신[야아!,~ ]/, /개발신아/, /@developer\b/, /@개발신\b/], agentId: 'developer', agentName: '개발신' },
-            { patterns: [/제프베조스[야아!,~ ]/, /베조스[야아!,~ ]/, /제프[야아!,~ ]/, /@business\b/, /@제프베조스\b/, /@베조스\b/], agentId: 'business', agentName: '제프베조스' },
-            { patterns: [/한스짐머[야아!,~ ]/, /짐머[야아!,~ ]/, /@editor\b/, /@한스짐머\b/, /@짐머\b/], agentId: 'editor', agentName: '한스짐머' },
-            { patterns: [/레오[야아!,~ ]/, /레오야/, /@youtube\b/, /@레오\b/], agentId: 'youtube', agentName: '레오' },
-            { patterns: [/카리나[야아!,~ ]/, /카리나야/, /@secretary\b/, /@카리나\b/], agentId: 'secretary', agentName: '카리나' },
-            { patterns: [/일론머스크[야아!,~ ]/, /일론[야아!,~ ]/, /머스크[야아!,~ ]/, /@ceo\b/, /@일론머스크\b/, /@일론\b/], agentId: 'ceo', agentName: '일론머스크' },
-            { patterns: [/박재범[야아!,~ ]/, /재범[야아!,~ ]/, /@instagram\b/, /@박재범\b/, /@재범\b/], agentId: 'instagram', agentName: '박재범' },
-            { patterns: [/조나단아이브[야아!,~ ]/, /조나단[야아!,~ ]/, /아이브[야아!,~ ]/, /@designer\b/, /@조나단아이브\b/, /@조나단\b/], agentId: 'designer', agentName: '조나단아이브' },
-            { patterns: [/셰익스피어[야아!,~ ]/, /셰익[야아!,~ ]/, /@writer\b/, /@셰익스피어\b/], agentId: 'writer', agentName: '셰익스피어' },
-            { patterns: [/아인슈타인[야아!,~ ]/, /아인슈[야아!,~ ]/, /@researcher\b/, /@아인슈타인\b/], agentId: 'researcher', agentName: '아인슈타인' },
-            /* 역할 호칭 — 단, 자연스러운 명령에서 잘못 매칭 안 되게 "야"·"!"·"," 같은 호격 표지 필요 */
-            { patterns: [/개발자[야아!,]/, /@developer\b/], agentId: 'developer', agentName: '개발자' },
-            { patterns: [/디자이너[야아!,]/, /@designer\b/], agentId: 'designer', agentName: '디자이너' },
-            { patterns: [/작가[야아!,]/, /@writer\b/], agentId: 'writer', agentName: '작가' },
-            { patterns: [/리서처[야아!,]/, /@researcher\b/], agentId: 'researcher', agentName: '리서처' },
-            { patterns: [/인스타[야아!,]/, /@instagram\b/], agentId: 'instagram', agentName: '인스타' },
-        ];
-        for (const c of candidates) {
-            for (const p of c.patterns) {
-                if (p.test(prompt) || p.test(lower)) {
-                    /* 활성 상태인지 확인 — 비활성 에이전트면 CEO 분배로 fallback */
-                    if (isAgentActive(c.agentId)) {
-                        return { agentId: c.agentId, agentName: c.agentName };
-                    }
-                }
-            }
-        }
-        return null;
+        return _hDetectExplicitMention(prompt);
     }
 
     /** v2.89.145 — 매출 shortcut. 명시적 현빈 호출 + 매출 키워드면 LLM 우회하고
@@ -4976,49 +4639,7 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
      *  기존 LLM 흐름으로 fallback.
      */
     private async _tryRevenueShortcut(userPrompt: string): Promise<string | null> {
-        const ppToolDir = path.join(getCompanyDir(), '_agents', 'business', 'tools');
-        const ppScript = path.join(ppToolDir, 'paypal_revenue.py');
-        const ppJson = path.join(ppToolDir, 'paypal_revenue.json');
-        if (!fs.existsSync(ppScript) || !fs.existsSync(ppJson)) return null;
-        let cfg: any = {};
-        try { cfg = JSON.parse(_safeReadText(ppJson) || '{}'); } catch { return null; }
-        if (!cfg.CLIENT_ID || !cfg.CLIENT_SECRET) {
-            return `💼 제프베조스: 사장님, PayPal Client ID 또는 Secret 이 비어있어 매출을 가져올 수 없어요.
-
-📋 **해결 단계**:
-1. \`Cmd+Shift+P\` → \`Agent OS: 외부 연결\`
-2. 💰 PayPal 카드 → Client ID + Secret 입력
-3. 저장 → 즉시 매출 분석 가능
-
-📊 평가: 대기 — PayPal 자격증명 입력 후 재시도.
-📝 다음 단계: 사장님이 PayPal Developer Dashboard 에서 Client ID/Secret 복사 → 외부 연결 패널 입력.
-`;
-        }
-        try {
-            const env = { ...process.env, LOOKBACK_DAYS: String(cfg.LOOKBACK_DAYS || 30) };
-            const r = await new Promise<{ exitCode: number; output: string; stderr: string }>((resolve) => {
-                const cp = require('child_process');
-                const p = cp.spawn(_pythonCmd(), [ppScript], { cwd: ppToolDir, env });
-                let out = '', err = '';
-                p.stdout?.on('data', (d: Buffer) => { out += d.toString(); });
-                p.stderr?.on('data', (d: Buffer) => { err += d.toString(); });
-                p.on('close', (code: number) => resolve({ exitCode: code, output: out, stderr: err }));
-                setTimeout(() => { try { p.kill(); } catch {} resolve({ exitCode: -1, output: out, stderr: err }); }, 25000);
-            });
-            if (r.exitCode !== 0 || !r.output) {
-                return `💼 제프베조스: PayPal 데이터 가져오기 실패. ${r.stderr.slice(-150) || ''}
-
-📋 외부 연결 패널에서 Client ID/Secret 다시 확인 후 재시도.
-📊 평가: 대기 — 자격증명 확인 필요.
-📝 다음 단계: \`Cmd+Shift+P\` → \`Agent OS: 외부 연결\` 에서 PayPal 카드 점검.
-`;
-            }
-            const insight = `💼 제프베조스: 사장님, 실시간 PayPal 데이터 가져왔습니다. 즉시 분석 결과 보여드려요.\n\n`;
-            const footer = `\n\n📊 평가: 완료 — 실데이터 기반 분석 (LLM 우회, 환각 없음).\n📝 다음 단계: 위 "💡 다음 액션" 섹션 참고하시고, 더 깊이 분석 필요하면 매출 대시보드 (\`Cmd+Shift+P → 매출 대시보드\`) 에서 시각화 확인.\n`;
-            return insight + r.output + footer;
-        } catch (e: any) {
-            return null;
-        }
+        return _hTryRevenueShortcut(userPrompt);
     }
 
     /** v2.89.133 — 키트 shortcut. 명시적 코다리 호출 + 두뇌 키트와 강하게 매칭되는
@@ -5034,144 +4655,20 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
      *  반환: out 문자열 (이미 <run_command> 태그 포함 → _executeActions 가 자동 실행).
      */
     private _tryKitShortcut(agentId: string, userPrompt: string): string | null {
-        if (agentId !== 'developer') return null;
-        const a = AGENTS[agentId];
-        if (!a) return null;
-
-        const lowerPrompt = userPrompt.toLowerCase();
-        const brainDir = _getBrainDir();
-        const kitsRoot = path.join(brainDir, '40_템플릿', 'developer');
-        if (!fs.existsSync(kitsRoot)) return null;
-
-        let best: { kit: string; score: number; manifest: any } | null = null;
-        try {
-            for (const dirent of fs.readdirSync(kitsRoot, { withFileTypes: true })) {
-                if (!dirent.isDirectory()) continue;
-                const kitName = dirent.name;
-                const manifestPath = path.join(kitsRoot, kitName, 'manifest.json');
-                if (!fs.existsSync(manifestPath)) continue;
-                let manifest: any;
-                try { manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8')); }
-                catch { continue; }
-
-                let score = 0;
-                const kws: string[] = Array.isArray(manifest.keywords) ? manifest.keywords : [];
-                for (const k of kws) {
-                    const kl = String(k).toLowerCase();
-                    if (kl && lowerPrompt.includes(kl)) score += 10;
-                }
-                const nameStr = String(manifest.name || '').toLowerCase();
-                if (nameStr && lowerPrompt.includes(nameStr)) score += 5;
-                const cat = String(manifest.category || '').toLowerCase();
-                if (cat && lowerPrompt.includes(cat)) score += 3;
-
-                if (score > 0 && (!best || score > best.score)) {
-                    best = { kit: kitName, score, manifest };
-                }
-            }
-        } catch { return null; }
-
-        if (!best || best.score < 10) return null;
-
-        /* v2.89.134 — PROJECT_PATH 자동 생성. pack_apply 가 빈 경로 거부 안 하게.
-           폴더명: 키트 이름에서 '-kit' suffix 제거 + timestamp 안 붙여서 매번 같은
-           폴더 (기존 파일 덮어쓰지만 .backup 자동 보존). */
-        const escapedIntent = userPrompt.replace(/"/g, '\\"');
-        const projectName = best.kit.replace(/-kit$/, '');
-        const projectDir = path.join(os.homedir(), 'connect-ai-projects', projectName);
-        const toolsDir = path.join(getCompanyDir(), '_agents', 'developer', 'tools').replace(/\\/g, '/');
-        const projectDirShell = projectDir.replace(/\\/g, '/');
-        const brainRootShell = brainDir.replace(/\\/g, '/');
-
-        /* 매니페스트의 apply.open_in_browser 가 있으면 그 파일을 open. 없으면 index.html
-           이 있을 가능성에 베팅 (대부분의 vanilla 키트). */
-        const openTarget = best.manifest?.apply?.open_in_browser || 'index.html';
-
-        /* v2.89.152 — 크로스플랫폼. 윈도우 cmd 는 `mkdir -p`·inline env vars 미지원.
-           Python 자체로 mkdir + CLI 인자로 모든 값 전달 → 모든 OS 동일 동작.
-           pack_apply 는 v4 부터 CLI 인자 지원 (`--kit X --user-intent Y --project Z`). */
-        const isWin = process.platform === 'win32';
-        const pyCmd = _pythonCmd();
-        const openCmd = isWin ? `start "" "${projectDirShell}\\${openTarget}"`.replace(/\//g, '\\')
-            : (process.platform === 'darwin' ? `open "${projectDirShell}/${openTarget}"` : `xdg-open "${projectDirShell}/${openTarget}"`);
-
-        const fakeOutput = `${a.emoji} ${a.name}: 명시적 호출 + 매칭 키트 발견. LLM 우회 — 시스템이 직접 \`${best.kit}\` 적용합니다.
-
-> 📋 매칭 점수: **${best.score}점** (\`${best.manifest.name || best.kit}\`)
-> 📁 대상 프로젝트: \`${projectDir.replace(os.homedir(), '~')}\`
-> 💡 \`pack_apply.py\` 즉시 실행 → 키트 파일 복사·설정 자동화.
-
-<run_command>${pyCmd} -c "import os; os.makedirs(r'${projectDirShell}', exist_ok=True)" && cd "${toolsDir}" && ${pyCmd} pack_apply.py --kit "${best.kit}" --user-intent "${escapedIntent}" --project "${projectDirShell}" --brain-root "${brainRootShell}"</run_command>
-
-<run_command>${openCmd}</run_command>
-
-📊 평가: 완료 — 키트 적용 + 결과 파일 자동 오픈까지 시스템이 처리.
-📝 다음 단계: 브라우저에 결과 보임. 코드 커스터마이즈는 \`${projectDir.replace(os.homedir(), '~')}/\` 폴더에서.
-`;
-        return fakeOutput;
+        return _hTryKitShortcut(agentId, userPrompt);
     }
 
     /** v2.89.131 — fuzzy path hint. list_files/read_file 이 디렉토리 못 찾을 때
      *  비슷한 이름의 디렉토리를 _recentFileActions + 회사 폴더 하위에서 탐색해 제안.
      *  코다리가 "_agents/developer/test/" 추측 → 실제 "_company/test/" 매핑 자동 회복. */
     private _fuzzyPathHint(missingPath: string): string {
-        const baseName = path.basename(missingPath);
-        if (!baseName || baseName === '.' || baseName === '/') return '';
-        const seen = new Set<string>();
-        const hits: string[] = [];
-        /* 1) 최근 액션 안에 같은 basename 가진 파일 있으면 1순위 */
-        for (const r of this._recentFileActions) {
-            if (path.basename(r.absPath) === baseName || r.absPath.includes(`/${baseName}/`) || r.absPath.endsWith(`/${baseName}`)) {
-                const parent = path.dirname(r.absPath);
-                if (!seen.has(parent)) {
-                    seen.add(parent);
-                    hits.push(parent);
-                }
-            }
-        }
-        /* 2) 회사 폴더 1~2단계 깊이만 빠르게 스캔 */
-        try {
-            const companyDir = getCompanyDir();
-            if (companyDir && fs.existsSync(companyDir)) {
-                const queue: Array<{ dir: string; depth: number }> = [{ dir: companyDir, depth: 0 }];
-                while (queue.length > 0 && hits.length < 5) {
-                    const { dir, depth } = queue.shift()!;
-                    if (depth > 2) continue;
-                    let entries: fs.Dirent[];
-                    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
-                    for (const e of entries) {
-                        if (e.name.startsWith('.') || e.name === 'node_modules' || e.name === '_agents') continue;
-                        if (e.isDirectory()) {
-                            const full = path.join(dir, e.name);
-                            if (e.name === baseName && !seen.has(full)) {
-                                seen.add(full);
-                                hits.push(full);
-                            }
-                            if (depth < 2) queue.push({ dir: full, depth: depth + 1 });
-                        }
-                    }
-                }
-            }
-        } catch { /* ignore */ }
-        if (hits.length === 0) return '';
-        const lines = hits.slice(0, 3).map(p => `  • ${p}`).join('\n');
-        return `\n💡 비슷한 경로 발견 — 다음 중 하나 의도였나요?\n${lines}\n   → 정확한 절대 경로로 다시 시도하세요.`;
+        return _hFuzzyPathHint(missingPath, this._recentFileActions);
     }
 
     /** v2.89.131 — system prompt 주입용 블록. 해당 에이전트가 최근 만진 파일들의
      *  절대 경로 리스트. 코다리가 "방금 만든 파일 어디?"라고 물을 일 자체 차단. */
     private _buildRecentFilesContext(agentId: string): string {
-        const mine = this._recentFileActions
-            .filter(r => r.agentId === agentId)
-            .slice(-10);
-        if (mine.length === 0) return '';
-        const lines = mine.map(r => {
-            const label = r.action === 'create' ? '✅ 생성' : r.action === 'edit' ? '✏️ 편집' : '🗑️ 삭제';
-            const mins = Math.max(1, Math.round((Date.now() - r.ts) / 60000));
-            return `  - ${label}: ${r.absPath}  (${mins}분 전)`;
-        }).join('\n');
-        return `\n\n[🗂️ 당신이 최근 작업한 파일들 — 절대 경로 정확]\n${lines}\n\n` +
-               `⚠️ 이전에 만든 파일을 다시 참조할 때 이 절대 경로를 그대로 사용하세요. 추측 금지. "내 도구 폴더 기준 상대 경로"로 변환하지 마세요.\n`;
+        return _hBuildRecentFilesContext(agentId, this._recentFileActions);
     }
 
     private async _executeActions(
@@ -5736,20 +5233,7 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
 
     // Strip raw XML action tags from display message
     private _stripActionTags(text: string): string {
-        return text
-            .replace(/<(?:create_file|write_file|file)\s+[^>]*>[\s\S]*?<\/(?:create_file|write_file|file)>/gi, '')
-            .replace(/<(?:edit_file|edit)\s+[^>]*>[\s\S]*?<\/(?:edit_file|edit)>/gi, '')
-            .replace(/<(?:delete_file|delete)\s+[^>]*\s*\/?>(?:<\/(?:delete_file|delete)>)?/gi, '')
-            .replace(/<(?:read_file|read)\s+[^>]*\s*\/?>(?:<\/(?:read_file|read)>)?/gi, '')
-            .replace(/<(?:list_files|list_dir|ls)\s+[^>]*\s*\/?>(?:<\/(?:list_files|list_dir|ls)>)?/gi, '')
-            .replace(/<(?:reveal_in_explorer|reveal|finder|explorer)\s+[^>]*\s*\/?>(?:<\/(?:reveal_in_explorer|reveal|finder|explorer)>)?/gi, '')
-            .replace(/<(?:open_file|open_in_app|launch)\s+[^>]*\s*\/?>(?:<\/(?:open_file|open_in_app|launch)>)?/gi, '')
-            .replace(/<glob\s+[^>]*\s*\/?>(?:<\/glob>)?/gi, '')
-            .replace(/<grep\s+[^>]*\s*\/?>(?:<\/grep>)?/gi, '')
-            .replace(/<(?:run_command|command|bash|terminal)>[\s\S]*?<\/(?:run_command|command|bash|terminal)>/gi, '')
-            .replace(/<(?:read_brain)>[\s\S]*?<\/(?:read_brain)>/gi, '')
-            .replace(/<(?:read_url|url|fetch_url)>[\s\S]*?<\/(?:read_url|url|fetch_url)>/gi, '')
-            .trim();
+        return _hStripActionTags(text);
     }
 
 
@@ -5758,15 +5242,6 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
     // ============================================================
 
     private _getHtml(): string {
-        // v2.89.59 — sidebar webview HTML/CSS/JS extracted to assets/webview/sidebar.html
-        // for safer editing and pre-build syntax verification (node --check). Single-file
-        // extension.ts had multiple webview-script syntax errors that killed all UI;
-        // separate file lets us run node --check before publishing.
-        const htmlPath = path.join(this._extensionUri.fsPath, 'assets', 'webview', 'sidebar.html');
-        try {
-            return fs.readFileSync(htmlPath, 'utf-8');
-        } catch (e: any) {
-            return `<!DOCTYPE html><html><body style="background:#111;color:#fff;padding:24px;font-family:-apple-system"><h2>⚠️ Webview HTML 로드 실패</h2><pre>${(e?.message || e).toString()}</pre><p>경로: ${htmlPath}</p></body></html>`;
-        }
+        return _hGetSidebarHtml(this._extensionUri);
     }
 }

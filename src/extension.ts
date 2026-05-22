@@ -189,6 +189,55 @@ import { _safeGitAutoSync, _safeGitAutoSyncCompany } from './git-sync/auto-sync'
 export { _safeGitAutoSync, _safeGitAutoSyncCompany };
 import { scaffoldDeveloperProject, _youtubeCommentReplyDraftBatch } from './scaffolders';
 export { scaffoldDeveloperProject, _youtubeCommentReplyDraftBatch };
+/* Cycle 7 extractions. */
+import {
+    _migrateCompanyToSubdir, _migrateYouTubeCredsToCanonical, _migrateCompanyToBrain,
+    ensureCompanyStructure, runConnectCompanyRepo, runChangeCompanyDir,
+} from './company/structure';
+export {
+    _migrateCompanyToSubdir, _migrateYouTubeCredsToCanonical, _migrateCompanyToBrain,
+    ensureCompanyStructure, runConnectCompanyRepo, runChangeCompanyDir,
+};
+import {
+    TELEGRAM_HELP, _modelToTier, _serializeMessages, _quickLLMCall, classifyToAgent,
+    _extractFirstJsonObject, _buildCapabilityReport, _buildDispatchStatusReport,
+    _isCasualChat, _harvestActionItems,
+} from './telegram/dispatch';
+export {
+    TELEGRAM_HELP, _modelToTier, _serializeMessages, _quickLLMCall, classifyToAgent,
+    _extractFirstJsonObject, _buildCapabilityReport, _buildDispatchStatusReport,
+    _isCasualChat, _harvestActionItems,
+};
+import {
+    SYSTEM_PROMPT, CEO_CLASSIFIER_PROMPT, SECRETARY_TELEGRAM_PROMPT, SKILL_DISTILL_PROMPT,
+    CEO_PLANNER_PROMPT, CEO_CHAT_PROMPT, SECRETARY_TRIAGE_PROMPT, CEO_REPORT_PROMPT,
+    CONFER_PROMPT, DECISIONS_EXTRACT_PROMPT,
+} from './prompts';
+export {
+    SYSTEM_PROMPT, CEO_CLASSIFIER_PROMPT, SECRETARY_TELEGRAM_PROMPT, SKILL_DISTILL_PROMPT,
+    CEO_PLANNER_PROMPT, CEO_CHAT_PROMPT, SECRETARY_TRIAGE_PROMPT, CEO_REPORT_PROMPT,
+    CONFER_PROMPT, DECISIONS_EXTRACT_PROMPT,
+};
+import {
+    _priorityGroupIcon, _taskStatusIcon, _formatDueLabel, rebuildUnifiedSchedule,
+} from './tracker/ui-helpers';
+export {
+    _priorityGroupIcon, _taskStatusIcon, _formatDueLabel, rebuildUnifiedSchedule,
+};
+import {
+    appendAgentMemory, _getLastSpecialistOutput, saveAgentSkill,
+    countAgentVerifiedClaims, promoteGroundedClaimsFromOutput,
+    routeBrainInjectionToAgents, readAgentGoal, writeAgentGoal, writeAgentSelfRagCriteria,
+    autoMarkTrackerFromDispatch, prefetchAgentRealtimeData, buildAgentConfigStatus,
+    buildSpecialistPrompt,
+} from './brain/agent-glue';
+export {
+    appendAgentMemory, _getLastSpecialistOutput, saveAgentSkill,
+    countAgentVerifiedClaims, promoteGroundedClaimsFromOutput,
+    routeBrainInjectionToAgents, readAgentGoal, writeAgentGoal, writeAgentSelfRagCriteria,
+    autoMarkTrackerFromDispatch, prefetchAgentRealtimeData, buildAgentConfigStatus,
+    buildSpecialistPrompt,
+};
 
 export async function _ensureBrainDir(): Promise<string | null> {
     if (_isBrainDirExplicitlySet()) {
@@ -251,7 +300,6 @@ import {
   _seedBundledTemplates,
 } from './seeds';
 
-export const SYSTEM_PROMPT = _loadPrompt('system.md');
 // ============================================================
 // 1인 기업 모드 — Multi-Agent Corporate System
 // ------------------------------------------------------------
@@ -396,30 +444,6 @@ export const COMPANY_INTERNAL_DIRS = new Set(['_cache', '_tmp']);
 /* One-shot migration: when the user upgrades from a layout where company
    files lived at the brain root, transparently move them under _company/.
    Runs at activation. Idempotent — does nothing if already migrated. */
-function _migrateCompanyToSubdir() {
-  try {
-    const root = _getBrainDir();
-    if (!fs.existsSync(root)) return;
-    const target = path.join(root, COMPANY_SUBDIR);
-    if (fs.existsSync(target)) return; // already migrated
-    const legacyDirs = ['_shared', '_agents', 'sessions', 'approvals'];
-    const present = legacyDirs.filter(d => {
-      try { return fs.statSync(path.join(root, d)).isDirectory(); } catch { return false; }
-    });
-    if (present.length === 0) return; // nothing to migrate
-    fs.mkdirSync(target, { recursive: true });
-    for (const d of present) {
-      const src = path.join(root, d);
-      const dst = path.join(target, d);
-      try { fs.renameSync(src, dst); } catch (e) {
-        console.warn(`[Agent OS] migration: rename ${d} failed`, e);
-      }
-    }
-    console.log(`[Agent OS] migrated ${present.length} legacy folders under ${target}`);
-  } catch (e) {
-    console.warn('[Agent OS] _company/ migration failed', e);
-  }
-}
 
 export async function setCompanyDir(absPath: string) {
   // Redirects to localBrainPath: choosing a company location now means
@@ -437,93 +461,6 @@ export async function setCompanyDir(absPath: string) {
 /* v2.89.16 — YouTube creds 자동 동기화. API 패널 v2.89.14 이전엔 키를 config.md에만
    저장했고 tools/youtube_account.json은 그대로 빈 채로. 도구 실행 시 빈 값 보고
    "API 키 없음" 에러. 활성화 시 한 번 점검해서 누락된 값 자동 복구. */
-function _migrateYouTubeCredsToCanonical() {
-  try {
-    const dir = getCompanyDir();
-    const cfgPath = path.join(dir, '_agents', 'youtube', 'config.md');
-    if (!fs.existsSync(cfgPath)) return;
-    const cfgTxt = _safeReadText(cfgPath);
-    /* 라인 시작 앵커 — 이전 read regex 버그 회피 */
-    const apiKeyM = cfgTxt.match(/^YOUTUBE_API_KEY[ \t]*[:：=][ \t]*([^\r\n]+?)[ \t]*$/m);
-    const channelM = cfgTxt.match(/^YOUTUBE_CHANNEL_ID[ \t]*[:：=][ \t]*([^\r\n]+?)[ \t]*$/m);
-    /* v2.89.18 — OAuth Client ID/Secret도 같이 마이그레이션 */
-    const oauthIdM = cfgTxt.match(/^YOUTUBE_OAUTH_CLIENT_ID[ \t]*[:：=][ \t]*([^\r\n]+?)[ \t]*$/m);
-    const oauthSecretM = cfgTxt.match(/^YOUTUBE_OAUTH_CLIENT_SECRET[ \t]*[:：=][ \t]*([^\r\n]+?)[ \t]*$/m);
-    const apiKey = apiKeyM ? apiKeyM[1].trim() : '';
-    const channelId = channelM ? channelM[1].trim() : '';
-    const oauthId = oauthIdM ? oauthIdM[1].trim() : '';
-    const oauthSecret = oauthSecretM ? oauthSecretM[1].trim() : '';
-    if (!apiKey && !channelId && !oauthId && !oauthSecret) return;
-    const toolDir = path.join(dir, '_agents', 'youtube', 'tools');
-    if (!fs.existsSync(toolDir)) return;
-    const jsonPath = path.join(toolDir, 'youtube_account.json');
-    let existing: Record<string, any> = {};
-    if (fs.existsSync(jsonPath)) {
-      try { existing = JSON.parse(fs.readFileSync(jsonPath, 'utf-8') || '{}'); } catch { /* malformed */ }
-    }
-    const existingKey = String(existing['YOUTUBE_API_KEY'] || '').trim();
-    const existingChannel = String(existing['MY_CHANNEL_ID'] || '').trim();
-    const existingOauthId = String(existing['YOUTUBE_OAUTH_CLIENT_ID'] || '').trim();
-    const existingOauthSecret = String(existing['YOUTUBE_OAUTH_CLIENT_SECRET'] || '').trim();
-    const needSync = (apiKey && !existingKey) || (channelId && !existingChannel) || (oauthId && !existingOauthId) || (oauthSecret && !existingOauthSecret);
-    if (!needSync) return;
-    /* 누락된 것만 채워줌 — 기존 값은 보존 */
-    if (apiKey && !existingKey) existing['YOUTUBE_API_KEY'] = apiKey;
-    if (channelId && !existingChannel) existing['MY_CHANNEL_ID'] = channelId;
-    if (oauthId && !existingOauthId) existing['YOUTUBE_OAUTH_CLIENT_ID'] = oauthId;
-    if (oauthSecret && !existingOauthSecret) existing['YOUTUBE_OAUTH_CLIENT_SECRET'] = oauthSecret;
-    /* 누락 필드 기본값 */
-    if (!('MY_CHANNEL_HANDLE' in existing)) existing['MY_CHANNEL_HANDLE'] = '';
-    if (!('WATCHED_CHANNELS' in existing)) existing['WATCHED_CHANNELS'] = [];
-    if (!('COMPETITOR_CHANNELS' in existing)) existing['COMPETITOR_CHANNELS'] = [];
-    fs.writeFileSync(jsonPath, JSON.stringify(existing, null, 2));
-    console.log('[migration] youtube_account.json synced from config.md');
-  } catch (e: any) {
-    console.warn('[migration] youtube_account.json sync failed:', e?.message || e);
-  }
-}
-
-// One-time migration from the old `<brain>/Company/...` (or custom
-// `companyDir`) layout to the unified flat layout. Called once on activate.
-function _migrateCompanyToBrain() {
-  try {
-    const brain = _getBrainDir();
-    if (fs.existsSync(path.join(brain, '_shared'))) return; // already unified
-
-    const cfg = vscode.workspace.getConfiguration('agentOs');
-    let legacy = ((cfg.get('companyDir') as string | undefined) || '').trim();
-    if (!legacy && _extCtx) {
-      legacy = (_extCtx.globalState.get<string>('companyDir') || '').trim();
-    }
-    if (legacy.startsWith('~/')) legacy = path.join(os.homedir(), legacy.slice(2));
-    if (!legacy) legacy = path.join(brain, 'Company');
-
-    if (!fs.existsSync(path.join(legacy, '_shared'))) return; // nothing to migrate
-
-    fs.mkdirSync(brain, { recursive: true });
-    for (const name of fs.readdirSync(legacy)) {
-      const src = path.join(legacy, name);
-      const dst = path.join(brain, name);
-      if (fs.existsSync(dst)) continue; // never overwrite user data
-      try { fs.renameSync(src, dst); } catch { /* skip on cross-device */ }
-    }
-    if (legacy === path.join(brain, 'Company')) {
-      try { fs.rmdirSync(legacy); } catch {}
-    }
-    try { cfg.update('companyDir', undefined, vscode.ConfigurationTarget.Global); } catch {}
-    if (_extCtx) {
-      try { _extCtx.globalState.update('companyDir', undefined); } catch {}
-    }
-    console.log(`Agent OS: migrated ${legacy} → ${brain}`);
-  } catch (e) {
-    console.error('Agent OS: company → brain migration failed', e);
-  }
-}
-
-// ──────────────────────────────────────────────────────────────────
-// Company metrics + identity — extension-side thin wrappers
-// 본문은 src/company/{metrics,identity}.ts. baseDir 로 brain 을 주입.
-// ──────────────────────────────────────────────────────────────────
 export function getCompanyMetrics(): cmp.CompanyMetrics {
     return cmp.readMetrics(_getBrainDir());
 }
@@ -798,33 +735,6 @@ export function _writeTelegramOffset(offset: number): void { tg.writeOffset(_TEL
 export function _tryAcquireTelegramLock(): boolean { return tg.tryAcquireLock(_TELEGRAM_USER_BRAIN); }
 export function _releaseTelegramLockIfOwned(): void { tg.releaseLockIfOwned(_TELEGRAM_USER_BRAIN); }
 
-export const TELEGRAM_HELP = `🤖 *Agent OS 봇* — 비서가 24시간 대기 중
-
-*그냥 자연어로 말해주세요. 비서가 알아서 처리합니다.*
-
-📅 *일정*
-"오늘 일정 뭐야" / "내일 3시 광고주 미팅 잡아줘" / "내일 미팅 취소"
-
-📋 *할일·상태*
-"할일 뭐 있어?" / "에이전트 뭐 하고 있어?" / "어제 뭐 했어?"
-
-💼 *작업 분배*
-"썸네일 만들어줘" / "유튜브 트렌드 분석해줘"
-→ CEO가 적합한 에이전트에게 분배 → 결과 보고
-
-🤖 *에이전트 직접 지시*
-"디자이너한테 로고 시안 부탁해" / "유튜브에게 컨셉 3개 뽑으라고 해"
-
-🔧 *도구·승인 상태*
-"도구 자율도 어때?" / "승인 대기 뭐 있어?"
-
-━━━━━━━━━━━━━
-*명령어 (옵션, 없어도 됨)*
-\`/done <id>\` — 작업 완료 (id로 확실하게)
-\`/cancel <id>\` — 작업 취소
-\`/skill\` — 직전 산출물을 패턴(스킬)으로 저장 (다음 호출부터 자동 참조)
-\`/skills [에이전트id]\` — 저장된 스킬 목록 보기
-\`/help\` — 이 도움말`;
 
 export const AUTONOMY_LABELS: Record<number, string> = {
     0: 'Off',
@@ -837,218 +747,9 @@ export function readToolAutonomyLevel(agentId: string): number {
     return st.readAutonomyLevel(getCompanyDir(), agentId);
 }
 
-export function _modelToTier(modelName: string): Tier {
-    const m = (modelName || '').toLowerCase();
-    if (m.includes('opus')) return 'heavy';
-    if (m.includes('haiku')) return 'light';
-    return 'standard';
-}
-
-export function _serializeMessages(messages: { role: string; content: any }[]): string {
-    const parts: string[] = [];
-    for (const msg of messages) {
-        const role = msg.role === 'assistant' ? 'ASSISTANT' : msg.role === 'system' ? 'SYSTEM' : 'USER';
-        const content = typeof msg.content === 'string'
-            ? msg.content
-            : Array.isArray(msg.content)
-                ? msg.content.map((c: any) => c?.text || '').join('')
-                : String(msg.content ?? '');
-        parts.push(`<${role}>\n${content}\n</${role}>`);
-    }
-    parts.push('Respond as the assistant to the latest USER message above. Do not echo the conversation back.');
-    return parts.join('\n\n');
-}
-
-export async function _quickLLMCall(systemPrompt: string, userMsg: string, maxTokens = 64): Promise<string> {
-    const prompt = `${systemPrompt}\n\n---\n\n${userMsg}\n\n(Respond in ${maxTokens} tokens or fewer. Output only the answer, no preamble.)`;
-    const out = await ask(prompt, 'light', { timeoutMs: 60_000 });
-    return out.trim();
-}
-
-const CEO_CLASSIFIER_PROMPT = _loadPrompt('ceo-classifier.md');
-export const SECRETARY_TELEGRAM_PROMPT = _loadPrompt('secretary-telegram.md');
-export async function classifyToAgent(text: string): Promise<string> {
-    try {
-        const out = await _quickLLMCall(_personalizePrompt(CEO_CLASSIFIER_PROMPT), text, 16);
-        const id = out.trim().toLowerCase().replace(/[^a-z]/g, '');
-        if (AGENTS[id]) return id;
-    } catch { /* fall through to keyword router */ }
-    const lower = text.toLowerCase();
-    if (/인스타|instagram|릴스|피드|reel/.test(lower)) return 'instagram';
-    if (/디자인|design|로고|이미지/.test(lower)) return 'designer';
-    if (/코드|개발|사이트|웹|deploy|배포|api|app/.test(lower)) return 'developer';
-    if (/돈|매출|가격|수익|roi|business|단가/.test(lower)) return 'business';
-    if (/일정|할일|todo|미팅|알림|메일|brief|브리핑|캘린더/.test(lower)) return 'secretary';
-    if (/편집|자막|b-?roll|컷/.test(lower)) return 'editor';
-    if (/카피|스크립트|블로그|후크|글/.test(lower)) return 'writer';
-    if (/트렌드|리서치|조사|뉴스/.test(lower)) return 'researcher';
-    return 'secretary'; // safe default — secretary triages
-}
 
 
-/* Robust JSON extractor — handles model output that wraps the JSON in prose,
-   markdown fences, or multiple objects. Scans ALL balanced top-level objects
-   and returns the first one with a string `mode` field; falls back to the
-   first parseable object if none has `mode`. Picking by `mode` matters because
-   small models often emit a "thinking" / scratchpad JSON before the real
-   answer, and the legacy first-only behavior would lock onto the scratchpad
-   and leak it (or trigger an empty-reply fallback). */
-export function _extractFirstJsonObject(raw: string): any | null {
-    if (!raw) return null;
-    /* Strip code fences first */
-    const stripped = raw.replace(/```[a-zA-Z]*\n?|```/g, '');
-    const candidates: any[] = [];
-    let i = 0;
-    while (i < stripped.length) {
-        const start = stripped.indexOf('{', i);
-        if (start < 0) break;
-        let depth = 0;
-        let inStr = false;
-        let esc = false;
-        let endIdx = -1;
-        for (let j = start; j < stripped.length; j++) {
-            const ch = stripped[j];
-            if (esc) { esc = false; continue; }
-            if (ch === '\\') { esc = true; continue; }
-            if (ch === '"') { inStr = !inStr; continue; }
-            if (inStr) continue;
-            if (ch === '{') depth++;
-            else if (ch === '}') {
-                depth--;
-                if (depth === 0) { endIdx = j; break; }
-            }
-        }
-        if (endIdx < 0) break; // unbalanced trailing object — let the caller's truncation rescue handle it
-        try {
-            const obj = JSON.parse(stripped.slice(start, endIdx + 1));
-            if (obj && typeof obj === 'object') candidates.push(obj);
-        } catch { /* skip malformed object, continue scanning */ }
-        i = endIdx + 1;
-    }
-    if (candidates.length === 0) return null;
-    const withMode = candidates.find(c => typeof c.mode === 'string');
-    return withMode || candidates[0];
-}
 
-/* v2.88 — 비서가 "지금 진짜로 뭐 할 수 있는지" 자연어로 답변. 모든 에이전트의
-   라이브 상태 + 자격증명 상태 점검. 일반론 답변 대신 사실만 — 사용자가
-   "이건 되고 이건 안 되네" 즉시 파악. */
-export function _buildCapabilityReport(): string {
-    const lines: string[] = ['👋 *카리나예요. 지금 제가 도울 수 있는 건:*\n'];
-    const tg = readTelegramConfig();
-    const calOk = isCalendarWriteConnected();
-    /* 1) 비서 본인의 직접 능력 */
-    lines.push('*📅 일정 관리*');
-    if (calOk) lines.push('  ✅ 추가·조회·수정·취소 (자연어로) — "내일 3시 미팅 잡아줘"');
-    else lines.push('  ⚠️ 미연결 — 명령 팔레트 → "Agent OS: Google Calendar 자동 일정 연결"');
-    lines.push('');
-    lines.push('*📨 텔레그램 양방향*');
-    if (tg.token && tg.chatId) lines.push('  ✅ 작동 중 — 명령 받고 보고 보내기');
-    else lines.push('  ⚠️ 미연결 — 직원 보기 → 카리나 카드 → ⚙️에서 봇 토큰 입력');
-    lines.push('');
-    lines.push('*📋 작업 추적*');
-    lines.push('  ✅ "내일까지 X 해야 해" → 자동 등록, 마감 임박 시 알림');
-    lines.push('');
-    /* 2) 다른 에이전트들의 능력 */
-    lines.push('*👥 회사 에이전트들 (자연어로 부르세요)*');
-    const agentSummary: string[] = [];
-    /* YouTube 상태 */
-    try {
-        const cfgPath = path.join(getCompanyDir(), '_agents', 'youtube', 'config.md');
-        const txt = _safeReadText(cfgPath);
-        const apiKey = (txt.match(/YOUTUBE_API_KEY\s*[:：=]\s*([A-Za-z0-9_\-]+)/) || [])[1] || '';
-        const channelId = (txt.match(/YOUTUBE_CHANNEL_ID\s*[:：=]\s*([A-Za-z0-9_\-]+)/) || [])[1] || '';
-        if (apiKey && channelId) {
-            const oauth = isYoutubeOAuthConnected();
-            agentSummary.push('  📺 *YouTube* — ✅ 채널 분석·트렌드' + (oauth ? '·시청 지속률·트래픽' : ' (Analytics는 OAuth 필요)'));
-        } else {
-            agentSummary.push('  📺 *YouTube* — ⚠️ API 키·채널 ID 필요');
-        }
-    } catch {
-        agentSummary.push('  📺 *YouTube* — ⚠️ 설정 필요');
-    }
-    /* LLM 기반 에이전트들 — 항상 가능 */
-    agentSummary.push('  🎨 *디자이너* — ✅ 시안 카피·무드보드·브랜드 컬러 가이드');
-    agentSummary.push('  ✍️ *작가* — ✅ 후크·스크립트·블로그·영상 카피');
-    agentSummary.push('  🎵 *한스짐머* — ✅ BGM 자동 생성·영상-음악 합성·사운드 디자인');
-    agentSummary.push('  💼 *제프베조스* — ✅ 가격·KPI·전략 분석');
-    agentSummary.push('  💻 *개발신* — ✅ 사이트·자동화·API 코드');
-    agentSummary.push('  🔍 *리서처* — ✅ 트렌드·경쟁사·사실 확인');
-    agentSummary.push('  📷 *Instagram* — ✅ 릴스 기획·해시태그·카피');
-    lines.push(agentSummary.join('\n'));
-    lines.push('');
-    lines.push('*예시:*');
-    lines.push('• "다음 영상 컨셉 5개 뽑아줘" → CEO가 YouTube·작가에게 분배');
-    lines.push('• "썸네일 시안 만들어줘" → 디자이너로');
-    lines.push('• "오늘 일정 뭐야?" → 제가 바로 답변');
-    lines.push('• "에이전트 뭐 하고 있어?" → 진행 중 작업 모두');
-    lines.push('');
-    lines.push('_명령 외울 필요 없어요. 자연어로 그냥 말씀해주세요._');
-    return lines.join('\n');
-}
-
-/* v2.89 — 진행 상태 자기 보고. 디스패치 큐 + 현재 작업 + 추적기 진행 중 작업
-   까지 한 화면 요약. 사용자가 "지금 뭐 하고 있어?" 물었을 때 LLM 거치지
-   않고 실제 상태를 즉시. */
-export function _buildDispatchStatusReport(): string {
-    const lines: string[] = ['📊 *지금 상태*\n'];
-    const provider = _activeChatProvider;
-    const snap = provider?.getDispatchSnapshot?.();
-    if (snap?.current) {
-        const c = snap.current;
-        const priorityIcon = c.priority === 'user' ? '👤' : '🌙';
-        const priorityLabel = c.priority === 'user' ? '사용자 명령' : '자율 사이클';
-        lines.push(`*${priorityIcon} 진행 중* (${c.elapsedSec}초 째)`);
-        lines.push(`  ${priorityLabel}: ${c.prompt.slice(0, 80)}${c.prompt.length > 80 ? '…' : ''}`);
-        lines.push('');
-    } else {
-        lines.push('_대기 중 (현재 진행하는 작업 없음)_\n');
-    }
-    if (snap && snap.queueLength > 0) {
-        lines.push(`*⏳ 대기 줄 (${snap.queueLength}건)*`);
-        for (const q of snap.queue) {
-            const icon = q.priority === 'user' ? '👤' : '🌙';
-            lines.push(`  ${icon} ${q.prompt.slice(0, 70)}${q.prompt.length > 70 ? '…' : ''}`);
-        }
-        lines.push('');
-    }
-    /* 추적기 진행 중 작업 */
-    try {
-        const open = listOpenTrackerTasks().slice(0, 8);
-        if (open.length > 0) {
-            lines.push(`*📋 추적 중인 작업 (${open.length}건)*`);
-            for (const t of open) {
-                const ico = t.status === 'in_progress' ? '🔄' : '⏳';
-                const owner = t.owner === 'user' ? '👤' : t.owner === 'mixed' ? '👥' : '🤖';
-                lines.push(`  ${ico} ${owner} ${t.title.slice(0, 60)}`);
-            }
-            lines.push('');
-        }
-    } catch { /* tracker may not exist */ }
-    /* 24시간 자율 사이클 ON/OFF */
-    try {
-        const enabled = vscode.workspace.getConfiguration('agentOs').get<boolean>('autoCycleEnabled', true);
-        lines.push(`*🌙 24시간 자율 사이클*: ${enabled ? '✅ ON (15분마다 일거리 자동 실행)' : '⏸ OFF'}`);
-    } catch { /* ignore */ }
-    return lines.join('\n');
-}
-
-
-/* v2.89.24 — 보고 스케줄러. 사용자가 _shared/report_schedule.json 에 정해놓은
-   시각마다 자동으로 텔레그램·사이드바에 보고서 발송. cron-style 분 단위 점검.
-   schedule.json 형식:
-     { entries: [
-       { id: 'morning-brief', label: '모닝 브리핑', hour: 9, minute: 0,
-         days: [1,2,3,4,5], action: 'briefing', enabled: true },
-       { id: 'channel-daily', label: '채널 분석', hour: 8, minute: 0,
-         days: [0,1,2,3,4,5,6], action: 'tool', tool: 'channel_full_analysis',
-         agentId: 'youtube', enabled: true },
-     ] } */
-// ──────────────────────────────────────────────────────────────────
-// Report scheduler — extension-side thin wrappers (storage + types)
-// 본문은 src/scheduler/{storage,planner,types}.ts. _runScheduledReportEntry
-// / _scheduleTick / startReportScheduler 는 vscode + setTimeout 의존이라 잔류.
-// ──────────────────────────────────────────────────────────────────
 type ReportScheduleEntry = sch.ReportScheduleEntry;
 
 function _reportSchedulePath(): string { return sch.schedulePath(getCompanyDir()); }
@@ -1641,20 +1342,6 @@ async function _runPreAlarmTickOnce(): Promise<void> {
    formatting all flow into one tracker. Only unchecked items count —
    `[x]` is already-done, and we don't try to retroactively register
    completed work. Capped to 5 per output to prevent runaway lists. */
-export function _harvestActionItems(text: string): string[] {
-  if (!text) return [];
-  const out: string[] = [];
-  const lines = text.split('\n');
-  for (const line of lines) {
-    const m = line.match(/^\s*(?:[-*]|\d+\.)\s*\[\s\]\s+(.{4,200})$/);
-    if (m) {
-      const title = m[1].trim().replace(/\s+/g, ' ');
-      if (title && !out.includes(title)) out.push(title);
-      if (out.length >= 5) break;
-    }
-  }
-  return out;
-}
 
 export function trackerToMarkdown(opts: { onlyOpen?: boolean; max?: number } = {}): string {
   const all = readTracker().tasks;
@@ -1703,357 +1390,18 @@ export function trackerToMarkdown(opts: { onlyOpen?: boolean; max?: number } = {
    The tree auto-refreshes via onTrackerChanged. */
 
 /* Map a priority level to a colored ThemeIcon for the group header. */
-export function _priorityGroupIcon(p: TaskPriority): vscode.ThemeIcon {
-    switch (p) {
-        case 'urgent': return new vscode.ThemeIcon('error',     new vscode.ThemeColor('errorForeground'));
-        case 'high':   return new vscode.ThemeIcon('warning',   new vscode.ThemeColor('list.warningForeground'));
-        case 'normal': return new vscode.ThemeIcon('circle-outline');
-        case 'low':    return new vscode.ThemeIcon('chevron-down', new vscode.ThemeColor('descriptionForeground'));
-    }
-}
-
-/* Per-task icon — encodes status + due-urgency. We use VS Code's built-in
-   codicon names so the look stays consistent with the rest of the IDE. */
-export function _taskStatusIcon(t: TrackerTask): vscode.ThemeIcon {
-    if (t.status === 'done')      return new vscode.ThemeIcon('pass-filled', new vscode.ThemeColor('charts.green'));
-    if (t.status === 'cancelled') return new vscode.ThemeIcon('circle-slash', new vscode.ThemeColor('descriptionForeground'));
-    /* Open task — visual urgency derived from due. Codicon 'sync~spin' is
-       VS Code's native spinner — used for in_progress to show "AI is on it". */
-    if (t.dueAt) {
-        const dt = new Date(t.dueAt).getTime();
-        const ms = dt - Date.now();
-        if (ms < 0)             return new vscode.ThemeIcon('flame', new vscode.ThemeColor('errorForeground')); // overdue
-        if (ms < 60 * 60_000)   return new vscode.ThemeIcon('clock', new vscode.ThemeColor('errorForeground')); // <1h
-        if (ms < 24 * 3600_000) return new vscode.ThemeIcon('clock', new vscode.ThemeColor('list.warningForeground')); // <1d
-    }
-    if (t.status === 'in_progress') return new vscode.ThemeIcon('sync~spin', new vscode.ThemeColor('charts.green'));
-    return new vscode.ThemeIcon('circle-outline');
-}
-
-/* Friendly relative-time formatter — "지금부터 3시간", "내일 09:00", "3일 지남". */
-export function _formatDueLabel(iso: string): string {
-    try {
-        const dt = new Date(iso);
-        const ms = dt.getTime() - Date.now();
-        const abs = Math.abs(ms);
-        const m = Math.floor(abs / 60_000);
-        const h = Math.floor(abs / 3600_000);
-        const d = Math.floor(abs / 86_400_000);
-        if (ms < 0) {
-            if (d >= 1) return `🔴 ${d}일 지남`;
-            if (h >= 1) return `🔴 ${h}시간 지남`;
-            return `🔴 ${m}분 지남`;
-        }
-        if (d >= 7)  return `📅 ${dt.toISOString().slice(5, 10)}`;
-        if (d >= 1)  return `📅 ${d}일 후`;
-        if (h >= 1)  return `⏰ ${h}시간 후`;
-        return `⚡ ${Math.max(1, m)}분 후`;
-    } catch { return iso.slice(0, 16); }
-}
 
 let _taskTreeProvider: TaskTreeProvider | null = null;
 
 /* Heuristic: from a finished CEO dispatch (plan + outputs), find
    matching open tracker tasks (created within last 5 min by Secretary
    for THIS user request) and mark them done. Avoids LLM round-trip. */
-export function autoMarkTrackerFromDispatch(plan: { brief?: string; tasks?: { agent: string; task: string }[] } | null, sessionDir: string, ceoSynthesis: string) {
-  try {
-    if (!plan || !Array.isArray(plan.tasks)) return;
-    const tracker = readTracker();
-    const now = Date.now();
-    /* 24h window — covers overnight/multi-step tasks. Original 10-min was
-       too narrow: if user issued "이거 해" yesterday and CEO finishes today,
-       the task would stay pending forever. */
-    const fresh = tracker.tasks.filter(t =>
-      t.status !== 'done' && t.status !== 'cancelled' &&
-      (now - new Date(t.createdAt).getTime()) < 24 * 60 * 60_000
-    );
-    if (fresh.length === 0) return;
-    /* For each fresh agent-owned task, mark first overlap done. */
-    for (const ft of fresh) {
-      if (ft.owner !== 'agent' && ft.owner !== 'mixed') continue;
-      const evidence = `완료: sessions/${path.basename(sessionDir)}/_report.md\n` +
-        plan.tasks.slice(0, 3).map(t => `- ${AGENTS[t.agent]?.name || t.agent}: ${t.task.slice(0, 80)}`).join('\n') +
-        (ceoSynthesis ? `\n\nCEO 종합 요점: ${ceoSynthesis.slice(0, 200)}` : '');
-      updateTrackerTask(ft.id, {
-        status: 'done',
-        sessionDir: path.basename(sessionDir),
-        evidence,
-      });
-    }
-  } catch { /* ignore */ }
-}
-
-/* ── Unified schedule.md ─────────────────────────────────────────────────
-   Secretary's job is to give one consolidated view of "today/this week" —
-   user's calendar events + each agent's recent activity + pending TODOs.
-   Other agents read this via readAgentSharedContext so they can plan
-   around the user's life and each other's work.
-
-   Sources:
-     - _shared/calendar_cache.md  (Google Calendar via iCal tool)
-     - _agents/{id}/memory.md     (last 5 lines per agent — recent task log)
-     - _shared/todos.md           (user-maintained — optional) */
-export function rebuildUnifiedSchedule() {
-  try {
-    const dir = getCompanyDir();
-    if (!fs.existsSync(dir)) return;
-    fs.mkdirSync(path.join(dir, '_shared'), { recursive: true });
-    const now = new Date();
-    const lines: string[] = [];
-    lines.push(`# 📋 통합 스케줄`);
-    lines.push(`_업데이트: ${now.toLocaleString('ko-KR')}_`);
-    lines.push('');
-
-    /* 1. Calendar */
-    const cal = _safeReadText(path.join(dir, '_shared', 'calendar_cache.md')).trim();
-    if (cal) {
-      lines.push('## 📅 사람 일정 (Google Calendar)');
-      const calLines = cal.split('\n')
-        .filter(l => l.trim().startsWith('-'))
-        .slice(0, 12);
-      lines.push(...calLines);
-      lines.push('');
-    }
-
-    /* 2. Recent agent activity */
-    const agentBlocks: string[] = [];
-    for (const id of AGENT_ORDER) {
-      if (id === 'ceo') continue;
-      const memPath = path.join(dir, '_agents', id, 'memory.md');
-      const mem = _safeReadText(memPath).trim();
-      if (!mem) continue;
-      const recent = mem.split('\n')
-        .filter(l => /^\s*-\s*\[\d{4}-\d{2}-\d{2}\]/.test(l))
-        .slice(-3);
-      if (recent.length === 0) continue;
-      const a = AGENTS[id];
-      agentBlocks.push(`### ${a.emoji} ${a.name}\n${recent.join('\n')}`);
-    }
-    if (agentBlocks.length > 0) {
-      lines.push('## 🤖 에이전트 최근 활동');
-      lines.push(...agentBlocks);
-      lines.push('');
-    }
-
-    /* 3. User TODOs */
-    const todos = _safeReadText(path.join(dir, '_shared', 'todos.md')).trim();
-    if (todos) {
-      lines.push('## ✅ 사용자 할 일');
-      lines.push(todos.slice(0, 1500));
-      lines.push('');
-    }
-
-    fs.writeFileSync(path.join(dir, '_shared', 'schedule.md'), lines.join('\n') + '\n');
-  } catch { /* never let schedule errors break the dispatch */ }
-}
 
 
 export function _safeReadText(p: string): string {
   try { return fs.readFileSync(p, 'utf-8'); } catch { return ''; }
 }
 
-export function ensureCompanyStructure(): string {
-  const dir = getCompanyDir();
-  fs.mkdirSync(path.join(dir, '_shared'), { recursive: true });
-  fs.mkdirSync(path.join(dir, '_agents'), { recursive: true });
-  fs.mkdirSync(path.join(dir, 'sessions'), { recursive: true });
-  fs.mkdirSync(path.join(dir, 'approvals', 'pending'), { recursive: true });
-  fs.mkdirSync(path.join(dir, 'approvals', 'history'), { recursive: true });
-  AGENT_ORDER.forEach(id => {
-    fs.mkdirSync(path.join(dir, '_agents', id), { recursive: true });
-    _seedAgentGoalIfMissing(id);
-    _seedAgentToolsIfMissing(id);
-    _seedAgentToolsManifestIfMissing(id);
-  });
-
-  const goalsPath = path.join(dir, '_shared', 'goals.md');
-  if (!fs.existsSync(goalsPath)) {
-    fs.writeFileSync(goalsPath,
-`# 🎯 공동 목표 (Company Goals)
-
-_이 파일은 **모든 에이전트가 매번 읽는** 회사의 북극성입니다. 자유롭게 편집하세요._
-
-## 장기 목표 (1년)
-- [ ] (예) 유튜브 구독자 10만 달성
-- [ ] (예) 인스타그램 팔로워 5만
-- [ ] (예) 월 수익 500만원
-
-## 단기 목표 (1개월)
-- [ ] (예) 영상 4개 업로드
-- [ ] (예) 릴스 12개 게시
-`);
-  }
-  const idPath = path.join(dir, '_shared', 'identity.md');
-  if (!fs.existsSync(idPath)) {
-    fs.writeFileSync(idPath,
-`# 🏢 회사 정체성 / 톤앤매너
-
-_브랜드 보이스, 톤, 절대 금지어 등을 적으세요. 모든 에이전트가 매번 참조합니다._
-
-- **회사 이름:**
-- **대표자:**
-- **타깃 청중:**
-- **핵심 가치:**
-- **브랜드 톤:**
-- **금기 (절대 하지 말 것):**
-`);
-  }
-  AGENT_ORDER.forEach(id => {
-    const memPath = path.join(dir, '_agents', id, 'memory.md');
-    if (!fs.existsSync(memPath)) {
-      fs.writeFileSync(memPath,
-`# ${AGENTS[id].emoji} ${AGENTS[id].name} (${AGENTS[id].role}) 개인 메모리
-
-_${AGENTS[id].name} 에이전트만 읽고 쓰는 개인 노트. 학습·교훈·자주 쓰는 패턴이 누적됩니다._
-
-## 학습 기록
-`);
-    }
-    /* v2.89.115 — skills/ 디렉토리. memory.md(append-only firehose)와
-       구분되는 "큐레이션된 재사용 패턴". 사용자가 텔레그램 `/skill` 또는
-       명령 팔레트로 직전 산출물을 승격시킬 때 여기 저장됨. 매 호출 시
-       readAgentSharedContext가 system prompt 위쪽에 주입. */
-    const skillsDir = path.join(dir, '_agents', id, 'skills');
-    fs.mkdirSync(skillsDir, { recursive: true });
-    const skillReadme = path.join(skillsDir, 'README.md');
-    if (!fs.existsSync(skillReadme)) {
-      fs.writeFileSync(skillReadme,
-`# ${AGENTS[id].emoji} ${AGENTS[id].name} 스킬
-
-_재사용 가능한 패턴 모음. memory.md는 모든 활동의 로그(append-only firehose),
-이 폴더는 **검증된 패턴만 골라낸 것**입니다. 각 \`*.md\` 파일은 다음 호출 시
-${AGENTS[id].name}의 system prompt에 자동 주입됩니다._
-
-## 어떻게 채우나요?
-- 텔레그램에서 \`/skill\` (직전 산출물 자동 승격)
-- VS Code 명령 팔레트: \`Agent OS: 방금 산출물 → 스킬로 저장\`
-- 직접 이 폴더에 \`<주제>.md\` 파일을 만들어도 됩니다 (\`# 제목\` + 본문)
-
-\`README.md\` 자체는 system prompt에 주입되지 않습니다.
-`);
-    }
-    const promptPath = path.join(dir, '_agents', id, 'prompt.md');
-    if (!fs.existsSync(promptPath)) {
-      fs.writeFileSync(promptPath,
-`# ${AGENTS[id].emoji} ${AGENTS[id].name} 페르소나 디테일
-
-_여기에 ${AGENTS[id].name} 에이전트에게 주고 싶은 추가 지시·말투·취향·예시 등을 자유롭게 적으세요._
-_매 호출 시 시스템 프롬프트에 자동 주입됩니다. (git에 동기화됨)_
-
-`);
-    }
-    const configPath = path.join(dir, '_agents', id, 'config.md');
-    if (!fs.existsSync(configPath)) {
-      let presets = '';
-      if (id === 'secretary') {
-        presets = `\n## 텔레그램 봇\n_BotFather에서 봇을 만들고 토큰을 받으세요. https://t.me/BotFather_\n_그리고 본인 채팅 ID를 알아내려면 https://t.me/userinfobot 에 메시지를 보내세요._\n\n- TELEGRAM_BOT_TOKEN: \n- TELEGRAM_CHAT_ID: \n`;
-      } else if (id === 'youtube') {
-        presets = `\n## YouTube Data API\n- YOUTUBE_API_KEY: \n- YOUTUBE_CHANNEL_ID: \n`;
-      } else if (id === 'instagram') {
-        presets = `\n## Meta Graph API\n- META_ACCESS_TOKEN: \n- INSTAGRAM_BUSINESS_ID: \n`;
-      } else if (id === 'designer') {
-        presets = `\n## 디자인 도구\n- FIGMA_TOKEN: \n- STITCH_API_KEY: \n`;
-      }
-      fs.writeFileSync(configPath,
-`# ${AGENTS[id].emoji} ${AGENTS[id].name} 설정 (시크릿)
-
-_이 파일은 \`.gitignore\`에 의해 깃 동기화에서 제외됩니다. API 키·토큰을 자유롭게 적으세요._
-${presets}
-`);
-    }
-  });
-
-  // .gitignore — 시크릿과 캐시 보호
-  const giPath = path.join(dir, '.gitignore');
-  const desiredGi =
-`# 자동 생성 — Agent OS 1인 기업 모드
-# 시크릿·API 키 보호
-_agents/*/config.md
-# 도구 설정 JSON 안에 API 키·텔레그램 봇 토큰이 들어갈 수 있어 git에서 제외
-_agents/*/tools/*.json
-_agents/*/tools/youtube_account.json
-
-# 외부 API 응답 캐시 (재현 가능)
-_cache/
-
-# 대용량 임시 산출물
-_tmp/
-*.log
-`;
-  if (!fs.existsSync(giPath)) {
-    fs.writeFileSync(giPath, desiredGi);
-  } else {
-    /* Migrate old gitignore that didn't list tool JSONs — append the
-       missing rules so existing users get token protection without us
-       clobbering anything they manually added. */
-    let cur = '';
-    try { cur = fs.readFileSync(giPath, 'utf-8'); } catch { /* ignore */ }
-    const additions: string[] = [];
-    if (!cur.includes('_agents/*/tools/*.json')) {
-      additions.push('# 도구 설정 JSON 안에 API 키·텔레그램 봇 토큰이 들어갈 수 있어 git에서 제외');
-      additions.push('_agents/*/tools/*.json');
-    }
-    if (!cur.includes('youtube_account.json')) {
-      additions.push('_agents/*/tools/youtube_account.json');
-    }
-    if (additions.length > 0) {
-      try { fs.appendFileSync(giPath, '\n' + additions.join('\n') + '\n'); } catch { /* ignore */ }
-    }
-  }
-
-  // _system.md — 시스템 자가 매뉴얼 (사람도 읽고 LLM도 컨텍스트로)
-  const sysPath = path.join(dir, '_shared', '_system.md');
-  if (!fs.existsSync(sysPath)) {
-    fs.writeFileSync(sysPath,
-`# 🧬 1인 기업 OS — 자가 매뉴얼
-
-## 이 폴더는 무엇인가요?
-당신의 1인 기업의 두뇌입니다. 7명의 AI 에이전트가 여기서 일합니다.
-
-## 폴더 구조
-- \`_shared/\` — 모든 에이전트가 매번 읽는 공동 메모리
-  - \`identity.md\` — 회사 정체성 (이름, 톤, 가치)
-  - \`goals.md\` — 목표
-  - \`decisions.md\` — 의사결정 로그 (자가학습이 자동 누적)
-  - \`_system.md\` — 이 파일
-- \`_agents/<id>/\` — 각 에이전트 개인 공간
-  - \`memory.md\` — 자가학습 (자동, append-only)
-  - \`prompt.md\` — 페르소나 디테일 (사용자가 편집)
-  - \`config.md\` — API 키·시크릿 (\`.gitignore\`로 보호)
-- \`sessions/<ts>/\` — 세션별 산출물 (자동)
-- \`_cache/\` — API 응답 캐시 (sync 제외)
-
-## 메모리 위계 (충돌 시 우선순위)
-1. \`decisions.md\` — 가장 강한 신뢰
-2. \`identity.md\`
-3. \`goals.md\`
-4. 개인 메모리
-5. 지식 베이스 (\`10_Wiki/\`)
-
-## 다른 PC로 옮길 때
-1. 새 PC에 Agent OS 설치
-2. 👔 모드 ON → "📥 다른 PC에서 가져오기" 선택
-3. GitHub URL 입력 → 자동 clone
-4. 끝.
-
-## 동기화 정책
-- \`_shared/\`, \`_agents/*/memory.md\`, \`_agents/*/prompt.md\`, \`sessions/\` → git sync ✅
-- \`_agents/*/config.md\`, \`_cache/\` → git sync ❌ (시크릿·캐시)
-
-## 7명의 에이전트
-${AGENT_ORDER.map(id => `- ${AGENTS[id].emoji} **${AGENTS[id].name}** (${AGENTS[id].role}): ${AGENTS[id].specialty}`).join('\n')}
-`);
-  }
-
-  return dir;
-}
-
-/* ── Brain knowledge → agent context bridge ────────────────────────────
-   Every agent cycle we surface the user's broader knowledge (10_Wiki, recent
-   00_Raw) into that agent's prompt. Filtered by the agent's specialty
-   keywords so YouTube doesn't drown in design notes and vice versa. Tight
-   budget keeps the prompt small. */
 
 export function _agentKeywords(agentId: string): string[] {
   const a = AGENTS[agentId];
@@ -2129,72 +1477,6 @@ interface BrainSnippet { path: string; rel: string; title: string; insight: stri
    that pure keyword search misses. */
 
 
-export function appendAgentMemory(agentId: string, line: string) {
-  try {
-    const p = path.join(getCompanyDir(), '_agents', agentId, 'memory.md');
-    const stamp = new Date().toISOString().slice(0, 10);
-    fs.appendFileSync(p, `\n- [${stamp}] ${line.replace(/\n/g, ' ').slice(0, 300)}`);
-  } catch { /* ignore */ }
-}
-
-/* ── Curated skills (재사용 패턴) ─────────────────────────────────────────
-   v2.89.115 — Hermes Agent의 skill 자동승격 패턴을 1인 기업 컨셉에 이식.
-   memory.md는 모든 활동을 그대로 누적하는 append-only 로그(firehose)이고,
-   skills/는 사용자가 명시적으로 "이거 패턴화"라고 승격시킨 것만. 신뢰도가
-   훨씬 높으므로 system prompt에 더 강한 라벨로 주입한다. */
-/* v2.89.115 / v2.91.x — `_seedBundledTemplates` 와 `_copyDirRecursive` 는
-   `./seeds/common.ts` 로 이동. extension.ts 는 `./seeds` 에서 import 만 함. */
-
-/* v2.89.115 — 템플릿 reader. 두뇌의 `40_템플릿/<agentId>/` 폴더 스캔.
-   각 템플릿은 하위 폴더이고 README.md + manifest.json + 코드 파일 가짐.
-   AI 컨텍스트엔 매니페스트 요약 + README의 핵심 + 파일 목록만 inject (전체 코드는 X —
-   파일 너무 크면 컨텍스트 폭주). LLM이 "이 템플릿 쓰겠다" 결정하면 read_file로 실제
-   파일 읽으면 됨. */
-
-
-/** Find the most recent specialist output in today's conversation log.
- *  Returns the agent id + body so the user can say `/skill` and we know
- *  whose skills/ to save into. Falls back to yesterday if today has none. */
-export function _getLastSpecialistOutput(): { agentId: string; agentName: string; body: string } | null {
-  try {
-    const convDir = getConversationsDir();
-    const today = new Date().toISOString().slice(0, 10);
-    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-    /* Index agent name → id for reverse lookup. Skip CEO (planner role,
-       not a specialist whose patterns we'd reuse). */
-    const nameToId = new Map<string, string>();
-    for (const id of SPECIALIST_IDS) {
-      const a = AGENTS[id];
-      if (!a) continue;
-      nameToId.set(a.name, id);
-    }
-    for (const day of [today, yesterday]) {
-      const f = path.join(convDir, `${day}.md`);
-      if (!fs.existsSync(f)) continue;
-      let txt = '';
-      try { txt = fs.readFileSync(f, 'utf-8'); } catch { continue; }
-      /* Conversation entries are blocks like:
-           ## [HH:MM:SS] {emoji} **{speaker}** · _{section}_
-
-           {body}
-         Walk from the end backward and grab the most recent one whose
-         speaker matches a specialist name. */
-      const headerRe = /\n##\s+\[\d{2}:\d{2}:\d{2}\][^\n]*\*\*([^*]+)\*\*[^\n]*\n([\s\S]*?)(?=\n##\s+\[|$)/g;
-      const matches: Array<{ name: string; body: string }> = [];
-      let m: RegExpExecArray | null;
-      while ((m = headerRe.exec(txt)) !== null) {
-        matches.push({ name: m[1].trim(), body: m[2].trim() });
-      }
-      for (let i = matches.length - 1; i >= 0; i--) {
-        const id = nameToId.get(matches[i].name);
-        if (id && matches[i].body.length >= 80) {
-          return { agentId: id, agentName: matches[i].name, body: matches[i].body };
-        }
-      }
-    }
-  } catch { /* fall through */ }
-  return null;
-}
 
 function _slugifySkill(title: string): string {
   /* Keep Hangul / latin / digits, collapse the rest into '-'. Filenames are
@@ -2207,218 +1489,12 @@ function _slugifySkill(title: string): string {
   return s.slice(0, 60) || `skill-${Date.now()}`;
 }
 
-const SKILL_DISTILL_PROMPT = _loadPrompt('skill-distill.md');
 
 /** Distill `sourceText` into a reusable skill markdown and save it under
  *  `_agents/{agentId}/skills/<slug>.md`. Returns the saved path or an error.
  *  Uses _quickLLMCall — same lightweight path as Secretary classification. */
-export async function saveAgentSkill(
-  agentId: string,
-  sourceText: string,
-  opts?: { titleHint?: string }
-): Promise<{ ok: true; path: string; title: string } | { ok: false; reason: string }> {
-  const a = AGENTS[agentId];
-  if (!a) return { ok: false, reason: `알 수 없는 에이전트: ${agentId}` };
-  const trimmed = (sourceText || '').trim();
-  if (trimmed.length < 80) return { ok: false, reason: '산출물이 너무 짧아 패턴화할 가치가 부족해요.' };
-  const userBlock = (opts?.titleHint ? `[힌트] ${opts.titleHint}\n\n` : '') + `[산출물]\n${trimmed.slice(0, 4000)}`;
-  let raw = '';
-  try {
-    raw = await _quickLLMCall(SKILL_DISTILL_PROMPT, userBlock, 600);
-  } catch (e: any) {
-    return { ok: false, reason: `LLM 호출 실패: ${e?.message || e}` };
-  }
-  let body = (raw || '').trim();
-  /* Strip code fences if the model wrapped the markdown despite instructions */
-  body = body.replace(/^```[a-zA-Z]*\n?/, '').replace(/\n?```\s*$/, '').trim();
-  if (!body) return { ok: false, reason: '큐레이터 LLM이 응답하지 못했어요.' };
-  const firstLine = body.split('\n')[0].trim();
-  if (/^#\s*SKIP/i.test(firstLine)) {
-    return { ok: false, reason: '큐레이터 판단: 재사용 가치가 부족해 저장하지 않았어요.' };
-  }
-  if (!firstLine.startsWith('#')) {
-    /* Force a heading so downstream display stays consistent */
-    body = `# ${opts?.titleHint?.slice(0, 60) || '미정 스킬'}\n\n${body}`;
-  }
-  const title = body.split('\n')[0].replace(/^#+\s*/, '').trim();
-  const slug = _slugifySkill(title);
-  const skillsDir = path.join(getCompanyDir(), '_agents', agentId, 'skills');
-  fs.mkdirSync(skillsDir, { recursive: true });
-  let outPath = path.join(skillsDir, `${slug}.md`);
-  /* Avoid collisions — append a short stamp if file exists */
-  if (fs.existsSync(outPath)) {
-    const stamp = new Date().toISOString().slice(5, 10).replace('-', '');
-    outPath = path.join(skillsDir, `${slug}-${stamp}.md`);
-  }
-  const stamped = `${body}\n\n---\n_저장: ${new Date().toLocaleString('ko-KR')} · 출처: 직전 ${a.name} 산출물_\n`;
-  try { fs.writeFileSync(outPath, stamped); }
-  catch (e: any) { return { ok: false, reason: `파일 저장 실패: ${e?.message || e}` }; }
-  return { ok: true, path: outPath, title };
-}
 
-/* ── Self-RAG verified knowledge store ────────────────────────────────────
-   memory.md is the firehose (everything happens, including [추측]). When
-   Self-RAG is ON for an agent, we parse its output for `[근거: source]`
-   patterns and promote those claims into a curated `verified.md` next to
-   memory.md. Future cycles preferentially retrieve from verified.md so the
-   agent works off claims it has already self-grounded — not from raw
-   speculation. */
-function appendAgentVerifiedKnowledge(agentId: string, claim: string, source: string) {
-  try {
-    const dir = path.join(getCompanyDir(), '_agents', agentId);
-    fs.mkdirSync(dir, { recursive: true });
-    const p = path.join(dir, 'verified.md');
-    if (!fs.existsSync(p)) {
-      const a = AGENTS[agentId];
-      const header = `# ${a?.emoji || '✓'} ${a?.name || agentId} — 검증된 지식
 
-_Self-RAG가 출력에서 \`[근거: ...]\` 태그가 붙은 주장만 자동 승격해서 누적._
-_여기 들어온 내용만 다음 사이클의 retrieval 우선순위에 들어갑니다._
-_사용자가 직접 줄을 지우면 그 주장은 다시 미검증 상태로 돌아갑니다._
-
-`;
-      fs.writeFileSync(p, header);
-    }
-    const stamp = new Date().toISOString().slice(0, 10);
-    const oneLine = (claim || '').replace(/\n/g, ' ').slice(0, 360);
-    const src = (source || '').replace(/\n/g, ' ').slice(0, 120);
-    fs.appendFileSync(p, `\n- [${stamp}] ${oneLine} _(근거: ${src})_`);
-  } catch { /* ignore */ }
-}
-export function countAgentVerifiedClaims(agentId: string): number {
-  try {
-    const txt = readAgentVerifiedKnowledge(agentId);
-    if (!txt) return 0;
-    return (txt.match(/^\s*-\s*\[\d{4}-\d{2}-\d{2}\]/gm) || []).length;
-  } catch { return 0; }
-}
-
-/* Parse an agent's response text for [근거: source] grounded claims and
-   promote each to verified.md. We capture the WHOLE LINE (or a meaningful
-   slice) containing the tag, plus the source label inside the brackets. */
-export function promoteGroundedClaimsFromOutput(agentId: string, output: string): number {
-  if (!output) return 0;
-  /* Match lines that contain [근거: ...] anywhere. Grab the entire line for
-     context, and pull the source out of the brackets. */
-  const lines = output.split('\n');
-  const tagRe = /\[\s*근거\s*[:：]\s*([^\]\n]+?)\s*\]/;
-  let promoted = 0;
-  for (const raw of lines) {
-    const ln = raw.trim();
-    if (!ln) continue;
-    const m = ln.match(tagRe);
-    if (!m) continue;
-    /* Strip the [근거: ...] tag from the claim text so verified.md doesn't
-       echo the bracket — we already have the source as a separate field. */
-    const claim = ln.replace(tagRe, '').replace(/\s{2,}/g, ' ').trim();
-    if (claim.length < 4) continue; /* skip degenerate matches */
-    appendAgentVerifiedKnowledge(agentId, claim, m[1].trim());
-    promoted++;
-    if (promoted >= 12) break; /* sanity cap per output */
-  }
-  return promoted;
-}
-
-/* When the user injects a file into the brain (⚡ button), score it against
-   each agent's specialty and append a memory line to the top matches. The
-   raw file lives at <brain>/00_Raw/<date>/<name>; agents now know "new
-   knowledge inbound" without us having to wait for them to scan the brain
-   folder on next cycle. Returns the agent IDs that received an entry. */
-export function routeBrainInjectionToAgents(filePath: string, fileName: string): string[] {
-  if (!isCompanyConfigured()) return [];
-  let raw = '';
-  try {
-    const st = fs.statSync(filePath);
-    if (st.size > 80_000) return []; /* don't try to summarize giant files */
-    raw = fs.readFileSync(filePath, 'utf-8').slice(0, 8000);
-  } catch { return []; }
-  if (!raw.trim()) return [];
-
-  /* Best-of: score the file against every specialist. Pick top 2 above
-     a threshold — narrow enough to avoid spamming everyone. */
-  type Match = { id: string; score: number };
-  const matches: Match[] = [];
-  for (const id of SPECIALIST_IDS) {
-    const kws = _agentKeywords(id);
-    const score = _scoreRelevance(raw + ' ' + fileName, kws);
-    if (score >= 2) matches.push({ id, score });
-  }
-  matches.sort((a, b) => b.score - a.score);
-  const winners = matches.slice(0, 2).map(m => m.id);
-
-  /* Always tell CEO too — CEO needs to know new knowledge arrived even if
-     it doesn't match a specialist cleanly. */
-  const recipients = Array.from(new Set(['ceo', ...winners]));
-
-  /* Build the one-line summary: title (first H1) + first 140 chars of
-     the first non-heading paragraph, or just the filename + first chunk. */
-  const h1 = raw.match(/^#\s+(.+?)\s*$/m);
-  const title = (h1 && h1[1] ? h1[1].trim() : fileName).slice(0, 80);
-  const body = raw
-    .replace(/^---[\s\S]*?---\n/, '')
-    .split('\n')
-    .find(ln => ln.trim() && !ln.trim().startsWith('#') && !ln.trim().startsWith('---'))
-    || raw.replace(/\s+/g, ' ').slice(0, 200);
-  const blurb = body.replace(/\s+/g, ' ').trim().slice(0, 160);
-  /* Source path is relative to brain root (where 00_Raw/ etc. live),
-     not the company subdir — keeps the citation human-readable. */
-  const rel = path.relative(_getBrainDir(), filePath);
-
-  const line = `📥 새 지식 입수 — **${title}**: ${blurb} (출처: ${rel})`;
-  for (const id of recipients) {
-    appendAgentMemory(id, line);
-  }
-  return recipients;
-}
-
-// ───────────────────────────────────────────────────────────────────────────
-// Per-agent goal layer (v2.38)
-// ---------------------------------------------------------------------------
-// Each agent owns a personal `goal.md` separate from the company's shared
-// `_shared/goals.md`. Hierarchy when building prompt context:
-//   1. Agent goal       (this file) — most specific, takes priority
-//   2. Company goals    (_shared/goals.md) — shared by every agent
-//   3. Company identity (_shared/identity.md)
-//   4. Decisions log    (_shared/decisions.md)
-//   5. Agent memory     (_agents/{id}/memory.md)
-//   6. Brain knowledge  (root brain folder, surfaced by separate flow)
-//
-// Empty goal.md is fine — agent simply runs without a personal mission.
-// ───────────────────────────────────────────────────────────────────────────
-/* v2.91.x — Mission templates (`_GOAL_PREAMBLE` + `DEFAULT_AGENT_GOALS`) 와
-   `_seedAgentGoalIfMissing` 는 `./seeds/manifest-and-goal.ts` 로 이동했습니다. */
-
-export function readAgentGoal(agentId: string): string {
-  try {
-    const p = path.join(getCompanyDir(), '_agents', agentId, 'goal.md');
-    return fs.existsSync(p) ? fs.readFileSync(p, 'utf-8') : '';
-  } catch { return ''; }
-}
-
-export function writeAgentGoal(agentId: string, content: string) {
-  const dir = path.join(getCompanyDir(), '_agents', agentId);
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, 'goal.md'), content);
-}
-
-/* `_seedAgentGoalIfMissing` 는 `./seeds/manifest-and-goal.ts` 로 이동. */
-
-// ───────────────────────────────────────────────────────────────────────────
-// Per-agent retrieval strategy (v2.45) — educational toggle
-// ---------------------------------------------------------------------------
-// Each agent picks ONE retrieval strategy. The choice changes both how the
-// agent reads the brain folder AND how it self-checks its own output:
-//   - "standard"  : current keyword routing, no self-critique
-//   - "self-rag"  : keyword routing + self-critique step (factuality + sources)
-//   - "graph-rag" : co-occurrence graph traversal over brain folder
-// Stored as plain text in `_agents/{id}/rag_mode.txt`. Default is "standard"
-// so existing companies keep current behavior on upgrade.
-// ───────────────────────────────────────────────────────────────────────────
-/* Two modes only: 'standard' = Graph RAG retrieval, no self-critique.
-   'self-rag' = Graph RAG retrieval + self-critique protocol + verified.md
-   promotion. The old 'graph-rag' mode is folded into 'standard' since the
-   graph IS the brain — always traversed. Existing saved values of
-   'graph-rag' are migrated to 'standard' on read. */
 type RagMode = 'standard' | 'self-rag';
 const RAG_MODES: RagMode[] = ['standard', 'self-rag'];
 
@@ -2448,27 +1524,6 @@ export function readAgentSelfRagCriteria(agentId: string): string {
     return fs.existsSync(p) ? fs.readFileSync(p, 'utf-8') : '';
   } catch { return ''; }
 }
-export function writeAgentSelfRagCriteria(agentId: string, content: string) {
-  const dir = path.join(getCompanyDir(), '_agents', agentId);
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, 'self_rag_criteria.md'), (content || '').slice(0, 4000));
-}
-
-// ───────────────────────────────────────────────────────────────────────────
-// Per-agent tools (v2.39)
-// ---------------------------------------------------------------------------
-// Each agent owns a `tools/` folder under their `_agents/{id}/` directory.
-// A tool is a triplet:
-//   <name>.py    — executable script (reads sibling JSON for config)
-//   <name>.json  — config values (API keys, params) — edited via panel UI
-//   <name>.md    — agent-facing description (shown in panel + injected
-//                   into specialist prompt context as a tool catalog)
-//
-// Tools live INSIDE the brain folder so they auto-sync to GitHub with the
-// rest of the user's knowledge. Scripts use os.path.dirname(__file__) to
-// resolve their config path, so they work regardless of where the user
-// puts their brain folder.
-// ───────────────────────────────────────────────────────────────────────────
 
 interface AgentTool {
   name: string;          // e.g. "trend_sniper"
@@ -2633,12 +1688,10 @@ export function makeSessionDir(): string {
   return dir;
 }
 
-export const CEO_PLANNER_PROMPT = _loadPrompt('ceo-planner.md');
 /* Conversational CEO prompt — used for the casual-chat fast path so a "안녕"
    doesn't crash the JSON planner. Small models will reply with a polite
    greeting no matter how strict the JSON instruction; we detect those turns
    up front and route them here instead of fighting the model. */
-export const CEO_CHAT_PROMPT = _loadPrompt('ceo-chat.md');
 /* Reads the user's chosen Secretary bridge scope. The setting controls how
    much of the user↔company interaction Secretary mediates:
      off          — Secretary only handles Telegram. Sidebar talks to CEO direct.
@@ -2664,27 +1717,11 @@ export function readSecretaryBridgeMode(): SecretaryBridgeMode {
    answer itself (greeting, schedule lookup, simple Q&A) or needs to be
    escalated to the CEO planner for multi-agent work. Output is strict JSON
    so we can branch deterministically. */
-export const SECRETARY_TRIAGE_PROMPT = _loadPrompt('secretary-triage.md');
 /* Heuristic for "this is small talk, not a work order". When true we skip
    the JSON planner and just have CEO chat back. Conservative: only matches
    short greetings/acks; anything longer or with action verbs falls through
    to the full planner. */
-export function _isCasualChat(text: string): boolean {
-    const t = (text || '').trim();
-    if (!t) return false;
-    // Very short messages with no verbs → casual
-    if (t.length < 6) return true;
-    // Common Korean greetings / acks / status questions (whole-word-ish)
-    if (/^(안녕|잘\s*지냈|헬로|하이|좋은\s*아침|좋은\s*저녁|굿모닝|굿이브닝|반가워|오랜만|뭐해|뭐\s*하고|잘\s*있어|식사|밥\s*먹|커피|화이팅|파이팅)/i.test(t)) return true;
-    if (/^(응|네|넵|넹|그래|좋아|오케이|ok|okay|ㅇㅋ|알겠|확인|고마워|감사|땡큐|thx|thanks)([\s.!?~ㅋㅎ]|$)/i.test(t)) return true;
-    // Pure emoji/laughter
-    if (/^[\sㅋㅎ.!?~ㅠㅜ😂🙂😊👍❤️]+$/u.test(t)) return true;
-    return false;
-}
 
-export const CEO_REPORT_PROMPT = _loadPrompt('ceo-report.md');
-export const CONFER_PROMPT = _loadPrompt('confer.md');
-export const DECISIONS_EXTRACT_PROMPT = _loadPrompt('decisions-extract.md');
 /* v2.87.11 — 에이전트가 외부 API에 의존할 때, 자격증명이 없으면 그 사실을
    에이전트 본인이 알고 사용자에게 입력해달라고 응답해야 함. 이 함수가
    sysPrompt에 명시적인 config 상태 블록을 주입한다. 키가 비어있으면 강제로
@@ -2694,219 +1731,8 @@ export const DECISIONS_EXTRACT_PROMPT = _loadPrompt('decisions-extract.md');
    출력해야만 발동됐는데, 작은 LLM은 자주 안 함 → 거짓말 (placeholder 데이터)
    양산. 이제 prefetch 결과가 있으면 에이전트가 거짓말 못 함 — 진짜 숫자 보고
    답하거나 "데이터에 없음"이라고 솔직히 말하거나. */
-export async function prefetchAgentRealtimeData(agentId: string): Promise<string> {
-  /* v2.89.11 — 진짜 API 호출하는 도구 우선. 이전엔 youtube_account.py 호출했는데
-     그건 설정 sanity-check만 출력하지 실제 채널 데이터 안 가져옴. my_videos_check.py
-     가 진짜 YouTube API 호출해서 채널 영상·조회수·기준선 데이터 반환. */
-  const candidates: Array<{ tool: string; label: string }> = [];
-  if (agentId === 'youtube') {
-    candidates.push({ tool: 'my_videos_check.py', label: 'YouTube 채널 영상 분석 (실제 API 데이터)' });
-    candidates.push({ tool: 'youtube_account.py', label: 'YouTube 설정 확인 (fallback)' });
-  }
-  /* v2.89.136 — business prefetch. 현빈에게 매출 질문 들어오면 paypal_revenue.py
-     자동 실행 → 거래 + 게임별 분류 + 환불·수수료 마크다운 컨텍스트로 주입 →
-     현빈이 환각 없이 진짜 숫자로 분석. 유튜브(레오) 와 동일 패턴. */
-  if (agentId === 'business') {
-    candidates.push({ tool: 'paypal_revenue.py', label: 'PayPal 매출 분석 (게임·프로젝트별, 실제 거래 데이터)' });
-  }
-  if (candidates.length === 0) return '';
-  const toolsDir = path.join(getCompanyDir(), '_agents', agentId, 'tools');
-  if (!fs.existsSync(toolsDir)) return '';
-  const blocks: string[] = [];
-  let gotRealData = false;
-  for (const c of candidates) {
-    const scriptPath = path.join(toolsDir, c.tool);
-    if (!fs.existsSync(scriptPath)) continue;
-    /* 첫 도구가 성공하면 fallback 도구는 건너뜀 (이미 진짜 데이터 확보) */
-    if (gotRealData) break;
-    try {
-      const r = await new Promise<{ exitCode: number; output: string; timedOut: boolean }>((resolve) => {
-        runCommandCaptured(`${_pythonCmd()} ${JSON.stringify(c.tool)}`, toolsDir, () => { /* silent */ }, 90000)
-          .then(resolve)
-          .catch(() => resolve({ exitCode: -1, output: '', timedOut: false }));
-      });
-      const out = (r.output || '').trim();
-      if (r.exitCode === 0 && out) {
-        blocks.push(`### ${c.label}\n\`\`\`\n${out.slice(0, 5000)}\n\`\`\``);
-        gotRealData = true;
-      } else if (out) {
-        /* exit code != 0 but has output — usually error message worth surfacing */
-        blocks.push(`### ${c.label} _(exit ${r.exitCode}${r.timedOut ? ', 시간 초과' : ''})_\n\`\`\`\n${out.slice(0, 3000)}\n\`\`\``);
-      } else {
-        blocks.push(`### ${c.label}\n_(도구 실행 실패 — exit ${r.exitCode}${r.timedOut ? ', 시간 초과' : ''}, 출력 없음. Python·google-api-python-client 설치 확인 필요)_`);
-      }
-    } catch (err: any) {
-      blocks.push(`### ${c.label}\n_(실행 에러: ${err?.message || err})_`);
-    }
-  }
-  if (blocks.length === 0) return '';
-  /* 진짜 데이터 확보 여부에 따라 강력한 지시 다르게 */
-  const strictRule = gotRealData
-    ? `⚠️ **위 데이터에 없는 숫자는 추측·생성 금지**. "[데이터 입력 필요]" 같은 placeholder 절대 금지. 빈 항목은 "이 지표는 사용 가능 데이터에 포함 안 됨"이라고 솔직히 표시.
 
-🛑 **read_file·list_files 사용 금지 (실시간 데이터 이미 위에 있음)**:
-위 [실시간 데이터] 블록에 진짜 매출/거래/숫자가 모두 포함돼 있음. README 또는 .md 문서 읽지 마세요 — 그건 사용법 안내일 뿐이고 실데이터 아님. 위 표·숫자를 그대로 인용해서 즉시 분석/액션 제안.
 
-✅ **즉시 답변 패턴**:
-1. 첫 줄: "사장님, 이번 달 매출 [정확한 금액] 입니다."
-2. 핵심 인사이트 1~2개 (위 데이터에서 직접 인용)
-3. 다음 액션 1개 (구체적, 실행 가능)
-4. 마지막 자가평가 + 다음 단계 (필수)`
-    : `🛑 **실시간 데이터 가져오기 실패** — 위 출력은 에러 메시지뿐. 사용자에게 정확히 무엇이 문제인지(Python 미설치? 패키지 미설치? API 키 미설정?) 알려주고, 가짜 분석·placeholder 데이터 절대 생성하지 마세요. 작업은 '대기' 평가로 끝내고 다음 단계는 사용자가 환경 셋업 후 재시도.`;
-  return `\n\n[실시간 데이터 — 시스템이 방금 도구로 가져온 진짜 출력]\n\n${blocks.join('\n\n')}\n\n${strictRule}`;
-}
-
-export function buildAgentConfigStatus(agentId: string): string {
-  const lines: string[] = [];
-  if (agentId === 'youtube') {
-    try {
-      /* v2.89.18 — 캐노니컬 youtube_account.json 단일 출처. 이전엔 config.md를
-         읽어서 외부 연결 패널·도구·에이전트 상태가 다른 데이터 보고 있었음. */
-      const jsonPath = path.join(getCompanyDir(), '_agents', 'youtube', 'tools', 'youtube_account.json');
-      let cfg: Record<string, any> = {};
-      try {
-        if (fs.existsSync(jsonPath)) cfg = JSON.parse(fs.readFileSync(jsonPath, 'utf-8') || '{}');
-      } catch { /* malformed */ }
-      const apiKey = String(cfg.YOUTUBE_API_KEY || '').trim();
-      const channelId = String(cfg.MY_CHANNEL_ID || '').trim() || String(cfg.MY_CHANNEL_HANDLE || '').trim();
-      const oauthOk = isYoutubeOAuthConnected();
-      const missing: string[] = [];
-      if (!apiKey) missing.push('YOUTUBE_API_KEY (구독자/조회수/영상 메타)');
-      if (!channelId) missing.push('YOUTUBE_CHANNEL_ID (내 채널 식별자)');
-      if (missing.length > 0) {
-        lines.push(`\n\n[⚠️ 필수 자격증명 미설정]`);
-        lines.push(`다음 정보가 비어있어 실제 분석이 불가능합니다:`);
-        for (const m of missing) lines.push(`- ${m}`);
-        lines.push('');
-        lines.push(`[필수 응답 규칙]`);
-        lines.push(`반드시 사용자에게 다음과 같이 안내하세요:`);
-        lines.push(`> 📊 채널 분석을 하려면 YouTube API 키와 채널 ID가 필요해요. 헤더 우측 "👥 직원 에이전트 보기" 버튼 → YouTube 카드 ⚙️ 클릭 → API 키와 채널 ID 입력 후 다시 요청해주세요.`);
-        lines.push(`추측이나 일반론으로 답하지 말고, 위 안내만 짧게 출력하세요. 작업은 미완료(📊 평가: 대기)로 표시.`);
-      } else if (!oauthOk) {
-        /* v2.89.8 — Analytics OAuth가 비연결인데 사용자가 시청 지속률 등을 요청하면,
-           시스템이 자동으로 브라우저를 열어 OAuth 인증을 진행합니다. 에이전트는
-           긴 안내 X, 짧게 한 줄만 출력. */
-        lines.push(`\n\n[자격증명 상태] ✅ YouTube Data API 연결됨 — 공개 통계 분석 즉시 가능 (구독자·조회수·영상별 메타·댓글)`);
-        lines.push(`⚠️ Analytics OAuth 미연결 — 시청 지속률·트래픽 소스·인구통계 같은 비공개 지표는 OAuth 인증 필요`);
-        lines.push(``);
-        lines.push(`[자동 OAuth 트리거 정책]`);
-        lines.push(`사용자가 위 비공개 지표를 요청하면 시스템이 자동으로 브라우저를 열어 Google OAuth 인증을 시작합니다. 당신은 길게 설명할 필요 없이 다음 한 문장만 출력하세요:`);
-        lines.push(`> "🔐 Analytics 데이터 접근 권한이 필요해서 Google 인증 창을 자동으로 열어드릴게요. 브라우저에서 승인 후 다시 요청해주세요."`);
-        lines.push(`그리고 출력 끝에 **반드시** 다음 토큰을 포함하세요 (시스템이 이걸 보고 OAuth 자동 발동):`);
-        lines.push(`<TRIGGER:youtube_oauth>`);
-        lines.push(``);
-        lines.push(`[공개 통계만 요청된 경우]`);
-        lines.push(`OAuth 트리거 토큰 출력 X. 가용 데이터로 충실히 분석.`);
-      } else {
-        lines.push(`\n\n[자격증명 상태] ✅ YouTube API + OAuth 모두 연결됨 — 모든 분석 가능`);
-      }
-    } catch { /* keep silent */ }
-  }
-  if (agentId === 'secretary') {
-    const tg = readTelegramConfig();
-    const calOk = isCalendarWriteConnected();
-    if (!tg.token || !tg.chatId || !calOk) {
-      lines.push(`\n\n[⚠️ 비서 자격증명 일부 미설정]`);
-      if (!tg.token || !tg.chatId) lines.push(`- 텔레그램 봇 미연결 (보고/메신저 기능 제한)`);
-      if (!calOk) lines.push(`- Google Calendar OAuth 미연결 (일정 추가/수정 불가)`);
-      lines.push(`사용자가 해당 기능을 요청하면 "직원 보기 → 카리나 카드 → ⚙️에서 연결해주세요"라고 안내하세요.`);
-    }
-  }
-  /* v2.89.7 — YouTube에 의존하는 다른 에이전트들도 OAuth 안내 절대 하지 않게.
-     Researcher, Business 등이 YouTube 데이터를 사용할 때 "OAuth 필요" 같은
-     막다른 안내로 빙빙 도는 패턴을 끊음. */
-  if (agentId === 'researcher' || agentId === 'business' || agentId === 'writer' || agentId === 'editor') {
-    const oauthOk = isYoutubeOAuthConnected();
-    if (!oauthOk) {
-      lines.push(`\n\n[유튜브 데이터 사용 가이드]`);
-      lines.push(`동료 YouTube 에이전트가 제공하는 데이터는 "공개 통계 한정" (구독자·조회수·영상별 메타·댓글). 시청 지속률·트래픽 소스·시청자 인구통계는 현재 "준비 중" 단계입니다.`);
-      lines.push(`사용자에게 "OAuth 연결 버튼 눌러주세요" 같은 안내 하지 말고, 있는 데이터로 가능한 분석을 충실히 수행하세요. 작업 평가는 '대기' 대신 '진행중' 또는 '완료'로.`);
-    }
-  }
-  return lines.join('\n');
-}
-
-export function buildSpecialistPrompt(agentId: string): string {
-  const a = AGENTS[agentId];
-  const company = readCompanyName() || '1인 기업';
-  /* v2.89.45 — 페르소나 블록. 에이전트별 voice 정의가 있으면 주입 → 똑같은 LLM이라도
-     레오는 데이터 중심 솔직한 톤, 영숙은 정중·친근한 톤으로 답함. 인격 있는 동료처럼 보임. */
-  const personaBlock = a.persona
-    ? `\n\n[당신의 톤·말투 — 항상 이 페르소나 유지]\n${a.persona}`
-    : '';
-  return `당신은 ${company}의 ${a.emoji} ${a.name} (${a.role}) 에이전트입니다.
-
-[전문 영역]
-${a.specialty}${personaBlock}
-
-[작업 환경]
-- 시스템 컨텍스트에 (1) 당신의 개인 목표 (2) 회사 공동 목표 (3) 회사 정체성/의사결정 (4) 당신의 개인 메모리가 우선순위 순서대로 주입됩니다. 1번을 가장 신뢰하세요.
-- 같은 세션에서 다른 에이전트들이 먼저 만든 산출물도 함께 제공됩니다 (있을 경우).
-- 당신의 산출물은 자동으로 sessions/ 폴더에 저장되어 다음 세션에서 다시 참조됩니다.
-
-[로컬 파일·터미널 직접 조작 (v2.89.94+)]
-당신은 사용자 컴퓨터의 실제 파일 시스템과 터미널에 직접 연결되어 있습니다. 텍스트로 "만들었다·편집했다"고 하지 말고 아래 태그로 실제 실행하세요. 시스템이 자동으로 디스크에 적용합니다.
-
-  • <create_file path="...">내용</create_file> — 파일 생성·덮어쓰기 (~/, 절대경로, $HOME 모두 가능)
-  • <edit_file path="..."><find>기존</find><replace>새</replace></edit_file> — 정확/공백관용 fuzzy 매칭. 성공 시 unified diff 자동 표시
-  • <read_file path="..."/> — 32KB까지 읽기 (cat -n 줄번호 포함). 편집 전엔 반드시 먼저 read
-  • <delete_file path="..."/> — 파일·디렉토리 삭제
-  • <list_files path="..."/> — 디렉토리 목록
-  • <glob pattern="**/*.ts"/> — 패턴으로 파일 찾기 (\`**\`=하위 모두, \`*\`=슬래시 외)
-  • <grep pattern="..." files="**/*.py"/> — 파일 내용 검색 (정규식, 줄번호 표시)
-  • <run_command>명령</run_command> — 셸 실행. 맥은 sh, 윈도우는 cmd.exe
-  • <reveal_in_explorer path="..."/> — Finder/Explorer 열기 (사용자 시각 확인용)
-  • <open_file path="..."/> — 기본 앱(이미지·PDF·웹페이지)으로 열기
-
-OS 차이: 백그라운드 프로세스는 맥/리눅스에선 \`nohup ... &\`, 윈도우에선 \`start /b ...\` (시스템이 \`run_command\`를 \`shell:true\`로 실행하므로 양쪽 모두 작동).
-
-[🛑 절대 경로 사용 규칙 — v2.89.131]
-- 이전 turn 에서 파일을 만들었다면 그 **절대 경로 그대로** 다시 쓰세요. 추측 금지.
-- 시스템이 system prompt 아래쪽에 "당신이 최근 작업한 파일들" 블록으로 정확한 경로를 알려줍니다. 그걸 신뢰하세요.
-- 당신의 도구 폴더 (\`_agents/<id>/tools/\`) 와 사용자 프로젝트 폴더는 다릅니다. 사용자가 "이 프로젝트에 ..."라고 했으면 그 폴더는 도구 폴더 안이 아닙니다.
-- 경로가 헷갈리면 추측하지 말고 \`<list_files path="~/Downloads/지식메모리/_company"/>\` 처럼 상위 폴더부터 탐색하세요.
-
-[출력 규칙]
-- 한국어 마크다운으로 작성
-- 첫 줄: 한 줄 시작 신호 (예: "${a.emoji} ${a.name}: 작업 시작합니다.")
-- 본문: 구체적인 산출물. 추상적·일반론 금지. 바로 실행 가능한 결과물.
-- 파일 만들거나 명령 실행할 거면 위 태그 사용. "만들겠습니다" 텍스트로만 끝나면 사용자 컴퓨터엔 아무 일도 안 일어남.
-- 사족·사과·면책·자기검열 금지. 가성비 있게.
-- 위 [톤·말투]가 정의돼있으면 반드시 그 voice로 일관되게 작성.
-
-[필수 자가평가 — 마지막 두 줄 강제]
-- 끝에서 두 번째 줄: \`📊 평가: <완료|진행중|대기> — <한 문장 이유>\`
-  · 완료 = 이 산출물로 목표가 달성됨
-  · 진행중 = 다음 스텝에서 더 진전 가능
-  · 대기 = 다른 에이전트/사람의 입력이 필요해 지금은 멈춤
-- 마지막 줄: \`📝 다음 단계: <한 줄, 구체적 액션>\` (대기 상태면 "대기 — <누구의 무엇이 필요>" 형식)
-- 자가평가 없이 끝나면 시스템이 산출물을 거부합니다.`;
-}
-
-// ============================================================
-// Robust Git Auto-Sync (module scope)
-// ------------------------------------------------------------
-// Auto-sync runs silently in the background after every brain
-// modification. It must be NON-DESTRUCTIVE: never force-push,
-// never use `-X ours` to silently discard remote changes, and
-// never block the UI thread on credential prompts.
-// On any conflict / auth failure, surface a friendly message
-// and let the user resolve it via the manual sync menu.
-// ============================================================
-
-/* Company-folder git sync (separate from brain). Only meaningful when the
-   company is DETACHED (lives outside <brain>/_company/) AND the user has
-   set `agentOs.companyRepo`. Otherwise no-op — company is already
-   covered by brain sync (nested) or user hasn't asked for backup. Uses
-   its own lock so it can run in parallel with brain sync. */
-
-// ============================================================
-// Extension Activation
-// ============================================================
-
-// Module-level reference so module-scope helpers (e.g. showBrainNetwork) can
-// register externally-opened graph panels with the provider for thinking
-// event broadcasts.
 export let _activeChatProvider: SidebarChatProvider | null = null;
 export let _extCtx: vscode.ExtensionContext | null = null;
 
@@ -3928,148 +2754,6 @@ export function activate(context: vscode.ExtensionContext) {
     );
 }
 
-async function runConnectCompanyRepo() {
-    const cfg = vscode.workspace.getConfiguration('agentOs');
-    const companyDir = getCompanyDir();
-    const brainDir = _getBrainDir();
-    const isNested = path.normalize(companyDir).startsWith(path.normalize(brainDir) + path.sep);
-    if (isNested) {
-        const ok = await vscode.window.showInformationMessage(
-            `회사 폴더가 두뇌 안 nested 위치에 있어요 — 두뇌 GitHub 저장소(\`secondBrainRepo\`)로 이미 같이 백업됩니다.\n\n별도 저장소를 쓰려면 먼저 명령 팔레트에서 "Agent OS: 회사 폴더 변경"으로 회사를 두뇌 외부로 옮기세요.`,
-            { modal: false },
-            '회사 폴더 변경하기',
-            '괜찮아요'
-        );
-        if (ok === '회사 폴더 변경하기') {
-            await runChangeCompanyDir();
-        }
-        return;
-    }
-    const cur = (cfg.get<string>('companyRepo', '') || '').trim();
-    const url = await vscode.window.showInputBox({
-        title: '🔗 회사 GitHub 저장소 URL',
-        prompt: '예: https://github.com/사용자/my-company-workspace  (비워두면 회사 백업 OFF)',
-        value: cur,
-        ignoreFocusOut: true,
-        placeHolder: 'https://github.com/...',
-        validateInput: (v: string) => {
-            const t = (v || '').trim();
-            if (!t) return null; // empty = clear setting
-            if (!validateGitRemoteUrl(t)) return '⚠️ 유효한 git URL이 아닌 것 같아요. https://github.com/ 또는 git@ 형식';
-            return null;
-        }
-    });
-    if (url === undefined) return; // user cancelled
-    const cleaned = url.trim();
-    await cfg.update('companyRepo', cleaned, vscode.ConfigurationTarget.Global);
-    if (!cleaned) {
-        await vscode.window.showInformationMessage('회사 GitHub 저장소 연결 해제됨. 회사 폴더는 로컬에만 저장됩니다.');
-        return;
-    }
-    /* Try a first sync immediately so user gets instant feedback. */
-    await vscode.window.showInformationMessage(`✅ 회사 GitHub 연결됨: ${cleaned.replace(/^https:\/\/[^@]+@/, 'https://')}\n\n첫 백업을 시도합니다…`);
-    await _safeGitAutoSyncCompany(`Initial company backup`, _activeChatProvider);
-}
-
-/* Folder-picker driven flow for changing where the company workspace lives.
-   Three paths the user can take:
-     A) Nested under brain (default, recommended for solo users)
-     B) Pick another folder (detached — separate git repo, team-shared, ...)
-     C) Cancel */
-async function runChangeCompanyDir() {
-    const cfg = vscode.workspace.getConfiguration('agentOs');
-    const cur = (cfg.get<string>('companyDir', '') || '').trim();
-    const oldDir = getCompanyDir();
-    const brainDir = _getBrainDir();
-    const isNested = !cur || _resolvePathInput(cur) === path.join(brainDir, COMPANY_SUBDIR);
-    const stateLine = isNested
-        ? `현재: 📂 두뇌 안 nested (\`${path.join(brainDir, COMPANY_SUBDIR).replace(os.homedir(), '~')}\`)`
-        : `현재: 📂 별도 위치 (\`${cur.replace(os.homedir(), '~')}\`)`;
-
-    const picked = await vscode.window.showQuickPick(
-        [
-            { label: '$(folder) 두뇌 안 nested로 (권장 · 한 git repo)', description: '~/.../<두뇌>/_company/', value: 'nest' as const },
-            { label: '$(folder-opened) 별도 폴더 직접 선택…', description: '두뇌와 완전히 분리. 외주 공유·다른 git repo·다른 동기화 가능', value: 'detach' as const },
-            { label: '$(close) 취소', value: 'cancel' as const },
-        ],
-        { placeHolder: stateLine, ignoreFocusOut: true }
-    );
-    if (!picked || picked.value === 'cancel') return;
-
-    let newDir = '';
-    if (picked.value === 'nest') {
-        newDir = path.join(brainDir, COMPANY_SUBDIR);
-        await cfg.update('companyDir', '', vscode.ConfigurationTarget.Global);
-    } else {
-        const folder = await vscode.window.showOpenDialog({
-            canSelectFolders: true, canSelectFiles: false, canSelectMany: false,
-            openLabel: '여기를 회사 폴더로',
-            defaultUri: vscode.Uri.file(os.homedir()),
-        });
-        if (!folder || folder.length === 0) return;
-        newDir = folder[0].fsPath;
-        /* Sanity check — refuse silently-broken read-only picks (USB ROM,
-           system folders, mounted snapshots, etc.). Bail with a clear msg
-           BEFORE persisting the setting so user can retry without rolling
-           back. */
-        try {
-            fs.accessSync(newDir, fs.constants.W_OK);
-        } catch {
-            await vscode.window.showErrorMessage(
-                `❌ 이 폴더는 쓰기 권한이 없어요. 다른 폴더를 선택하세요: ${newDir.replace(os.homedir(), '~')}`
-            );
-            return;
-        }
-        await cfg.update('companyDir', newDir, vscode.ConfigurationTarget.Global);
-    }
-
-    /* Move existing data if old has content + new is empty/non-existent.
-       Otherwise leave both alone — refuse to merge silently to avoid
-       overwriting anything. */
-    if (newDir === oldDir) {
-        await vscode.window.showInformationMessage(`회사 폴더 위치 변경 없음.`);
-        return;
-    }
-    const oldHasData = fs.existsSync(oldDir) && fs.readdirSync(oldDir).length > 0;
-    const newHasData = fs.existsSync(newDir) && fs.readdirSync(newDir).length > 0;
-    if (!oldHasData) {
-        await vscode.window.showInformationMessage(`✅ 회사 폴더 위치 설정됨: ${newDir.replace(os.homedir(), '~')}`);
-        return;
-    }
-    if (newHasData) {
-        await vscode.window.showWarningMessage(
-            `⚠️ 새 위치(${path.basename(newDir)})에 이미 파일이 있어서 자동 이동을 건너뜁니다. 옛 폴더(${oldDir.replace(os.homedir(), '~')})의 내용을 수동으로 합쳐주세요.`,
-            { modal: false }
-        );
-        return;
-    }
-    const move = await vscode.window.showInformationMessage(
-        `옛 회사 폴더 내용을 새 위치로 이동할까요?\n\n옛: ${oldDir.replace(os.homedir(), '~')}\n새: ${newDir.replace(os.homedir(), '~')}`,
-        { modal: true },
-        '이동',
-        '나중에'
-    );
-    if (move === '이동') {
-        try {
-            fs.mkdirSync(newDir, { recursive: true });
-            for (const entry of fs.readdirSync(oldDir)) {
-                fs.renameSync(path.join(oldDir, entry), path.join(newDir, entry));
-            }
-            try { fs.rmdirSync(oldDir); } catch { /* maybe non-empty leftovers, ignore */ }
-            await vscode.window.showInformationMessage(`✅ 이동 완료: ${newDir.replace(os.homedir(), '~')}`);
-        } catch (e: any) {
-            await vscode.window.showErrorMessage(`이동 실패: ${e?.message || e}`);
-        }
-    } else {
-        await vscode.window.showInformationMessage(`✅ 위치만 바뀜. 옛 데이터는 ${oldDir.replace(os.homedir(), '~')} 에 그대로 남아있습니다.`);
-    }
-}
-
-// ============================================================
-// Knowledge Graph Builder — REAL connections (not random!)
-// Parses [[wikilinks]], markdown links, and #tags from .md files
-// to build a true semantic graph of the user's brain.
-// ============================================================
 interface BrainNode {
     id: string;            // relative path inside brainDir
     name: string;          // display name (basename without .md)

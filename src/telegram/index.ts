@@ -41,3 +41,19 @@ export {
     startTelegramPolling,
     stopTelegramPolling,
 } from './polling';
+
+/* Telegram dispatch helpers — capability/status reports + LLM dispatch utilities
+   + casual chat / action-item / JSON parsing helpers. Extracted in cycle 8.
+   Depends on '../extension'. */
+export {
+    TELEGRAM_HELP,
+    _modelToTier,
+    _serializeMessages,
+    _quickLLMCall,
+    classifyToAgent,
+    _extractFirstJsonObject,
+    _buildCapabilityReport,
+    _buildDispatchStatusReport,
+    _isCasualChat,
+    _harvestActionItems,
+} from './dispatch';

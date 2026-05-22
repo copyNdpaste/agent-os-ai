@@ -30,3 +30,13 @@ export {
     parseLooseDate,
     computeNextRunAt,
 } from './recurrence';
+
+/* UI helpers — VS Code ThemeIcon variants + due-label formatter +
+   `rebuildUnifiedSchedule`. Depends on '../extension' (for `_safeReadText`)
+   and the `vscode` namespace, so split out from the pure domain code. */
+export {
+    _priorityGroupIcon,
+    _taskStatusIcon,
+    _formatDueLabel,
+    rebuildUnifiedSchedule,
+} from './ui-helpers';
