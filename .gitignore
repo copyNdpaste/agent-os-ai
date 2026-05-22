@@ -10,7 +10,10 @@ releases/
 .vscode/PythonImportHelper-v2-Completion.json
 assets/tool-seeds/instagram/drafts/
 
-# 인스타 에이전트 — 토큰·시크릿 격리 (v2.91.x token_manager)
+# 회사 런타임 워크스페이스 — 사용자별 로컬 데이터 (드래프트·시크릿·상태)
+_company/
+
+# 인스타 에이전트 — 토큰·시크릿 격리 (v2.91.x token_manager, _company/ 차단의 이중 안전망)
 _company/_agents/instagram/.env
 _company/_agents/instagram/tools/.env
 _company/_agents/instagram/tools/tokens.json
