@@ -64,3 +64,8 @@ export {
     buildAgentConfigStatus,
     buildSpecialistPrompt,
 } from './agent-glue';
+
+/* Walker + keyword/relevance scorers — RAG primitives shared by
+   graph-builder, rag-context, and agent-glue. Originally in extension.ts. */
+export { _agentKeywords, _scoreRelevance } from './keywords';
+export { _walkBrainMd, COMPANY_INTERNAL_DIRS } from './walk';

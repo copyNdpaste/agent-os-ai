@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { pickNextDue } from '../../src/scheduler';
-import type { ReportScheduleEntry } from '../../src/scheduler';
+import { pickNextDue } from '../../src/scheduler/planner';
+import type { ReportScheduleEntry } from '../../src/scheduler/types';
 
 /** Construct a Date with hour/minute/dow controlled, today's date string is
  *  derived from the Date itself so the planner's lastFiredAt check is exercised

@@ -23,10 +23,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 import { _getBrainDir } from '../paths';
-import {
-    _agentKeywords,
-    _walkBrainMd,
-} from '../extension';
+import { _agentKeywords } from './keywords';
+import { _walkBrainMd } from './walk';
 
 import { _extractWikiSnippet } from './graph-builder';
 import type { BrainSnippet } from './types';

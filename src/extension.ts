@@ -238,6 +238,44 @@ export {
     autoMarkTrackerFromDispatch, prefetchAgentRealtimeData, buildAgentConfigStatus,
     buildSpecialistPrompt,
 };
+/* Per-domain command registrations (chat, dashboard, tracker, ...).
+   activate() instantiates providers + status bars + loops, then calls
+   registerAll() to wire vscode.commands.registerCommand bindings. */
+import { registerAll as _registerAllCommands, type CommandProviders } from './commands';
+
+/* Brain RAG primitives — keyword/relevance scorer + walker + company-internal
+   skip-set. Originally inline in extension.ts; extracted to brain/keywords.ts
+   and brain/walk.ts. Re-exported here so cross-module consumers (and the
+   public extension surface) keep the same names. */
+import { _agentKeywords, _scoreRelevance } from './brain/keywords';
+import { _walkBrainMd, COMPANY_INTERNAL_DIRS } from './brain/walk';
+export { _agentKeywords, _scoreRelevance, _walkBrainMd, COMPANY_INTERNAL_DIRS };
+
+/* Tracker UI/IO helpers — `_coercePriority` 1-line shim, `trackerToMarkdown`
+   formatter, `listAgentTools` agent-tools catalog. Extracted to
+   tracker/ui-helpers.ts (re-uses existing UI helpers module). */
+import {
+    _coercePriority,
+    trackerToMarkdown,
+    listAgentTools,
+} from './tracker/ui-helpers';
+import type { AgentTool, ToolField } from './tracker/ui-helpers';
+export { _coercePriority, trackerToMarkdown, listAgentTools };
+export type { AgentTool, ToolField };
+
+/* Calendar ↔ tracker sync — extension wrappers close over companyDir so
+   call sites (addTrackerTask/updateTrackerTask) keep the original one-arg
+   signature. Implementation lives in calendar/tracker-sync.ts. */
+import {
+    createCalendarEventForTask as _createCalendarEventForTaskImpl,
+    updateCalendarEventForTask as _updateCalendarEventForTaskImpl,
+} from './calendar/tracker-sync';
+
+/* Report scheduler — extracted tick runner. extension.ts wrappers
+   (readReportSchedule/writeReportSchedule/sendTelegramLong/_runDailyBriefingOnce)
+   are imported back inside scheduler/tick-runner.ts; this side just wires
+   start at activate() time. */
+import { startReportScheduler } from './scheduler/tick-runner';
 
 export async function _ensureBrainDir(): Promise<string | null> {
     if (_isBrainDirExplicitlySet()) {
@@ -438,8 +476,8 @@ export function buildWorldDeskPositions(): Record<string, DeskPos> {
 //      separate git repo, different cloud sync. Brain stays at brain root,
 //      independent.
 /* COMPANY_SUBDIR, _resolvePathInput, getCompanyDir 모두 ./paths.ts 로 이동.
-   여기엔 COMPANY_SUBDIR과 무관한 INTERNAL_DIRS 만 남김. */
-export const COMPANY_INTERNAL_DIRS = new Set(['_cache', '_tmp']);
+   COMPANY_INTERNAL_DIRS 도 src/brain/walk.ts 로 이동 — 사용처가 모두 brain
+   walking 이라 brain 도메인에 더 자연스러움. extension.ts 는 re-export 만. */
 
 /* One-shot migration: when the user upgrades from a layout where company
    files lived at the brain root, transparently move them under _company/.
@@ -752,63 +790,14 @@ export function readToolAutonomyLevel(agentId: string): number {
 
 type ReportScheduleEntry = sch.ReportScheduleEntry;
 
-function _reportSchedulePath(): string { return sch.schedulePath(getCompanyDir()); }
+/* Storage wrappers — used by scheduler/tick-runner.ts (imported back via
+   '../extension') as well as direct callers (UI panels). */
 export function readReportSchedule(): { entries: ReportScheduleEntry[] } { return sch.readSchedule(getCompanyDir()); }
 export function writeReportSchedule(s: { entries: ReportScheduleEntry[] }) { sch.writeSchedule(getCompanyDir(), s); }
-let _reportSchedulerTimer: NodeJS.Timeout | null = null;
-async function _runScheduledReportEntry(entry: ReportScheduleEntry) {
-    try {
-        if (entry.action === 'briefing') {
-            await _runDailyBriefingOnce(true);
-        } else if (entry.action === 'tool' && entry.tool && entry.agentId) {
-            const toolDir = path.join(getCompanyDir(), '_agents', entry.agentId, 'tools');
-            const scriptPath = path.join(toolDir, `${entry.tool}.py`);
-            if (!fs.existsSync(scriptPath)) {
-                console.warn(`[scheduler] tool not found: ${scriptPath}`);
-                return;
-            }
-            const r = await runCommandCaptured(`${_pythonCmd()} ${JSON.stringify(entry.tool + '.py')}`, toolDir, () => {}, 120000);
-            const out = (r.output || '').trim();
-            const status = r.exitCode === 0 ? '✅' : `❌ exit ${r.exitCode}`;
-            const msg = `📆 *${entry.label}* (스케줄 자동 실행) ${status}\n\n\`\`\`\n${out.slice(0, 3000)}\n\`\`\``;
-            try { await sendTelegramLong(msg); } catch { /* silent */ }
-            try { _activeChatProvider?.postSystemNote?.(`📆 ${entry.label} 자동 실행 ${status}`, '📆'); } catch { /* ignore */ }
-        }
-    } catch (e: any) {
-        console.warn('[scheduler] entry failed:', e?.message || e);
-    }
-}
-function _scheduleTick() {
-    try {
-        const sch = readReportSchedule();
-        if (sch.entries.length === 0) return;
-        const now = new Date();
-        const today = now.toISOString().slice(0, 10);
-        const dow = now.getDay();
-        const hour = now.getHours();
-        const minute = now.getMinutes();
-        let changed = false;
-        for (const entry of sch.entries) {
-            if (!entry.enabled) continue;
-            if (entry.hour !== hour || entry.minute !== minute) continue;
-            if (entry.days && entry.days.length > 0 && !entry.days.includes(dow)) continue;
-            if (entry.lastFiredAt === today) continue; /* 오늘 이미 실행 */
-            entry.lastFiredAt = today;
-            changed = true;
-            _runScheduledReportEntry(entry).catch(() => { /* silent */ });
-        }
-        if (changed) writeReportSchedule(sch);
-    } catch (e: any) {
-        console.warn('[scheduler] tick failed:', e?.message || e);
-    }
-}
-function startReportScheduler() {
-    if (_reportSchedulerTimer) return;
-    /* 매 60초마다 점검. 분 단위 정밀도면 충분. */
-    _reportSchedulerTimer = setInterval(_scheduleTick, 60_000);
-    /* 첫 tick은 30초 후 — 활성화 직후 폭주 방지 */
-    setTimeout(_scheduleTick, 30_000);
-}
+
+/* `_reportSchedulePath`, `_reportSchedulerTimer`, `_runScheduledReportEntry`,
+   `_scheduleTick`, `startReportScheduler` 모두 scheduler/tick-runner.ts 로
+   이동. activate() 는 위에서 import 한 `startReportScheduler` 를 그대로 호출. */
 
 
 
@@ -837,104 +826,15 @@ function writeCalendarWriteConfig(cfg: CalendarWriteConfig) { cal.writeConfig(ge
 export function isCalendarWriteConnected(): boolean { return cal.isConnected(getCompanyDir()); }
 async function _getCalendarAccessToken(): Promise<string | null> { return cal.getAccessToken(getCompanyDir()); }
 
-/* Create a calendar event for a tracker task. Best effort — never throws.
-   Returns the eventId if successful so the caller can persist it on the
-   tracker entry for future updates. */
-async function createCalendarEventForTask(task: TrackerTask): Promise<string | null> {
-  if (!task.dueAt) return null;
-  const access = await _getCalendarAccessToken();
-  if (!access) return null;
-  const cfg = readCalendarWriteConfig();
-  const calendarId = (cfg.CALENDAR_ID || 'primary').trim() || 'primary';
-  const dur = Number(cfg.DEFAULT_DURATION_MINUTES) > 0 ? Number(cfg.DEFAULT_DURATION_MINUTES) : 60;
-  /* dueAt is "YYYY-MM-DD" or full ISO. If date-only, default to 9am that day
-     so it shows up on the user's morning. */
-  let startIso: string;
-  let endIso: string;
-  let isAllDay = false;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(task.dueAt)) {
-    const start = new Date(task.dueAt + 'T09:00:00');
-    const end = new Date(start.getTime() + dur * 60_000);
-    startIso = start.toISOString();
-    endIso = end.toISOString();
-  } else {
-    try {
-      const start = new Date(task.dueAt);
-      const end = new Date(start.getTime() + dur * 60_000);
-      startIso = start.toISOString();
-      endIso = end.toISOString();
-    } catch {
-      return null;
-    }
-  }
-  const body: any = {
-    summary: task.title.slice(0, 200),
-    description: (task.description || '') + `\n\n📋 추적 ID: ${task.id}\n생성: 비서(Secretary)`,
-    start: isAllDay ? { date: task.dueAt } : { dateTime: startIso },
-    end: isAllDay ? { date: task.dueAt } : { dateTime: endIso },
-    reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: 5 }, { method: 'popup', minutes: 60 }] },
-  };
-  try {
-    const res = await axios.post(
-      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`,
-      body,
-      {
-        headers: { Authorization: `Bearer ${access}`, 'Content-Type': 'application/json' },
-        timeout: 12000,
-        validateStatus: () => true,
-      }
-    );
-    if (res.status >= 200 && res.status < 300 && res.data?.id) {
-      return String(res.data.id);
-    }
-    console.warn('[Calendar] create event failed:', res.status, res.data);
-    return null;
-  } catch (e: any) {
-    console.warn('[Calendar] create event error:', e?.message || e);
-    return null;
-  }
+/* Tracker↔Calendar sync wrappers — close over companyDir so the rest of
+   extension.ts (addTrackerTask / updateTrackerTask) can call them with a
+   single TrackerTask argument. Implementation lives in
+   src/calendar/tracker-sync.ts. */
+function createCalendarEventForTask(task: TrackerTask): Promise<string | null> {
+    return _createCalendarEventForTaskImpl(getCompanyDir(), task);
 }
-
-/* Update a calendar event when its tracker task changes. Best effort —
-   silently no-ops if the task has no event id or Calendar isn't connected.
-   Used when a task gets renamed, completed, or its due date moves. */
-async function updateCalendarEventForTask(task: TrackerTask): Promise<boolean> {
-  if (!task.calendarEventId) return false;
-  const access = await _getCalendarAccessToken();
-  if (!access) return false;
-  const cfg = readCalendarWriteConfig();
-  const calendarId = (cfg.CALENDAR_ID || 'primary').trim() || 'primary';
-  const dur = Number(cfg.DEFAULT_DURATION_MINUTES) > 0 ? Number(cfg.DEFAULT_DURATION_MINUTES) : 60;
-  const body: any = {
-    summary: (task.status === 'done' ? '✅ ' : task.status === 'cancelled' ? '✖️ ' : '') + task.title.slice(0, 200),
-    description: (task.description || '') + `\n\n📋 추적 ID: ${task.id}\n상태: ${task.status}\n수정: 비서(Secretary)`,
-  };
-  if (task.dueAt) {
-    if (/^\d{4}-\d{2}-\d{2}$/.test(task.dueAt)) {
-      const start = new Date(task.dueAt + 'T09:00:00');
-      const end = new Date(start.getTime() + dur * 60_000);
-      body.start = { dateTime: start.toISOString() };
-      body.end = { dateTime: end.toISOString() };
-    } else {
-      try {
-        const start = new Date(task.dueAt);
-        const end = new Date(start.getTime() + dur * 60_000);
-        body.start = { dateTime: start.toISOString() };
-        body.end = { dateTime: end.toISOString() };
-      } catch { /* skip time update */ }
-    }
-  }
-  try {
-    const r = await axios.patch(
-      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(task.calendarEventId)}`,
-      body,
-      {
-        headers: { Authorization: `Bearer ${access}`, 'Content-Type': 'application/json' },
-        timeout: 12000, validateStatus: () => true,
-      }
-    );
-    return r.status >= 200 && r.status < 300;
-  } catch { return false; }
+function updateCalendarEventForTask(task: TrackerTask): Promise<boolean> {
+    return _updateCalendarEventForTaskImpl(getCompanyDir(), task);
 }
 
 // Calendar CRUD/cache wrappers — 본문은 src/calendar/*.
@@ -970,46 +870,9 @@ export async function refreshCalendarCacheViaOAuth(daysAhead: number = 14): Prom
    config so the rest of the system can find them via one stable path. */
 
 
-/* Stale-task nudge — Secretary scans the tracker every hour for user-owned
-   tasks that have been pending >24h or are past their due date, and sends
-   a single nudge per task via Telegram. Conservative: 1 ping per task max
-   per ~24h, no spam. */
-let _trackerNudgeTimer: NodeJS.Timeout | null = null;
-const _NUDGE_WINDOW_MS = 23 * 60 * 60 * 1000; /* re-ping no more than once per ~day */
-async function _runTrackerNudgeOnce() {
-    /* Piggyback: refresh calendar_cache.md via OAuth if connected. This means
-       OAuth users don't have to also configure the iCal tool — every hour
-       we pull fresh events. Failure is silent. */
-    if (isCalendarWriteConnected()) {
-        refreshCalendarCacheViaOAuth(14).catch(() => { /* never let this break nudges */ });
-    }
-    try {
-        const { token, chatId } = readTelegramConfig();
-        if (!token || !chatId) return; // can't nudge without channel
-        const tracker = readTracker();
-        const now = Date.now();
-        let changed = false;
-        const nudges: string[] = [];
-        for (const t of tracker.tasks) {
-            if (t.status === 'done' || t.status === 'cancelled') continue;
-            if (t.owner !== 'user' && t.owner !== 'mixed') continue;
-            const lastNudge = (t as any)._lastNudgeAt ? new Date((t as any)._lastNudgeAt).getTime() : 0;
-            if (now - lastNudge < _NUDGE_WINDOW_MS) continue;
-            const ageDays = (now - new Date(t.createdAt).getTime()) / 86_400_000;
-            const overdue = t.dueAt && new Date(t.dueAt).getTime() < now;
-            if (!overdue && ageDays < 1) continue; /* not stale yet */
-            nudges.push(`• \`${t.id.slice(-9)}\` ${t.title}${t.dueAt ? ` ⏰${t.dueAt.slice(0, 10)}` : ''}${overdue ? ' 🔴' : ''}`);
-            (t as any)._lastNudgeAt = new Date().toISOString();
-            t.nudges = (t.nudges || 0) + 1;
-            changed = true;
-        }
-        if (changed) writeTracker(tracker);
-        if (nudges.length > 0) {
-            const body = `👀 *비서: 확인해주세요*\n\n진행되지 않은 사용자 작업이 있어요:\n\n${nudges.slice(0, 8).join('\n')}\n\n_완료: \`/done <id>\` · 취소: \`/cancel <id>\`_`;
-            await sendTelegramReport(body);
-        }
-    } catch { /* never let nudge errors break anything */ }
-}
+/* Stale-task nudge loop body 는 src/loops/tracker-nudge.ts 로 이동.
+   activate() 가 `startTrackerNudgeLoop()` 만 호출하면 모듈 내부에서 timer 와
+   `_runTrackerNudgeOnce` 가 자체 관리됨. */
 
 /* ── P0-3: Daily briefing auto-fire ─────────────────────────────────────
    Once per day at the user's configured time (default 09:00), Secretary
@@ -1072,7 +935,7 @@ export const TASK_PRIORITY_ORDER = trk.TASK_PRIORITY_ORDER;
 export const TASK_PRIORITY_LABEL = trk.TASK_PRIORITY_LABEL;
 export type TrackerTask = trk.TrackerTask;
 
-export function _coercePriority(v: unknown): TaskPriority { return trk.coercePriority(v); }
+/* `_coercePriority` 는 src/tracker/ui-helpers.ts 로 이동 — 위에서 import + re-export. */
 function _trackerPath(): string { return trk.trackerPath(getCompanyDir()); }
 export function readTracker(): { tasks: TrackerTask[] } { return trk.readTracker(getCompanyDir()); }
 
@@ -1234,107 +1097,12 @@ function _computeNextRunAt(prev: Date, cadence: 'daily' | 'weekly' | 'monthly'):
   return trk.computeNextRunAt(prev, cadence);
 }
 
-/* P1-6: Recurrence loop — every minute, scans tracker for tasks whose
-   nextRunAt has passed. For each, spawns a fresh "instance" copy in
-   pending status and bumps the template's nextRunAt forward. The original
-   task acts as the template; the spawned copies are what the user actually
-   completes. Templates have status='in_progress' permanently — they're
-   never marked done by the user. */
-let _recurrenceTimer: NodeJS.Timeout | null = null;
-
-function _runRecurrenceTickOnce() {
-    try {
-        const tracker = readTracker();
-        const now = Date.now();
-        let anySpawned = false;
-        for (const t of tracker.tasks) {
-            if (!t.recurrence) continue;
-            if (t.status === 'cancelled') continue;
-            if (!t.nextRunAt) {
-                /* First time we've seen this template — schedule from createdAt
-                   so freshly-added recurring tasks don't fire immediately. */
-                const baseline = new Date(t.createdAt);
-                t.nextRunAt = _computeNextRunAt(baseline, t.recurrence).toISOString();
-                continue;
-            }
-            const due = new Date(t.nextRunAt).getTime();
-            if (now < due) continue;
-            /* Spawn a fresh instance (without recurrence — only the template
-               is recurring). Owner inherits from template. */
-            addTrackerTask({
-                title: t.title,
-                description: t.description,
-                owner: t.owner,
-                agentIds: t.agentIds,
-                priority: _coercePriority(t.priority),
-                dueAt: t.nextRunAt,
-                status: t.owner === 'agent' ? 'in_progress' : 'pending',
-            });
-            /* Advance template's nextRunAt — handles the "machine was off
-               overnight, multiple cycles missed" case by jumping forward
-               until we're back in the future. */
-            let advance = new Date(t.nextRunAt);
-            while (advance.getTime() <= now) {
-                advance = _computeNextRunAt(advance, t.recurrence);
-            }
-            t.nextRunAt = advance.toISOString();
-            anySpawned = true;
-        }
-        if (anySpawned) writeTracker(tracker);
-    } catch { /* never let recurrence break anything */ }
-}
+/* Recurrence loop 본문은 src/loops/recurrence.ts 로 이동. activate() 가
+   `startRecurrenceLoop()` 만 호출. */
 
 
-/* P1-7: Pre-alarms — sends a Telegram nudge 1 day before and 1 hour before
-   each task's dueAt. Tracked via preAlarmsSent[] so each window only fires
-   once per task. Independent from stale-task nudges (which fire AFTER due).
-   Tick is hourly — finer granularity wastes battery, the 1d-before window
-   has 24h of slack so the user gets the reminder on a sensible cadence. */
-let _preAlarmTimer: NodeJS.Timeout | null = null;
-const _PRE_ALARM_WINDOWS: Array<{ key: string; ms: number; label: string }> = [
-    { key: 't1d', ms: 24 * 60 * 60_000, label: '내일' },
-    { key: 't1h', ms:  1 * 60 * 60_000, label: '1시간 후' },
-];
-
-async function _runPreAlarmTickOnce(): Promise<void> {
-    try {
-        const { token, chatId } = readTelegramConfig();
-        if (!token || !chatId) return;
-        const tracker = readTracker();
-        const now = Date.now();
-        let changed = false;
-        const lines: string[] = [];
-        for (const t of tracker.tasks) {
-            if (t.status === 'done' || t.status === 'cancelled') continue;
-            if (!t.dueAt) continue;
-            const due = new Date(t.dueAt).getTime();
-            if (isNaN(due) || due < now) continue;
-            const remaining = due - now;
-            const sent = t.preAlarmsSent || [];
-            for (const w of _PRE_ALARM_WINDOWS) {
-                if (sent.includes(w.key)) continue;
-                /* Fire when the remaining time has dropped below the window
-                   threshold but the task is still in the future. So a 1d
-                   alarm fires when due is within 24h, 1h alarm fires within
-                   60min. The "below" condition (not "equal") is what makes
-                   this work even if the tick lands a few minutes late. */
-                if (remaining <= w.ms) {
-                    const a = (t.agentIds && t.agentIds[0]) ? AGENTS[t.agentIds[0]] : null;
-                    const owner = a ? `${a.emoji} ${a.name}` : (t.owner === 'user' ? '👤 사용자' : '🤖 에이전트');
-                    lines.push(`• ⏰${w.label} \`${t.id.slice(-9)}\` ${owner}: ${t.title}`);
-                    sent.push(w.key);
-                    t.preAlarmsSent = sent;
-                    changed = true;
-                }
-            }
-        }
-        if (changed) writeTracker(tracker);
-        if (lines.length > 0) {
-            const body = `🔔 *사전 알림*\n\n${lines.slice(0, 8).join('\n')}\n\n_미루기: \`/reschedule <id> <시간>\` · 완료: \`/done <id>\`_`;
-            await sendTelegramReport(body);
-        }
-    } catch { /* silent */ }
-}
+/* Pre-alarm loop 본문은 src/loops/pre-alarm.ts 로 이동. activate() 가
+   `startPreAlarmLoop()` 만 호출. */
 
 
 /* P1-5: Pull markdown checkbox items out of an agent's output. We accept
@@ -1343,44 +1111,8 @@ async function _runPreAlarmTickOnce(): Promise<void> {
    `[x]` is already-done, and we don't try to retroactively register
    completed work. Capped to 5 per output to prevent runaway lists. */
 
-export function trackerToMarkdown(opts: { onlyOpen?: boolean; max?: number } = {}): string {
-  const all = readTracker().tasks;
-  const tasks = opts.onlyOpen ? all.filter(t => t.status !== 'done' && t.status !== 'cancelled') : all;
-  if (tasks.length === 0) return '';
-  /* Sort: status (in_progress > pending > done) → priority (urgent > high > normal > low)
-     → newest createdAt within ties. Status before priority means a 'done urgent'
-     still falls below an open 'low' — open work always surfaces first. */
-  const order = (s: TrackerTask['status']) => s === 'in_progress' ? 0 : s === 'pending' ? 1 : s === 'done' ? 2 : 3;
-  tasks.sort((a, b) => {
-    const o = order(a.status) - order(b.status);
-    if (o !== 0) return o;
-    const pa = TASK_PRIORITY_ORDER[_coercePriority(a.priority)];
-    const pb = TASK_PRIORITY_ORDER[_coercePriority(b.priority)];
-    if (pa !== pb) return pa - pb;
-    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-  });
-  const max = opts.max || 25;
-  const lines: string[] = [];
-  for (const t of tasks.slice(0, max)) {
-    const icon = t.status === 'done' ? '✅'
-      : t.status === 'in_progress' ? '🔄'
-      : t.status === 'pending' ? '⏳'
-      : '✖️';
-    const ownerEmoji = t.owner === 'user' ? '👤'
-      : t.owner === 'mixed' ? '👥'
-      : (t.agentIds && t.agentIds[0] ? (AGENTS[t.agentIds[0]]?.emoji || '🤖') : '🤖');
-    const due = t.dueAt ? ` ⏰${t.dueAt.slice(0, 10)}` : '';
-    const aged = (Date.now() - new Date(t.createdAt).getTime()) / 86_400_000;
-    const stale = (t.status === 'pending' && aged > 1) ? ' 🟡' : '';
-    const prio = _coercePriority(t.priority);
-    /* Show priority chip only for non-default — keeps the line short for
-       the common 'normal' case while still surfacing urgent/high visually. */
-    const prioChip = prio === 'normal' ? '' : ` ${TASK_PRIORITY_LABEL[prio].split(' ')[0]}`;
-    const recur = t.recurrence ? ` 🔁${t.recurrence}` : '';
-    lines.push(`- ${icon}${prioChip} ${ownerEmoji} \`${t.id.slice(-9)}\` ${t.title}${due}${recur}${stale}`);
-  }
-  return lines.join('\n');
-}
+/* `trackerToMarkdown` 본문은 src/tracker/ui-helpers.ts 로 이동. extension.ts
+   는 위에서 import + re-export 만 한다. */
 
 /* ── Task Tree View (sidebar) ─────────────────────────────────────────────
    P0-1: visualizes tracker.json as a clickable tree. Top level = status
@@ -1403,64 +1135,10 @@ export function _safeReadText(p: string): string {
 }
 
 
-export function _agentKeywords(agentId: string): string[] {
-  const a = AGENTS[agentId];
-  if (!a) return [];
-  /* Pull tokens from name, role, specialty. Strip punctuation, lowercase,
-     drop tiny tokens. Korean is tricky — we keep ≥2-char chunks. */
-  const text = `${a.name} ${a.role} ${a.specialty}`;
-  const tokens = text
-    .replace(/[()·,/·\-·]+/g, ' ')
-    .split(/\s+/)
-    .map(t => t.trim().toLowerCase())
-    .filter(t => t.length >= 2 && !/^(and|the|of|for|to|in)$/i.test(t));
-  /* Dedupe while preserving order */
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const t of tokens) { if (!seen.has(t)) { seen.add(t); out.push(t); } }
-  return out;
-}
-
-export function _scoreRelevance(text: string, keywords: string[]): number {
-  if (!text || keywords.length === 0) return 0;
-  const lc = text.toLowerCase();
-  let score = 0;
-  for (const k of keywords) {
-    /* count occurrences (cap at 5 per keyword to avoid one giant doc winning) */
-    let i = 0, hits = 0;
-    while ((i = lc.indexOf(k, i)) !== -1 && hits < 5) { hits++; i += k.length; }
-    score += hits;
-  }
-  return score;
-}
-
-/* Recursively list .md files under a root, capped depth + count for safety.
-   Skips company-internal folders + .git so we don't pull in identity.md /
-   memory.md (those are added separately). */
-export function _walkBrainMd(root: string, opts: { maxDepth: number; maxFiles: number; skipDirs: Set<string> }): string[] {
-  const out: string[] = [];
-  if (!fs.existsSync(root)) return out;
-  const stack: { dir: string; depth: number }[] = [{ dir: root, depth: 0 }];
-  while (stack.length && out.length < opts.maxFiles) {
-    const cur = stack.pop()!;
-    let entries: fs.Dirent[] = [];
-    try { entries = fs.readdirSync(cur.dir, { withFileTypes: true }); } catch { continue; }
-    for (const e of entries) {
-      if (out.length >= opts.maxFiles) break;
-      const full = path.join(cur.dir, e.name);
-      if (e.isDirectory()) {
-        if (opts.skipDirs.has(e.name)) continue;
-        if (e.name.startsWith('.')) continue; /* skip dotfiles like .git */
-        if (cur.depth + 1 <= opts.maxDepth) stack.push({ dir: full, depth: cur.depth + 1 });
-      } else if (e.isFile() && (e.name.toLowerCase().endsWith('.md') || e.name.toLowerCase().endsWith('.txt'))) {
-        out.push(full);
-      }
-    }
-  }
-  return out;
-}
-
-interface BrainSnippet { path: string; rel: string; title: string; insight: string; score: number; mtime: number; }
+/* `_agentKeywords` / `_scoreRelevance` 본문은 src/brain/keywords.ts 로 이동.
+   `_walkBrainMd` 와 `COMPANY_INTERNAL_DIRS` 는 src/brain/walk.ts 로 이동.
+   extension.ts 는 위에서 import + re-export. `BrainSnippet` 은 src/brain/types.ts
+   에 정식 정의가 있음 — 여기 inline 카피는 dead code 라 삭제. */
 
 /* Graph RAG retrieval — minimal but meaningful implementation.
    Builds a lightweight knowledge graph from the brain folder where:
@@ -1525,107 +1203,10 @@ export function readAgentSelfRagCriteria(agentId: string): string {
   } catch { return ''; }
 }
 
-interface AgentTool {
-  name: string;          // e.g. "trend_sniper"
-  displayName: string;   // human label
-  description: string;   // short blurb for catalog
-  scriptPath: string;    // absolute path to .py
-  configPath: string;    // absolute path to .json
-  readmePath: string;    // absolute path to .md
-  config: Record<string, any>;   // parsed JSON values
-  configSchema: ToolField[];     // inferred field schema for UI
-  injectedAt?: string;   // ISO date — only set for skills injected via /api/skill-inject
-  injectedFrom?: string; // origin tag (e.g. "ezer", "ai-university")
-  enabled: boolean;      // user toggle — false hides tool from agent's prompt catalog
-}
-
-interface ToolField {
-  key: string;
-  label: string;
-  type: 'password' | 'text' | 'list' | 'number' | 'select';
-  value: any;
-  /** v2.89.72 — select 타입일 때 드롭다운 옵션 목록. JSON config의 `_schema[KEY].options`에서. */
-  options?: { value: string; label: string }[];
-  /** v2.89.72 — select/text/number 공통 — 사용자한테 보여줄 placeholder/도움말. `_schema[KEY].hint`. */
-  hint?: string;
-}
-
-function _inferToolFieldType(key: string, value: any, schema?: any): ToolField['type'] {
-  // v2.89.72 — _schema에서 명시적 type 지정이 있으면 우선
-  if (schema && schema[key] && schema[key].type) {
-    const t = schema[key].type;
-    if (['password', 'text', 'list', 'number', 'select'].includes(t)) return t;
-  }
-  if (Array.isArray(value)) return 'list';
-  if (typeof value === 'number') return 'number';
-  // any key with KEY/SECRET/TOKEN/PASS → password
-  if (/(KEY|SECRET|TOKEN|PASS|API)/i.test(key)) return 'password';
-  return 'text';
-}
-
-export function listAgentTools(agentId: string): AgentTool[] {
-  const dir = path.join(getCompanyDir(), '_agents', agentId, 'tools');
-  if (!fs.existsSync(dir)) return [];
-  let entries: string[] = [];
-  try { entries = fs.readdirSync(dir); } catch { return []; }
-  let names = entries
-    .filter(f => f.endsWith('.py'))
-    .map(f => f.slice(0, -3));
-  /* v2.67 dedup: hide the iCal-only `google_calendar` tool whenever the
-     OAuth tool `google_calendar_write` is present — they overlap entirely
-     and users found two "Google Calendar" entries confusing. */
-  if (names.includes('google_calendar') && names.includes('google_calendar_write')) {
-    names = names.filter(n => n !== 'google_calendar');
-  }
-  const out: AgentTool[] = [];
-  for (const name of names) {
-    const scriptPath = path.join(dir, `${name}.py`);
-    const configPath = path.join(dir, `${name}.json`);
-    const readmePath = path.join(dir, `${name}.md`);
-    let config: Record<string, any> = {};
-    try {
-      if (fs.existsSync(configPath)) config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-    } catch { /* malformed JSON — leave empty */ }
-    let readme = '';
-    try { if (fs.existsSync(readmePath)) readme = fs.readFileSync(readmePath, 'utf-8'); } catch {}
-    // Display name: first H1 in readme, or prettified file name
-    const h1 = readme.match(/^#\s+(.+)$/m);
-    const displayName = h1 ? h1[1].trim() : name.replace(/_/g, ' ');
-    // Description: first non-heading paragraph
-    const descMatch = readme.split('\n').find(l => l.trim() && !l.startsWith('#'));
-    const description = (descMatch || '').slice(0, 200);
-    // _injectedAt 등 메타 키는 사용자에게 노출되는 설정 폼에선 숨김 — 출처 추적용 내부 필드.
-    // v2.89.72 — _schema 메타 필드로 select 옵션·hint·label override 가능.
-    const schema = (config && typeof config._schema === 'object') ? config._schema : null;
-    const configSchema: ToolField[] = Object.entries(config)
-      .filter(([key]) => !key.startsWith('_'))
-      .map(([key, value]) => {
-        const t = _inferToolFieldType(key, value, schema);
-        const fieldMeta = schema && schema[key] ? schema[key] : null;
-        const field: ToolField = {
-          key,
-          label: (fieldMeta && fieldMeta.label) || key.replace(/_/g, ' '),
-          type: t,
-          value,
-        };
-        if (t === 'select' && fieldMeta && Array.isArray(fieldMeta.options)) {
-          field.options = fieldMeta.options.map((o: any) =>
-            typeof o === 'string' ? { value: o, label: o } : { value: o.value, label: o.label || o.value }
-          );
-        }
-        if (fieldMeta && fieldMeta.hint) field.hint = fieldMeta.hint;
-        return field;
-      });
-    const injectedAt = typeof config._injectedAt === 'string' ? config._injectedAt : undefined;
-    const injectedFrom = typeof config._injectedFrom === 'string' ? config._injectedFrom : undefined;
-    /* enabled defaults TRUE — explicit `_enabled: false` opts out, missing
-       config or missing key both keep the tool active. Stored alongside
-       other config keys so it round-trips through writeToolConfig untouched. */
-    const enabled = config._enabled === false ? false : true;
-    out.push({ name, displayName, description, scriptPath, configPath, readmePath, config, configSchema, injectedAt, injectedFrom, enabled });
-  }
-  return out;
-}
+/* `AgentTool` / `ToolField` 타입 + `_inferToolFieldType` / `listAgentTools`
+   본문은 src/tracker/ui-helpers.ts 로 이동. extension.ts 는 위에서 import +
+   re-export 만 한다. (의미상 tracker 와는 다른 도메인이지만, 단일
+   ui-helpers 파일 통합을 위해 임시로 그곳에 같이 두었음.) */
 
 export function writeToolConfig(agentId: string, toolName: string, config: Record<string, any>) {
   const p = path.join(getCompanyDir(), '_agents', agentId, 'tools', `${toolName}.json`);
@@ -2412,346 +1993,19 @@ export function activate(context: vscode.ExtensionContext) {
     refreshAprBadge();
     context.subscriptions.push(aprStatusBar);
     setInterval(refreshAprBadge, 8000);
-    context.subscriptions.push(
-        vscode.commands.registerCommand('agentOs.youtube.connectOAuth', async () => {
-            const r = await startYouTubeOAuthFlow();
-            if (r.ok) {
-                vscode.window.showInformationMessage(r.message);
-                _ytDashboardProvider?.refresh();
-                if (CompanyDashboardPanel.current) CompanyDashboardPanel.current.refresh();
-            } else {
-                vscode.window.showWarningMessage(r.message);
-            }
-        }),
-        vscode.commands.registerCommand('agentOs.dashboard.open', () => {
-            try {
-                _dashboardExtensionUri = context.extensionUri;
-                CompanyDashboardPanel.createOrShow(context.extensionUri);
-            } catch (e: any) {
-                /* v2.89.14 — 진단: 대시보드 패널 생성 실패 시 사용자에게 안내. */
-                vscode.window.showErrorMessage(`👥 직원 에이전트 보기 열기 실패: ${e?.message || e}. (Cmd+Shift+P → "Developer: Reload Window" 시도)`);
-                console.error('[dashboard.open] failed:', e);
-            }
-        }),
-        vscode.commands.registerCommand('agentOs.apiConnections.open', () => {
-            ApiConnectionsPanel.createOrShow();
-        }),
-        /* v2.89.137 — 매출 대시보드 (PayPal 시각화) */
-        vscode.commands.registerCommand('agentOs.revenueDashboard.open', () => {
-            RevenueDashboardPanel.createOrShow();
-        })
-    );
-    context.subscriptions.push(
-        vscode.commands.registerCommand('agentOs.tasks.refresh', () => {
-            _taskTreeProvider?.refresh();
-        }),
-        vscode.commands.registerCommand('agentOs.tasks.markDone', (item: TaskTreeItem) => {
-            if (item?.task) {
-                updateTrackerTask(item.task.id, { status: 'done', evidence: '사이드바에서 완료 처리' });
-            }
-        }),
-        vscode.commands.registerCommand('agentOs.tasks.cancel', async (item: TaskTreeItem) => {
-            if (!item?.task) return;
-            const ok = await vscode.window.showWarningMessage(
-                `"${item.task.title}" 취소할까요?`,
-                { modal: false },
-                '취소', '뒤로'
-            );
-            if (ok === '취소') {
-                updateTrackerTask(item.task.id, { status: 'cancelled', evidence: '사이드바에서 취소' });
-            }
-        }),
-        vscode.commands.registerCommand('agentOs.tasks.setPriority', async (item: TaskTreeItem) => {
-            if (!item?.task) return;
-            const pick = await vscode.window.showQuickPick(
-                [
-                    { label: '🔴 긴급 (urgent)', value: 'urgent' as TaskPriority },
-                    { label: '🟠 높음 (high)',   value: 'high'   as TaskPriority },
-                    { label: '⚪ 보통 (normal)', value: 'normal' as TaskPriority },
-                    { label: '🔵 낮음 (low)',    value: 'low'    as TaskPriority },
-                ],
-                { placeHolder: '우선순위 선택' }
-            );
-            if (pick) {
-                updateTrackerTask(item.task.id, { priority: pick.value });
-            }
-        }),
-        vscode.commands.registerCommand('agentOs.tasks.openTrackerJson', async () => {
-            try {
-                const p = path.join(getCompanyDir(), '_shared', 'tracker.json');
-                if (!fs.existsSync(p)) {
-                    vscode.window.showInformationMessage('아직 tracker.json 이 없어요. 작업이 등록되면 생성됩니다.');
-                    return;
-                }
-                const doc = await vscode.workspace.openTextDocument(p);
-                await vscode.window.showTextDocument(doc);
-            } catch (e: any) {
-                vscode.window.showErrorMessage(`tracker.json 열기 실패: ${e?.message || e}`);
-            }
-        }),
-        vscode.commands.registerCommand('agentOs.diagnoseConnection', async () => {
-            const out: string[] = [];
-            const ok = (s: string) => out.push(`✅ ${s}`);
-            const warn = (s: string) => out.push(`⚠️ ${s}`);
-            const err = (s: string) => out.push(`❌ ${s}`);
-            const info = (s: string) => out.push(`ℹ️ ${s}`);
 
-            out.push('## 🤖 Claude CLI');
-            const bin = resolveClaudeBin();
-            info(`Claude binary: \`${bin || '(미설정 — PATH의 claude 사용 시도)'}\``);
-
-            let versionOk = false;
-            try {
-                const version = await pingClaude();
-                ok(`\`claude --version\` 응답: ${version}`);
-                versionOk = true;
-            } catch (e: any) {
-                err(`Claude CLI 호출 실패: ${e?.message || e}`);
-                info('설치 안 됐으면: 공식 가이드 https://docs.claude.com/en/docs/claude-code/setup 따라 설치 후 `claude login`.');
-                info('이미 있으면: `which claude` 결과를 settings.json의 `agentOs.claudeBinPath` 에 넣어보세요.');
-            }
-
-            if (versionOk) {
-                try {
-                    const reply = await ask('Say "pong" and nothing else.', 'standard', { timeoutMs: 20_000 });
-                    if (/pong/i.test(reply)) {
-                        ok(`Sonnet 응답 OK — "${reply.trim().slice(0, 40)}"`);
-                    } else {
-                        warn(`Sonnet 응답이 예상과 다름: "${reply.trim().slice(0, 80)}"`);
-                    }
-                } catch (e: any) {
-                    err(`Claude 응답 실패: ${e?.message || e}`);
-                    info('Claude Max 구독 상태나 `claude login` 인증을 확인하세요.');
-                }
-            }
-
-            /* v2.89.152 — Python 환경 진단. paypal_revenue·my_videos_check 같은 .py 도구
-               실행이 exit 1 로 떨어질 때 어디서 막혔는지 사용자가 직접 진단. */
-            out.push('');
-            out.push('## 🐍 Python 환경');
-            try {
-                const _invalidate = require('child_process');
-                _invalidatePythonCmdCache();
-                const pyCmd = _pythonCmd();
-                info(`자동 감지 결과: \`${pyCmd}\``);
-                try {
-                    const parts = pyCmd.split(' ');
-                    const r = _invalidate.spawnSync(parts[0], parts.slice(1).concat(['--version']), { encoding: 'utf-8', timeout: 4000 });
-                    const ver = ((r.stdout || '') + (r.stderr || '')).trim();
-                    if (r.status === 0 && /python\s+3/i.test(ver)) {
-                        ok(`Python 3 확인: ${ver}`);
-                    } else if (/python\s+3\.\d/i.test(ver)) {
-                        ok(`Python 3 (status ${r.status}): ${ver}`);
-                    } else {
-                        err(`Python 3 미감지. status=${r.status}, output=${ver.slice(0, 100)}`);
-                        info(_pythonMissingHint());
-                    }
-                } catch (pe: any) {
-                    err(`Python 호출 실패: ${pe?.message || pe}`);
-                    info(_pythonMissingHint());
-                }
-                /* 사용자 override 표시 */
-                try {
-                    const cfgPy = (vscode.workspace.getConfiguration('agentOs').get<string>('pythonPath') || '').trim();
-                    if (cfgPy) info(`사용자 설정 (\`agentOs.pythonPath\`): \`${cfgPy}\``);
-                    else info(`사용자 설정 없음 (자동 감지 사용). 직접 지정하려면 명령 팔레트 → "설정 열기" → \`agentOs.pythonPath\``);
-                } catch { /* ignore */ }
-                /* 평행 진단 — 다른 후보 명령들 작동 여부 */
-                const altCmds = process.platform === 'win32'
-                    ? ['py', 'py -3', 'python', 'python3']
-                    : ['python3', 'python', '/usr/bin/python3', '/opt/homebrew/bin/python3'];
-                const altResults: string[] = [];
-                for (const c of altCmds) {
-                    try {
-                        const parts = c.split(' ');
-                        const r = _invalidate.spawnSync(parts[0], parts.slice(1).concat(['--version']), { encoding: 'utf-8', timeout: 2500 });
-                        const ver = ((r.stdout || '') + (r.stderr || '')).trim().slice(0, 50);
-                        if (/python\s+3\.\d/i.test(ver)) altResults.push(`  ✅ \`${c}\` → ${ver}`);
-                        else if (r.status === 0) altResults.push(`  ⚠️ \`${c}\` → ${ver || '(no version output)'}`);
-                        else altResults.push(`  ❌ \`${c}\` → 실패 (status ${r.status})`);
-                    } catch (e: any) {
-                        altResults.push(`  ❌ \`${c}\` → 호출 실패: ${(e?.message || '').slice(0, 50)}`);
-                    }
-                }
-                info('후보 명령 평행 테스트:');
-                altResults.forEach(r => out.push(r));
-            } catch (pyErr: any) {
-                err(`Python 진단 자체 실패: ${pyErr?.message || pyErr}`);
-            }
-
-            /* 결과 패널 표시 */
-            const doc = await vscode.workspace.openTextDocument({
-                language: 'markdown',
-                content: `# 🔍 Agent OS — Claude CLI 연결 진단\n\n_${new Date().toLocaleString('ko-KR')}_\n\n${out.join('\n')}\n\n---\n\n## 자주 막히는 곳\n\n### Claude CLI가 처음이면\n1. 공식 설치 가이드: https://docs.claude.com/en/docs/claude-code/setup\n2. 설치 후 터미널에서 \`claude login\` 으로 Claude Max 계정 인증\n3. \`claude --version\` 으로 동작 확인\n4. Agent OS 다시 열고 채팅 시도\n\n### \`claude\` 명령을 못 찾는다면\n- \`which claude\` 결과를 settings.json 의 \`agentOs.claudeBinPath\` 에 절대경로로 박아두세요.\n- 예: \`/Users/hoony/.local/bin/claude\` 또는 \`~/bin/claude\`\n\n### 그래도 안 되면\n- VS Code/Anti-Gravity 재시작\n- 명령 팔레트 (Cmd+Shift+P) → \`Agent OS: 연결 진단\` 다시 실행\n- 위 결과 스크린샷과 함께 제보\n`,
-            });
-            await vscode.window.showTextDocument(doc, { preview: false });
-        }),
-        vscode.commands.registerCommand('agentOs.dailyBriefing.fireNow', async () => {
-            try {
-                await _runDailyBriefingOnce(true);
-                vscode.window.showInformationMessage('🌅 데일리 브리핑이 텔레그램으로 발송됐어요. (토큰 미설정이면 무시됨)');
-            } catch (e: any) {
-                vscode.window.showErrorMessage(`브리핑 발사 실패: ${e?.message || e}`);
-            }
-        }),
-        /* v2.89.115 — 직전 specialist 산출물을 재사용 가능한 패턴으로 승격.
-           Hermes Agent의 self-improving skill 패턴을 1인 기업 컨셉에 맞게
-           단순화 (자동 노이즈 X, 사용자가 명시적으로 트리거할 때만). */
-        vscode.commands.registerCommand('agentOs.skill.saveLast', async () => {
-            try {
-                const last = _getLastSpecialistOutput();
-                if (!last) {
-                    vscode.window.showWarningMessage('직전 specialist 산출물을 찾지 못했어요. 작업 한 번 시킨 다음에 호출하세요.');
-                    return;
-                }
-                const allIds = SPECIALIST_IDS.slice();
-                const items = allIds.map(id => {
-                    const a = AGENTS[id];
-                    const isDefault = id === last.agentId;
-                    return {
-                        label: `${a.emoji} ${a.name}${isDefault ? '  (직전 발화)' : ''}`,
-                        description: a.role,
-                        id,
-                    } as vscode.QuickPickItem & { id: string };
-                });
-                const pick = await vscode.window.showQuickPick(items, {
-                    placeHolder: `어느 에이전트의 스킬로 저장할까요? (직전: ${AGENTS[last.agentId]?.name})`,
-                });
-                if (!pick) return;
-                vscode.window.showInformationMessage(`💎 ${AGENTS[pick.id].name} — 패턴화 중…`);
-                const result = await saveAgentSkill(pick.id, last.body, { titleHint: last.body.slice(0, 80) });
-                if (!result.ok) {
-                    vscode.window.showWarningMessage(`⚠️ ${result.reason}`);
-                    try { appendConversationLog({ speaker: '시스템', emoji: '💎', section: '스킬 저장 시도', body: `${AGENTS[pick.id].name} → ${result.reason}` }); } catch { /* ignore */ }
-                    return;
-                }
-                vscode.window.showInformationMessage(`✅ ${AGENTS[pick.id].name} 스킬 저장됨: ${result.title}`);
-                try { appendConversationLog({ speaker: '시스템', emoji: '💎', section: '스킬 저장', body: `${AGENTS[pick.id].name} → ${result.title}` }); } catch { /* ignore */ }
-                try { appendAgentMemory(pick.id, `[skill 승격] "${result.title}" — 다음 사이클부터 패턴 재사용`); } catch { /* ignore */ }
-                /* 새로 만든 파일 바로 열어서 사용자가 검토·수정할 수 있게 */
-                try { await vscode.window.showTextDocument(vscode.Uri.file(result.path)); } catch { /* ignore */ }
-            } catch (e: any) {
-                vscode.window.showErrorMessage(`스킬 저장 실패: ${e?.message || e}`);
-            }
-        }),
-        vscode.commands.registerCommand('agentOs.youtube.refreshCommentQueue', async () => {
-            try {
-                vscode.window.showInformationMessage('📺 YouTube 댓글 가져오는 중...');
-                const r = await _youtubeCommentReplyDraftBatch({});
-                if (r.reason) {
-                    vscode.window.showWarningMessage(`⚠️ ${r.reason}`);
-                    return;
-                }
-                vscode.window.showInformationMessage(
-                    `📺 답장 초안 ${r.drafted}건 생성, ${r.skipped}건 스킵 (이미 큐에 있거나 사용자가 답한 댓글). \`approvals/pending/\`에서 확인하거나 텔레그램 \`/approve <id>\`로 게시.`
-                );
-            } catch (e: any) {
-                vscode.window.showErrorMessage(`YouTube 큐 갱신 실패: ${e?.message || e}`);
-            }
-        }),
-        vscode.commands.registerCommand('agentOs.developer.scaffoldProject', async () => {
-            try {
-                const name = await vscode.window.showInputBox({
-                    placeHolder: '프로젝트 이름 (영문/숫자/하이픈)',
-                    prompt: 'Developer 에이전트가 _company/projects/ 안에 만들 폴더 이름',
-                    validateInput: (v) => /^[a-zA-Z0-9_-]{2,40}$/.test(v) ? null : '영문·숫자·-·_ 만, 2~40자',
-                });
-                if (!name) return;
-                const tpl = await vscode.window.showQuickPick(
-                    [
-                        { label: 'vite-vanilla', detail: 'Vite + 순수 JS' },
-                        { label: 'vite-react',   detail: 'Vite + React + TypeScript' },
-                        { label: 'static',       detail: 'index.html 한 장 (Tailwind CDN)' },
-                    ],
-                    { placeHolder: '템플릿 선택' }
-                );
-                if (!tpl) return;
-                const result = await scaffoldDeveloperProject(name, tpl.label as 'vite-vanilla' | 'vite-react' | 'static');
-                if (result.ok) {
-                    const open = await vscode.window.showInformationMessage(
-                        `✅ \`${name}\` 생성 완료 — ${result.path}`,
-                        '폴더 열기',
-                        '닫기'
-                    );
-                    if (open === '폴더 열기') {
-                        const uri = vscode.Uri.file(result.path);
-                        vscode.commands.executeCommand('revealFileInOS', uri);
-                    }
-                } else {
-                    vscode.window.showErrorMessage(`❌ ${result.error}`);
-                }
-            } catch (e: any) {
-                vscode.window.showErrorMessage(`프로젝트 생성 실패: ${e?.message || e}`);
-            }
-        })
-    );
-
-    // New Chat
-    context.subscriptions.push(
-        vscode.commands.registerCommand('agent-os.newChat', () => {
-            provider.resetChat();
-        })
-    );
-
-    // Export Chat as Markdown
-    context.subscriptions.push(
-        vscode.commands.registerCommand('agent-os.exportChat', async () => {
-            await provider.exportChat();
-        })
-    );
-
-    // Focus Chat Input (Cmd+L)
-    context.subscriptions.push(
-        vscode.commands.registerCommand('agent-os.focusChat', () => {
-            provider.focusInput();
-        })
-    );
-
-    // Explain Selected Code (right-click menu)
-    context.subscriptions.push(
-        vscode.commands.registerCommand('agent-os.explainSelection', () => {
-            const editor = vscode.window.activeTextEditor;
-            if (!editor) { return; }
-            const selection = editor.document.getText(editor.selection);
-            if (selection.trim()) {
-                provider.sendPromptFromExtension(`이 코드를 분석하고 설명해줘:\n\`\`\`\n${selection}\n\`\`\``);
-            }
-        })
-    );
-
-    // Show Brain Network Topology
-    context.subscriptions.push(
-        vscode.commands.registerCommand('agent-os.showBrainNetwork', () => {
-            showBrainNetwork(context);
-        })
-    );
-
-    // 🏢 Open virtual office (스몰빌식 가상 사무실)
-    context.subscriptions.push(
-        vscode.commands.registerCommand('agent-os.openOffice', () => {
-            OfficePanel.createOrShow(context, provider);
-        }),
-        /* v2.89.96 — 사이드바 ⋯ 메뉴가 어떤 이유로 클릭 안 받을 때를 대비한
-           명령 팔레트 fallback. Cmd/Ctrl+Shift+P → "Agent OS: 설정 열기" */
-        vscode.commands.registerCommand('agent-os.openSettings', async () => {
-            try { await (provider as any)._handleSettingsMenu?.(); }
-            catch (e: any) {
-                vscode.window.showErrorMessage(`설정 메뉴 열기 실패: ${e?.message || e}`);
-            }
-        }),
-        /* 회사 폴더 위치 변경 — 두뇌 안 nested vs 완전 분리 선택 */
-        vscode.commands.registerCommand('agent-os.changeCompanyDir', async () => {
-            await runChangeCompanyDir();
-        }),
-        /* 회사 GitHub 별도 연결 — 두뇌와 분리된 repo로 백업 */
-        vscode.commands.registerCommand('agent-os.connectCompanyRepo', async () => {
-            await runConnectCompanyRepo();
-        }),
-        /* Google Calendar 자동 일정 등록 (OAuth) */
-        vscode.commands.registerCommand('agent-os.connectGoogleCalendarWrite', async () => {
-            await runConnectGoogleCalendarWrite();
-        })
-    );
+    /* v2.92.x — 도메인별 commands/*.ts 로 분리.
+       각 register* 가 byte-for-byte 동일한 handler body 를 들고 있고,
+       provider 인스턴스 / status bar / 스케줄러 시작은 여전히 이 함수
+       안에서만 수행 (shared setup). */
+    const commandProviders: CommandProviders = {
+        chatProvider: provider,
+        taskTreeProvider: _taskTreeProvider as TaskTreeProvider,
+        ytDashboardProvider: _ytDashboardProvider as YouTubeDashboardProvider,
+        extensionUri: context.extensionUri,
+        setDashboardExtensionUri: (uri: vscode.Uri) => { _dashboardExtensionUri = uri; },
+    };
+    _registerAllCommands(context, commandProviders);
 }
 
 interface BrainNode {

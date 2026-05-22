@@ -52,9 +52,8 @@ import {
   isCalendarWriteConnected,
   readCompanyName,
   isCompanyConfigured,
-  _agentKeywords,
-  _scoreRelevance,
 } from '../extension';
+import { _agentKeywords, _scoreRelevance } from './keywords';
 
 export function appendAgentMemory(agentId: string, line: string) {
   try {

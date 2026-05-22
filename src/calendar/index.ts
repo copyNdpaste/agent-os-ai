@@ -28,3 +28,8 @@ export { createEvent, findEvents, deleteEvent, patchEvent } from './crud';
 export { refreshCache } from './cache';
 
 export { runConnectGoogleCalendarWrite } from './oauth-setup';
+
+export {
+    createCalendarEventForTask,
+    updateCalendarEventForTask,
+} from './tracker-sync';

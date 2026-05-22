@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { readSchedule, writeSchedule, schedulePath } from '../../src/scheduler';
-import type { ReportScheduleEntry } from '../../src/scheduler';
+import { readSchedule, writeSchedule, schedulePath } from '../../src/scheduler/storage';
+import type { ReportScheduleEntry } from '../../src/scheduler/types';
 
 function mkTmp(): string {
     return fs.mkdtempSync(path.join(os.tmpdir(), 'sched-store-'));

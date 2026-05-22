@@ -39,4 +39,8 @@ export {
     _taskStatusIcon,
     _formatDueLabel,
     rebuildUnifiedSchedule,
+    _coercePriority,
+    trackerToMarkdown,
+    listAgentTools,
 } from './ui-helpers';
+export type { AgentTool, ToolField } from './ui-helpers';

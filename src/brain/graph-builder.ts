@@ -19,10 +19,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-import {
-    COMPANY_INTERNAL_DIRS,
-    _scoreRelevance,
-} from '../extension';
+import { COMPANY_INTERNAL_DIRS } from './walk';
+import { _scoreRelevance } from './keywords';
 
 import type {
     BrainGraph,
