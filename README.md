@@ -11,13 +11,32 @@
   <img src="https://img.shields.io/badge/focus-Idea_Validation-blue" alt="idea validation" />
 </p>
 
+<p align="center">
+  <a href="https://copyNdpaste.github.io/agent-os-ai/"><strong>시각화 문서 열기</strong></a>
+  ·
+  <a href="#how-it-works">작동 방식</a>
+  ·
+  <a href="#folder-map">폴더 구조</a>
+  ·
+  <a href="#installation">설치</a>
+</p>
+
+<p align="center">
+  <a href="https://copyNdpaste.github.io/agent-os-ai/">
+    <img src="https://img.shields.io/badge/GitHub_Pages-Architecture_Viewer-6aa8ff?style=for-the-badge" alt="Open visual architecture page" />
+  </a>
+</p>
+
 ---
 
-## Overview
+## What Is This?
 
 Agent OS AI는 VS Code 계열 IDE 안에서 돌아가는 개인용 실험 운영체제입니다. 목적은 "AI 직원 놀이"가 아니라, 1인 창업자가 매일 떠오르는 아이디어를 구조화하고 외부 채널에 던져서 수요를 확인하는 것입니다.
 
-핵심 루프:
+> 더 보기 좋은 구조 설명은 GitHub Pages에서 확인하세요:  
+> https://copyNdpaste.github.io/agent-os-ai/
+
+## How It Works
 
 ```text
 아이디어 기록
@@ -27,6 +46,14 @@ Agent OS AI는 VS Code 계열 IDE 안에서 돌아가는 개인용 실험 운영
 → 지식 그래프로 패턴 확인
 → 반응 좋은 아이디어만 MVP 제작
 ```
+
+| 단계 | 하는 일 | 산출물 |
+|---:|---|---|
+| 1 | 아이디어 기록 | 문제, 타깃, 숨겨진 정보, 가설 |
+| 2 | 실험 설계 | Threads/X/Instagram/Shorts 문구, CTA |
+| 3 | 반응 수집 | 댓글, DM, 클릭, 저장, 대기자 등록 |
+| 4 | 그래프 연결 | 아이디어·문제·고객·반응 노드 |
+| 5 | MVP 결정 | 만들 것/버릴 것/나중에 볼 것 |
 
 ## Core Features
 
@@ -54,6 +81,39 @@ Business/Researcher 에이전트가 댓글, DM, 클릭, 대기자 등록 같은 
 ### 개발 실행
 
 Developer 에이전트는 반응이 확인된 아이디어만 빠르게 MVP로 만듭니다. 코드 생성, 파일 수정, 테스트, 로컬 미리보기, API 연결을 담당합니다.
+
+## Folder Map
+
+```text
+~/.agent-os-ai-brain/
+└── _company/
+    ├── _shared/
+    │   ├── identity.md      # 실험실 정체성, 타깃, 톤
+    │   ├── goals.md         # 수요검증 목표
+    │   ├── decisions.md     # 결정 로그
+    │   └── _system.md       # 폴더 사용 매뉴얼
+    ├── _agents/<agent>/
+    │   ├── memory.md        # 에이전트별 학습 로그
+    │   ├── prompt.md        # 에이전트별 추가 지시
+    │   └── skills/          # 검증된 재사용 패턴
+    └── sessions/            # 세션별 산출물
+```
+
+## Knowledge Graph
+
+Markdown 파일은 지식 그래프의 노드가 됩니다. Agent OS AI는 파일 내용에서 의미를 추론해 아래 그룹으로 색상 분류합니다.
+
+| 그룹 | 의미 |
+|---|---|
+| 아이디어 | 새 제품/서비스 컨셉 |
+| 고객 | 타깃, 페르소나, 시장 |
+| 문제 | 불편, 니즈, 정보 비대칭 |
+| 가설 | 검증할 전제 |
+| 실험 | SNS 게시, 랜딩, CTA |
+| 반응 | 댓글, DM, 클릭, 신청 |
+| 수익화 | 가격, BM, 결제 신호 |
+| 리스크 | 법률, 약관, 개인정보 |
+| MVP | 만들 후보와 개발 범위 |
 
 ## Agents
 
@@ -106,3 +166,10 @@ claude --version
 ## Project Status
 
 이 프로젝트는 개인 아이디어 실험과 수요검증을 빠르게 반복하기 위한 로컬 우선 VS Code 확장으로 관리됩니다.
+
+## Visual Documentation
+
+GitHub repo 첫 화면은 GitHub 정책상 `README.md`가 렌더링됩니다. 인터랙티브 HTML/CSS/JS 문서는 GitHub Pages에서 볼 수 있습니다.
+
+- Repo: https://github.com/copyNdpaste/agent-os-ai
+- Pages: https://copyNdpaste.github.io/agent-os-ai/
