@@ -108,6 +108,7 @@ import { _getBrainDir, _isBrainDirExplicitlySet, getCompanyDir } from '../paths'
 import { AGENTS, AGENT_ORDER, SPECIALIST_IDS } from '../agents';
 import { getSystemSpecs, estimateModelMemoryGB } from '../system-specs';
 import * as dsp from '../dispatch';
+import { _readYtOAuthClient } from '../youtube/oauth';
 import {
     /* 상수 / 프롬프트 */
     SYSTEM_PROMPT,
@@ -142,7 +143,7 @@ import {
     _RENDER_GRAPH_HTML,
     type BrainGraph,
     buildKnowledgeGraph,
-    _readYtOAuthClient,
+    /* _readYtOAuthClient: Cycle 6 에서 src/youtube/oauth.ts 로 이동. 직접 import. */
     startYouTubeOAuthFlow,
     sendTelegramReport,
     sendTelegramLong,
