@@ -82,6 +82,9 @@ function getConfig() {
    _expandTilde, _resolvePathInput 모두 ./paths.ts 로 이동. 모듈 간 import 일원화. */
 import { _getBrainDir, _isBrainDirExplicitlySet, getCompanyDir, COMPANY_SUBDIR, _expandTilde, _resolvePathInput } from './paths';
 import * as tg from './telegram';
+import * as st from './agent-state';
+import * as cal from './calendar';
+import * as cmp from './company';
 
 async function _ensureBrainDir(): Promise<string | null> {
     if (_isBrainDirExplicitlySet()) {
@@ -413,15 +416,12 @@ function _migrateCompanyToBrain() {
   }
 }
 
-function getCompanyMetrics(): { tasksCompleted: number, knowledgeInjected: number, lastSessionDate: string, foundedAt?: string } {
-    try {
-        const brain = _getBrainDir();
-        const file = path.join(brain, 'company_state.json');
-        if (fs.existsSync(file)) {
-            return JSON.parse(fs.readFileSync(file, 'utf8'));
-        }
-    } catch { /* fall through to default */ }
-    return { tasksCompleted: 0, knowledgeInjected: 0, lastSessionDate: '' };
+// ──────────────────────────────────────────────────────────────────
+// Company metrics + identity — extension-side thin wrappers
+// 본문은 src/company/{metrics,identity}.ts. baseDir 로 brain 을 주입.
+// ──────────────────────────────────────────────────────────────────
+function getCompanyMetrics(): cmp.CompanyMetrics {
+    return cmp.readMetrics(_getBrainDir());
 }
 
 /** Returns the company's "Day N" relative to when the user first set up the
@@ -429,55 +429,30 @@ function getCompanyMetrics(): { tasksCompleted: number, knowledgeInjected: numbe
  *  PCs that share the brain folder via GitHub. Returns 1 on day 0. */
 function getCompanyDay(): number {
     try {
-        const m = getCompanyMetrics();
-        let founded = m.foundedAt;
-        if (!founded) {
-            founded = new Date().toISOString().slice(0, 10);
-            updateCompanyMetrics({ foundedAt: founded });
+        const brain = _getBrainDir();
+        const m = cmp.readMetrics(brain);
+        if (!m.foundedAt) {
+            cmp.updateMetrics(brain, { foundedAt: new Date().toISOString().slice(0, 10) });
+            return 1;
         }
-        const start = Date.parse(founded + 'T00:00:00');
-        const now = Date.parse(new Date().toISOString().slice(0, 10) + 'T00:00:00');
-        if (!isFinite(start) || !isFinite(now)) return 1;
-        return Math.max(1, Math.floor((now - start) / 86400000) + 1);
+        return Math.max(1, cmp.daysSinceFounding(brain) + 1);
     } catch { return 1; }
 }
 
-function updateCompanyMetrics(updates: any) {
-    try {
-        const brain = _getBrainDir();
-        /* v2.89.25 — 디렉토리 없으면 만들고 쓰기. 이전엔 brain 디렉토리가 첫 활성화
-           시점에 없을 수 있어서 write 조용히 실패 → foundedAt 영원히 영속화 안 됨 →
-           Day 카운터 매번 1로 재설정. */
-        try { fs.mkdirSync(brain, { recursive: true }); } catch { /* ignore */ }
-        const file = path.join(brain, 'company_state.json');
-        const s = getCompanyMetrics();
-        Object.assign(s, updates);
-        fs.writeFileSync(file, JSON.stringify(s, null, 2));
-    } catch (e: any) {
-        console.warn('[updateCompanyMetrics] write failed:', e?.message || e);
-    }
+function updateCompanyMetrics(updates: Partial<cmp.CompanyMetrics>) {
+    cmp.updateMetrics(_getBrainDir(), updates);
 }
 
 function _extractCompanyName(idMd: string): string {
-  const m = idMd.match(/회사\s*이름\s*[:：]\s*(.+)/);
-  if (!m || !m[1]) return '';
-  let v = m[1].trim().replace(/\*+/g, '').replace(/^_+|_+$/g, '').trim();
-  if (!v) return '';
-  if (/\(여기에|\(아직 미설정|\(미설정|미설정$|^_자가학습/.test(v)) return '';
-  return v;
+    return cmp.extractCompanyNameFromMd(idMd);
 }
 
 function isCompanyConfigured(): boolean {
-  const dir = getCompanyDir();
-  const idPath = path.join(dir, '_shared', 'identity.md');
-  if (!fs.existsSync(idPath)) return false;
-  return _extractCompanyName(_safeReadText(idPath)).length > 0;
+    return cmp.isConfigured(getCompanyDir());
 }
 
 function readCompanyName(): string {
-  const dir = getCompanyDir();
-  const idPath = path.join(dir, '_shared', 'identity.md');
-  return _extractCompanyName(_safeReadText(idPath));
+    return cmp.readCompanyName(getCompanyDir());
 }
 
 /* v2.89.103 — 채용 잠금 시스템. 일부 에이전트(현재: editor=루나)는 기본 잠금
@@ -505,273 +480,75 @@ const ALWAYS_ON_AGENTS: Set<string> = new Set(['ceo']);
 const DEFAULT_ON_AGENTS: Set<string> = new Set(['secretary', 'writer', 'designer', 'instagram', 'business', 'developer', 'researcher']);
 const OPTIONAL_AGENTS_DEFAULT: Set<string> = new Set(['secretary', 'writer', 'designer', 'instagram', 'business', 'developer', 'researcher']);
 
-function _hiredJsonPath(): string {
-  return path.join(getCompanyDir(), '_shared', 'hired.json');
-}
+// ──────────────────────────────────────────────────────────────────
+// Agent state — extension-side thin wrappers
+// 본문은 src/agent-state/{hired,active,models,autonomy}.ts.
+// LOCKED_AGENTS_DEFAULT / ALWAYS_ON_AGENTS / OPTIONAL_AGENTS_DEFAULT 는
+// 위 상수 (line 472, 477, 481) 를 wrapper 에서 그대로 사용 — 모듈에 주입.
+// ──────────────────────────────────────────────────────────────────
 
-function _activeJsonPath(): string {
-  return path.join(getCompanyDir(), '_shared', 'active.json');
-}
+/* v2.89.65 — system-specs 헬퍼는 _autoOrchestrateModelMap 외에도 (estimateModelMemoryGB)
+   여러 콜사이트에서 직접 쓰이므로 top-level import 로 끌어올린다. */
+import { SystemSpecs, getSystemSpecs, estimateModelMemoryGB } from './system-specs';
+
+function _hiredJsonPath(): string { return st.hiredJsonPath(getCompanyDir()); }
+function _activeJsonPath(): string { return st.activeJsonPath(getCompanyDir()); }
 
 function readHiredAgents(): Record<string, { hiredAt: string }> {
-  try {
-    const p = _hiredJsonPath();
-    if (!fs.existsSync(p)) return {};
-    const data = JSON.parse(fs.readFileSync(p, 'utf-8') || '{}');
-    return (data && typeof data === 'object') ? data : {};
-  } catch { return {}; }
+  return st.readHired(getCompanyDir());
 }
 
 function isAgentHired(id: string): boolean {
-  /* 잠금 대상이 아니면 항상 채용된 상태(별도 표시 없음) */
+  /* 잠금 대상이 아니면 항상 채용된 상태 — 모듈 isHired 는 LOCKED 무지(map 만 봄)이라
+     여기서 분기 처리. */
   if (!LOCKED_AGENTS_DEFAULT[id]) return true;
-  const map = readHiredAgents();
-  return !!map[id];
+  return st.isHired(getCompanyDir(), id);
 }
 
 function markAgentHired(id: string): boolean {
-  try {
-    const dir = path.join(getCompanyDir(), '_shared');
-    try { fs.mkdirSync(dir, { recursive: true }); } catch { /* exists */ }
-    const f = _hiredJsonPath();
-    let cur: Record<string, any> = {};
-    try { cur = JSON.parse(fs.readFileSync(f, 'utf-8') || '{}'); } catch { /* malformed */ }
-    cur[id] = { hiredAt: new Date().toISOString() };
-    fs.writeFileSync(f, JSON.stringify(cur, null, 2));
-    /* PIN 통과한 에이전트는 자동으로 active 등록 */
-    setAgentActive(id, true);
-    return true;
-  } catch { return false; }
+  return st.markHired(getCompanyDir(), id);
 }
 
-/* v2.89.107 — 활성 상태 영구 저장. active.json 의 형식:
-   {
-     "_migrated": true,       // 기존 사용자 migration 완료 표시
-     "instagram": {activatedAt: ISO},
-     "business": {activatedAt: ISO},
-     ...
-   } */
 function readActiveAgents(): Record<string, { activatedAt: string }> {
-  try {
-    const p = _activeJsonPath();
-    if (!fs.existsSync(p)) {
-      /* 첫 실행 + hired.json 에 entry 있으면 → 기존 사용자로 간주, 모든 OPTIONAL 자동 활성화 */
-      const hired = readHiredAgents();
-      const isExistingUser = Object.keys(hired).filter(k => !k.startsWith('_')).length > 0;
-      if (isExistingUser) {
-        const seed: Record<string, any> = { _migrated: true };
-        for (const id of OPTIONAL_AGENTS_DEFAULT) {
-          seed[id] = { activatedAt: new Date().toISOString() };
-        }
-        try {
-          const dir = path.join(getCompanyDir(), '_shared');
-          try { fs.mkdirSync(dir, { recursive: true }); } catch { /* exists */ }
-          fs.writeFileSync(p, JSON.stringify(seed, null, 2));
-        } catch { /* readonly fs */ }
-        return seed;
-      }
-      /* v2.89.110 — 새 사용자: DEFAULT_ON 4명을 시드로 활성화. 첫 진입에 회사 모드
-         쓸 수 있는 기본 팀을 갖춤 (사용자가 원하면 언제든 비활성화 가능). */
-      const seed: Record<string, any> = { _migrated: true, _migrated_v2: true };
-      for (const id of DEFAULT_ON_AGENTS) {
-        seed[id] = { activatedAt: new Date().toISOString(), seeded: true };
-      }
-      try {
-        const dir = path.join(getCompanyDir(), '_shared');
-        try { fs.mkdirSync(dir, { recursive: true }); } catch { /* exists */ }
-        fs.writeFileSync(p, JSON.stringify(seed, null, 2));
-      } catch { /* readonly fs */ }
-      return seed;
-    }
-    const data = JSON.parse(fs.readFileSync(p, 'utf-8') || '{}');
-    if (!data || typeof data !== 'object') return {};
-    /* v2.89.109 — ALWAYS_ON 축소(CEO만)에 따른 2차 마이그레이션. v2.89.107 사용자는
-       active.json에 _migrated:true 만 있고 OPTIONAL 4명만 활성화돼있을 수 있음. 그 경우
-       이전엔 ALWAYS_ON 이었던 secretary·youtube·writer·designer 도 자동 활성화 (사용자
-       경험 유지). 한 번만 실행: _migrated_v2 플래그로 표시. */
-    if (data._migrated && !data._migrated_v2) {
-      const carryOver = ['secretary', 'writer', 'designer'];
-      let touched = false;
-      for (const id of carryOver) {
-        if (!data[id]) {
-          data[id] = { activatedAt: new Date().toISOString() };
-          touched = true;
-        }
-      }
-      data._migrated_v2 = true;
-      if (touched) {
-        try { fs.writeFileSync(p, JSON.stringify(data, null, 2)); } catch { /* ignore */ }
-      }
-    }
-    /* v2.89.156 — 모든 OPTIONAL agents 기본 ON. 종합 보고서 (유튜브+매출) 같은 합성 명령
-       에서 옵션 에이전트가 silently drop 되던 문제 해결. 한 번만 실행: _migrated_v3 플래그. */
-    if (data._migrated && !data._migrated_v3) {
-      let touched = false;
-      for (const id of OPTIONAL_AGENTS_DEFAULT) {
-        if (!data[id]) {
-          data[id] = { activatedAt: new Date().toISOString(), seeded_v3: true };
-          touched = true;
-        }
-      }
-      data._migrated_v3 = true;
-      if (touched) {
-        try { fs.writeFileSync(p, JSON.stringify(data, null, 2)); } catch { /* ignore */ }
-      } else {
-        try { fs.writeFileSync(p, JSON.stringify(data, null, 2)); } catch { /* ignore */ }
-      }
-    }
-    return data;
-  } catch { return {}; }
+  return st.readActive(getCompanyDir()) as Record<string, { activatedAt: string }>;
 }
 
 /* 핵심 헬퍼: 에이전트가 현재 사용 가능한지.
    - ALWAYS_ON: 무조건 true
    - LOCKED (Luna): hired.json 에 entry 있으면 true (PIN 통과)
    - OPTIONAL: active.json 에 entry 있으면 true
-   - 그 외 (정의 안 된 에이전트): true (기본값) */
+   - 그 외 (정의 안 된 에이전트): true (기본값)
+   ALWAYS_ON 와 "기본 true" 분기는 모듈에서 알 수 없으므로 wrapper 가 처리. */
 function isAgentActive(id: string): boolean {
   if (ALWAYS_ON_AGENTS.has(id)) return true;
   if (LOCKED_AGENTS_DEFAULT[id]) return isAgentHired(id);
   if (OPTIONAL_AGENTS_DEFAULT.has(id)) {
-    const map = readActiveAgents();
-    return !!map[id];
+    return st.isActive(getCompanyDir(), id, LOCKED_AGENTS_DEFAULT);
   }
   return true;
 }
 
 function setAgentActive(id: string, active: boolean): boolean {
-  try {
-    const dir = path.join(getCompanyDir(), '_shared');
-    try { fs.mkdirSync(dir, { recursive: true }); } catch { /* exists */ }
-    const f = _activeJsonPath();
-    let cur: Record<string, any> = {};
-    try { cur = JSON.parse(fs.readFileSync(f, 'utf-8') || '{}'); } catch { /* malformed */ }
-    if (active) {
-      cur[id] = { activatedAt: new Date().toISOString() };
-    } else {
-      delete cur[id];
-    }
-    cur._migrated = true;
-    fs.writeFileSync(f, JSON.stringify(cur, null, 2));
-    return true;
-  } catch { return false; }
+  return st.setActive(getCompanyDir(), id, active);
 }
 
-/* 에이전트가 사용자 토글 가능한지 (UI에서 설명용) */
 function isAgentTogglable(id: string): boolean {
   return OPTIONAL_AGENTS_DEFAULT.has(id) || !!LOCKED_AGENTS_DEFAULT[id];
 }
 
-/* v2.89.112 — 코다리(developer) 활성화 시 시니어 코더 모델 추천. 한 번만 표시 (active.json
-   에 _coder_recommended 플래그 기록). 사용자 시스템 메모리 추측해서 적합한 모델 추천:
-   < 8GB → qwen2.5-coder:1.5b 또는 7b
-   8~16GB → qwen2.5-coder:14b
-   > 16GB → deepseek-coder-v2:16b 또는 qwen2.5-coder:32b */
-function _maybeRecommendCoderModel(_webview: vscode.Webview) {
-  // Claude CLI 전환 후 코더 전용 모델 추천은 의미 없음 — 코다리는 heavy(Opus) tier 고정.
-}
+/* Claude CLI 전환 후 코더 전용 모델 추천은 의미 없음 — 코다리는 heavy(Opus) tier 고정.
+   no-op 으로 남겨서 콜사이트 호환만 유지. */
+function _maybeRecommendCoderModel(_webview: vscode.Webview) { /* no-op */ }
 
-/* v2.89.26 — 에이전트별 모델 라우팅. CEO·YouTube·디자이너 등 각자 다른
-   로컬 LLM 사용 (작은 모델은 라우팅·결정에, 큰 모델은 분석·창작에).
-   설정 파일: _shared/agent_models.json. 비어있으면 default 모델 사용. */
-function _agentModelsPath(): string {
-  return path.join(getCompanyDir(), '_shared', 'agent_models.json');
-}
-function readAgentModelMap(): Record<string, string> {
-  try {
-    const p = _agentModelsPath();
-    if (!fs.existsSync(p)) return {};
-    const data = JSON.parse(fs.readFileSync(p, 'utf-8') || '{}');
-    return (data && typeof data === 'object') ? data : {};
-  } catch { return {}; }
-}
-function writeAgentModelMap(map: Record<string, string>) {
-  try {
-    const p = _agentModelsPath();
-    fs.mkdirSync(path.dirname(p), { recursive: true });
-    fs.writeFileSync(p, JSON.stringify(map, null, 2));
-  } catch (e: any) {
-    console.warn('[agentModels] write failed:', e?.message || e);
-  }
-}
+function _agentModelsPath(): string { return st.modelsJsonPath(getCompanyDir()); }
+function readAgentModelMap(): Record<string, string> { return st.readModelMap(getCompanyDir()); }
+function writeAgentModelMap(map: Record<string, string>): void { st.writeModelMap(getCompanyDir(), map); }
 function getAgentModel(agentId: string, fallback: string): string {
-  const map = readAgentModelMap();
-  return (map[agentId] || '').trim() || fallback;
+  return st.getModelFor(getCompanyDir(), agentId, fallback);
 }
-/* v2.89.65 — getSystemSpecs + estimateModelMemoryGB + SystemSpecs type 모두 ./system-specs.ts 로 이동. */
-import { SystemSpecs, getSystemSpecs, estimateModelMemoryGB } from './system-specs';
-
-/* v2.89.27 — 모델 자동 오케스트레이션. 설치된 모델 + 에이전트 역할을 매칭해서
-   최적 배정 추천. 사용자는 "✨ 자동 추천" 버튼 한 번으로 완성된 매핑 받음. */
-type ModelTier = 'tiny' | 'small' | 'medium' | 'large' | 'vision' | 'coder';
-function _classifyModel(modelId: string): ModelTier[] {
-  const id = modelId.toLowerCase();
-  const tiers: ModelTier[] = [];
-  /* 비전 모델 — 이미지 입력 가능 */
-  if (/vision|llava|vl\b|glm.*v|gemma.?4.*e|qwen.?2.?vl|moondream/i.test(id)) tiers.push('vision');
-  /* 코드 특화 */
-  if (/coder|code-?(?:llama|qwen)/i.test(id)) tiers.push('coder');
-  /* 사이즈 — 우선순위: 명시된 파라미터 → 모델 이름 패턴 */
-  const paramM = id.match(/(\d+(?:\.\d+)?)\s*b\b/);
-  let paramB = paramM ? parseFloat(paramM[1]) : 0;
-  /* MoE 모델은 활성 파라미터 기준으로 분류 (예: "24b a2b" = 활성 2B) */
-  const moeM = id.match(/a(\d+(?:\.\d+)?)b/);
-  if (moeM) paramB = parseFloat(moeM[1]);
-  /* LFM 패밀리 + Phi + Gemma E2B 같이 작은 모델 패턴 */
-  const isExplicitlyTiny = /lfm2\.?5|gemma.?4.?e2b|phi-?3|llama.?3\.?2.?(?:1b|3b)|qwen.?2\.?5.?(?:0\.5b|1\.5b|3b)/i.test(id);
-  if (isExplicitlyTiny || (paramB > 0 && paramB <= 3)) tiers.push('tiny');
-  else if (paramB <= 8) tiers.push('small');
-  else if (paramB <= 14) tiers.push('medium');
-  else if (paramB > 14) tiers.push('large');
-  else tiers.push('small'); /* 사이즈 알 수 없으면 small로 안전 폴백 */
-  return tiers;
-}
+function _classifyModel(modelId: string): st.ModelTier[] { return st.classifyModel(modelId); }
 function _autoOrchestrateModelMap(installed: { id: string; backend: string }[]): Record<string, string> {
-  if (installed.length === 0) return {};
-  /* v2.89.36 — 메모리 안전 필터. 사용자 머신이 못 돌리는 큰 모델은 후보에서 제외.
-     이전엔 16GB Mac에 70B 모델 할당해서 LM Studio가 죽었음. */
-  const specs = getSystemSpecs();
-  const safeInstalled = installed.filter(m => {
-    const need = estimateModelMemoryGB(m.id);
-    return need <= specs.safeModelBudgetGB;
-  });
-  /* 안전 필터로 다 잘려나가면 제일 작은 1개라도 남기기 (그래야 사용자가 일단 돌릴 수 있음) */
-  const candidates = safeInstalled.length > 0 ? safeInstalled : (
-    installed.length > 0
-      ? [installed.slice().sort((a, b) => estimateModelMemoryGB(a.id) - estimateModelMemoryGB(b.id))[0]]
-      : []
-  );
-  /* 모델별 tier 분류 + 우선순위 정렬 */
-  const byTier: Record<ModelTier, string[]> = { tiny: [], small: [], medium: [], large: [], vision: [], coder: [] };
-  for (const m of candidates) {
-    const tiers = _classifyModel(m.id);
-    for (const t of tiers) byTier[t].push(m.id);
-  }
-  /* 에이전트별 선호 tier 순서 — 첫번째가 best, 못 찾으면 다음으로 폴백 */
-  const ROLE_PREFERENCES: Record<string, ModelTier[]> = {
-    ceo: ['tiny', 'small', 'medium'],         /* 라우팅 결정 — 빠른 게 최우선 */
-    secretary: ['small', 'tiny', 'medium'],   /* 일정·대화 — 균형 */
-    youtube: ['large', 'medium', 'small'],    /* 데이터 분석 — 큰 모델 */
-    researcher: ['large', 'medium', 'small'], /* 리서치 — 큰 모델 */
-    business: ['medium', 'large', 'small'],   /* KPI·전략 — 추론 */
-    writer: ['medium', 'small', 'large'],     /* 창작 — 중간 */
-    editor: ['medium', 'small'],              /* 영상 디렉션 */
-    designer: ['vision', 'medium', 'small'],  /* 비전 우선 */
-    developer: ['coder', 'large', 'medium'],  /* 코드 우선 */
-    instagram: ['medium', 'small'],
-  };
-  const map: Record<string, string> = {};
-  for (const agentId of Object.keys(ROLE_PREFERENCES)) {
-    const prefs = ROLE_PREFERENCES[agentId];
-    for (const tier of prefs) {
-      const candidates = byTier[tier];
-      if (candidates && candidates.length > 0) {
-        map[agentId] = candidates[0];
-        break;
-      }
-    }
-  }
-  return map;
+  return st.autoOrchestrate(installed, AGENT_ORDER);
 }
 
 /* Claude CLI 전환 후 모델 리스트는 3-tier 고정 — Opus 4.7 / Sonnet 4.6 / Haiku 4.5.
@@ -802,106 +579,31 @@ function _personalizePrompt(prompt: string): string {
    Pulls / writes the same identity.md + goals.md files the agents already
    read. Fields are parsed loosely so users editing by hand aren't punished.
    Empty / placeholder values come back as ''. */
-interface CompanyConfig {
-  name: string;
-  oneLiner: string;
-  audience: string;       // 누구를 위해 만드나
-  tone: string;           // 브랜드 톤
-  taboos: string;         // 금기
-  goalYear: string;       // 올해 핵심 목표
-  goalMonth: string;      // 1개월 단기 목표
-  needs: string;          // 지금 가장 필요한 것
-}
+// ──────────────────────────────────────────────────────────────────
+// Company config — extension-side thin wrappers
+// 본문은 src/company/config.ts. identity.md + goals.md 의 출력 포맷·regex
+// 모두 모듈에서 그대로 보존. wrapper 는 companyDir 주입 + ensureCompanyStructure
+// 콜만 책임.
+// ──────────────────────────────────────────────────────────────────
+type CompanyConfig = cmp.CompanyConfig;
 
 function _extractField(md: string, label: string): string {
-  /* Parses lines like "- **라벨:** 값" or "라벨: 값" with loose punctuation. */
-  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const re = new RegExp(`(?:^|\\n)\\s*-?\\s*\\*{0,2}${escaped}\\*{0,2}\\s*[:：]\\s*([^\\n]+)`, 'i');
-  const m = md.match(re);
-  if (!m || !m[1]) return '';
-  let v = m[1].trim().replace(/\*+/g, '').replace(/^_+|_+$/g, '').trim();
-  if (!v) return '';
-  if (/^\(여기에|^\(아직 미설정|^\(미설정|미설정$|^_자가학습|^아직 미설정|^_/.test(v)) return '';
-  return v;
+    return cmp.extractField(md, label);
 }
 
 function _extractGoalLine(md: string, header: string): string {
-  /* Finds the first non-empty bullet under the given H2 header. */
-  const escaped = header.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const re = new RegExp(`##\\s*${escaped}([\\s\\S]*?)(?:\\n##|$)`);
-  const m = md.match(re);
-  if (!m) return '';
-  const block = m[1];
-  const lineRe = /\n\s*-\s*(?:\[\s*[xX ]?\s*\]\s*)?([^\n]+)/g;
-  let lm;
-  while ((lm = lineRe.exec(block))) {
-    let v = (lm[1] || '').trim().replace(/\*+/g, '').replace(/^_+|_+$/g, '').trim();
-    if (!v) continue;
-    if (/^\(아직 미설정|^_자가학습|미설정$|^_/.test(v)) continue;
-    return v;
-  }
-  return '';
+    return cmp.extractGoalLine(md, header);
 }
 
 function readCompanyConfig(): CompanyConfig {
-  const dir = getCompanyDir();
-  const idMd = _safeReadText(path.join(dir, '_shared', 'identity.md'));
-  const goalsMd = _safeReadText(path.join(dir, '_shared', 'goals.md'));
-  return {
-    name: _extractCompanyName(idMd),
-    oneLiner: _extractField(idMd, '한 줄 소개'),
-    audience: _extractField(idMd, '타깃 청중'),
-    tone:     _extractField(idMd, '브랜드 톤'),
-    taboos:   _extractField(idMd, '금기'),
-    goalYear:  _extractGoalLine(goalsMd, '올해 핵심 목표'),
-    goalMonth: _extractGoalLine(goalsMd, '1개월 내 단기 목표'),
-    needs:     _extractGoalLine(goalsMd, '지금 가장 필요한 것'),
-  };
+    return cmp.readConfig(getCompanyDir());
 }
 
 function writeCompanyConfig(cfg: Partial<CompanyConfig>) {
-  ensureCompanyStructure();
-  const dir = getCompanyDir();
-  const cur = readCompanyConfig();
-  const m: CompanyConfig = {
-    name:     (cfg.name     ?? cur.name).trim(),
-    oneLiner: (cfg.oneLiner ?? cur.oneLiner).trim(),
-    audience: (cfg.audience ?? cur.audience).trim(),
-    tone:     (cfg.tone     ?? cur.tone).trim(),
-    taboos:   (cfg.taboos   ?? cur.taboos).trim(),
-    goalYear:  (cfg.goalYear  ?? cur.goalYear).trim(),
-    goalMonth: (cfg.goalMonth ?? cur.goalMonth).trim(),
-    needs:     (cfg.needs     ?? cur.needs).trim(),
-  };
-  const fmt = (v: string) => v || '_자가학습이 채울 예정_';
-  const idPath = path.join(dir, '_shared', 'identity.md');
-  fs.writeFileSync(idPath,
-`# 🏢 회사 정체성
-
-- **회사 이름:** ${m.name || '(아직 미설정)'}
-- **한 줄 소개:** ${m.oneLiner || '(아직 미설정)'}
-- **타깃 청중:** ${fmt(m.audience)}
-- **브랜드 톤:** ${fmt(m.tone)}
-- **금기:** ${fmt(m.taboos)}
-
-> 이 파일은 사용자가 직접 편집하거나, 작업하면서 자가학습으로 채워집니다.
-> 채팅 사이드바의 "👔 회사명" 뱃지를 누르면 폼으로 수정할 수도 있어요.
-`);
-  const goalsPath = path.join(dir, '_shared', 'goals.md');
-  fs.writeFileSync(goalsPath,
-`# 🎯 공동 목표
-
-## 올해 핵심 목표
-- [ ] ${m.goalYear || '(아직 미설정 — 작업하면서 추가)'}
-
-## 1개월 내 단기 목표
-- ${fmt(m.goalMonth)}
-
-## 지금 가장 필요한 것
-- ${fmt(m.needs)}
-
-> 모든 에이전트가 매번 이 파일을 읽고 일합니다. 회사 설정 모달에서 폼으로도 수정 가능.
-`);
+    /* 회사 폴더 전체 구조(에이전트 서브디렉터리 등) 생성은 wrapper 책임 — 모듈은
+       자기 파일 dir 만 mkdir 한다. */
+    ensureCompanyStructure();
+    cmp.writeConfig(getCompanyDir(), cfg);
 }
 
 // ──────────────────────────────────────────────────────────────────
@@ -1068,13 +770,7 @@ const AUTONOMY_LABELS: Record<number, string> = {
 };
 
 function readToolAutonomyLevel(agentId: string): number {
-    try {
-        const p = path.join(getCompanyDir(), '_agents', agentId, 'tools.md');
-        const txt = _safeReadText(p);
-        const m = txt.match(/AUTONOMY_LEVEL\s*[:：=]\s*(\d)/);
-        if (m) return Math.max(0, Math.min(3, parseInt(m[1], 10)));
-    } catch { /* ignore */ }
-    return 2; // Draft is the safe default — agent prepares, user approves.
+    return st.readAutonomyLevel(getCompanyDir(), agentId);
 }
 
 function _modelToTier(modelName: string): Tier {
@@ -2033,69 +1729,21 @@ function stopTrackerNudge() {
    refresh_token. Calendar events are created via createCalendarEventForTask
    when a tracker task has a due date. */
 
-interface CalendarWriteConfig {
-  CLIENT_ID?: string;
-  CLIENT_SECRET?: string;
-  REFRESH_TOKEN?: string;
-  CALENDAR_ID?: string;
-  DEFAULT_DURATION_MINUTES?: number;
-  _CONNECTED_AS?: string;
-  _CONNECTED_AT?: string;
-}
+// ──────────────────────────────────────────────────────────────────
+// Calendar — extension-side thin wrappers
+// 본문은 src/calendar/* (config / token / crud / cache). HTTP 는 모듈 내부의
+// HttpClient (axios DI) 가 담당. wrapper 는 companyDir 주입만.
+// TrackerTask 의존 함수 (createCalendarEventForTask, updateCalendarEventForTask)
+// 는 추출 안 함 — 이번 사이클은 HTTP 코어만.
+// ──────────────────────────────────────────────────────────────────
 
-function _calendarWriteConfigPath(): string {
-  return path.join(getCompanyDir(), '_agents', 'secretary', 'tools', 'google_calendar_write.json');
-}
+type CalendarWriteConfig = cal.CalendarWriteConfig;
 
-function readCalendarWriteConfig(): CalendarWriteConfig {
-  try {
-    const p = _calendarWriteConfigPath();
-    if (!fs.existsSync(p)) return {};
-    return JSON.parse(fs.readFileSync(p, 'utf-8') || '{}');
-  } catch { return {}; }
-}
-function writeCalendarWriteConfig(cfg: CalendarWriteConfig) {
-  const p = _calendarWriteConfigPath();
-  fs.mkdirSync(path.dirname(p), { recursive: true });
-  /* Merge so we never blow away unrelated fields */
-  const cur = readCalendarWriteConfig();
-  fs.writeFileSync(p, JSON.stringify({ ...cur, ...cfg }, null, 2));
-}
-function isCalendarWriteConnected(): boolean {
-  const c = readCalendarWriteConfig();
-  return !!(c.CLIENT_ID && c.CLIENT_SECRET && c.REFRESH_TOKEN);
-}
-
-/* Exchange refresh_token for a fresh access_token (lifetime ~1h).
-   Returns null on any failure — caller should fall back gracefully. */
-async function _getCalendarAccessToken(): Promise<string | null> {
-  const c = readCalendarWriteConfig();
-  if (!c.CLIENT_ID || !c.CLIENT_SECRET || !c.REFRESH_TOKEN) return null;
-  try {
-    const res = await axios.post(
-      'https://oauth2.googleapis.com/token',
-      new URLSearchParams({
-        client_id: c.CLIENT_ID,
-        client_secret: c.CLIENT_SECRET,
-        refresh_token: c.REFRESH_TOKEN,
-        grant_type: 'refresh_token',
-      }).toString(),
-      {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        timeout: 12000,
-        validateStatus: () => true,
-      }
-    );
-    if (res.status >= 200 && res.status < 300 && res.data?.access_token) {
-      return String(res.data.access_token);
-    }
-    console.warn('[Calendar] token refresh failed:', res.status, res.data);
-    return null;
-  } catch (e: any) {
-    console.warn('[Calendar] token refresh error:', e?.message || e);
-    return null;
-  }
-}
+function _calendarWriteConfigPath(): string { return cal.configPath(getCompanyDir()); }
+function readCalendarWriteConfig(): CalendarWriteConfig { return cal.readConfig(getCompanyDir()) || {}; }
+function writeCalendarWriteConfig(cfg: CalendarWriteConfig) { cal.writeConfig(getCompanyDir(), cfg); }
+function isCalendarWriteConnected(): boolean { return cal.isConnected(getCompanyDir()); }
+async function _getCalendarAccessToken(): Promise<string | null> { return cal.getAccessToken(getCompanyDir()); }
 
 /* Create a calendar event for a tracker task. Best effort — never throws.
    Returns the eventId if successful so the caller can persist it on the
@@ -2197,220 +1845,31 @@ async function updateCalendarEventForTask(task: TrackerTask): Promise<boolean> {
   } catch { return false; }
 }
 
-/* Delete a calendar event by id. Used when a tracker task is cancelled
-   so the user's calendar isn't cluttered with abandoned plans. */
+// Calendar CRUD/cache wrappers — 본문은 src/calendar/*.
+
 async function deleteCalendarEvent(eventId: string): Promise<boolean> {
-  if (!eventId) return false;
-  const access = await _getCalendarAccessToken();
-  if (!access) return false;
-  const cfg = readCalendarWriteConfig();
-  const calendarId = (cfg.CALENDAR_ID || 'primary').trim() || 'primary';
-  try {
-    const r = await axios.delete(
-      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
-      {
-        headers: { Authorization: `Bearer ${access}` },
-        timeout: 12000, validateStatus: () => true,
-      }
-    );
-    return r.status >= 200 && r.status < 300;
-  } catch { return false; }
+  return cal.deleteEvent(getCompanyDir(), eventId);
 }
 
-/* PATCH an existing calendar event — partial update (only the fields we send
-   change). Used when Secretary handles "그 일정 4시로 바꿔줘" / "회의 30분
-   늘려줘" style requests without having to delete + recreate (which would
-   change the eventId and break any external references). */
-async function patchCalendarEvent(eventId: string, opts: {
-  title?: string;
-  startIso?: string;
-  endIso?: string;
-  description?: string;
-  location?: string;
-}): Promise<{ eventId: string; htmlLink?: string; startIso: string; endIso: string } | null> {
-  if (!eventId) return null;
-  const access = await _getCalendarAccessToken();
-  if (!access) return null;
-  const cfg = readCalendarWriteConfig();
-  const calendarId = (cfg.CALENDAR_ID || 'primary').trim() || 'primary';
-  const body: any = {};
-  if (opts.title) body.summary = opts.title.slice(0, 200);
-  if (opts.location) body.location = opts.location.slice(0, 200);
-  if (opts.description) body.description = `${opts.description}\n\n수정: 비서(Secretary)`;
-  if (opts.startIso) {
-    const s = new Date(opts.startIso);
-    if (!isNaN(s.getTime())) body.start = { dateTime: s.toISOString() };
-  }
-  if (opts.endIso) {
-    const e = new Date(opts.endIso);
-    if (!isNaN(e.getTime())) body.end = { dateTime: e.toISOString() };
-  }
-  try {
-    const r = await axios.patch(
-      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
-      body,
-      {
-        headers: { Authorization: `Bearer ${access}`, 'Content-Type': 'application/json' },
-        timeout: 12000, validateStatus: () => true,
-      }
-    );
-    if (r.status >= 200 && r.status < 300 && r.data?.id) {
-      return {
-        eventId: String(r.data.id),
-        htmlLink: r.data.htmlLink,
-        startIso: r.data.start?.dateTime || r.data.start?.date || '',
-        endIso: r.data.end?.dateTime || r.data.end?.date || '',
-      };
-    }
-    return null;
-  } catch { return null; }
+async function patchCalendarEvent(
+  eventId: string,
+  opts: cal.PatchEventOpts
+): Promise<cal.CalendarEventResult | null> {
+  return cal.patchEvent(getCompanyDir(), eventId, opts);
 }
 
-/* Create a free-form calendar event (not tied to a tracker task). Used by
-   the Secretary when the user says "내일 11시 미팅 잡아줘" — direct natural
-   language to Calendar. Returns the event metadata or null on failure. */
-async function createCalendarEventDirect(opts: {
-  title: string;
-  startIso: string;       // RFC3339 with timezone offset, or 'YYYY-MM-DDTHH:mm:ss'
-  endIso?: string;        // optional — defaults to start + DEFAULT_DURATION_MINUTES
-  description?: string;
-  location?: string;
-}): Promise<{ eventId: string; htmlLink?: string; startIso: string; endIso: string } | null> {
-  const access = await _getCalendarAccessToken();
-  if (!access) return null;
-  const cfg = readCalendarWriteConfig();
-  const calendarId = (cfg.CALENDAR_ID || 'primary').trim() || 'primary';
-  const dur = Number(cfg.DEFAULT_DURATION_MINUTES) > 0 ? Number(cfg.DEFAULT_DURATION_MINUTES) : 60;
-  let startIso = '';
-  let endIso = '';
-  try {
-    const start = new Date(opts.startIso);
-    if (isNaN(start.getTime())) return null;
-    const end = opts.endIso ? new Date(opts.endIso) : new Date(start.getTime() + dur * 60_000);
-    if (isNaN(end.getTime())) return null;
-    startIso = start.toISOString();
-    endIso = end.toISOString();
-  } catch { return null; }
-  const body: any = {
-    summary: opts.title.slice(0, 200),
-    description: (opts.description || '') + '\n\n생성: 비서(Secretary)',
-    start: { dateTime: startIso },
-    end: { dateTime: endIso },
-    reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: 10 }, { method: 'popup', minutes: 60 }] },
-  };
-  if (opts.location) body.location = opts.location.slice(0, 200);
-  try {
-    const r = await axios.post(
-      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`,
-      body,
-      {
-        headers: { Authorization: `Bearer ${access}`, 'Content-Type': 'application/json' },
-        timeout: 12000, validateStatus: () => true,
-      }
-    );
-    if (r.status >= 200 && r.status < 300 && r.data?.id) {
-      return { eventId: String(r.data.id), htmlLink: r.data.htmlLink, startIso, endIso };
-    }
-    return null;
-  } catch { return null; }
+async function createCalendarEventDirect(
+  opts: cal.CreateEventOpts
+): Promise<cal.CalendarEventResult | null> {
+  return cal.createEvent(getCompanyDir(), opts);
 }
 
-/* Find calendar events matching a fuzzy query (used by Secretary when user
-   says "내일 회의 취소해" — match by title + date window). Returns up to 5
-   results sorted by closeness to "now". */
-async function findCalendarEvents(opts: {
-  query?: string;
-  daysAhead?: number;
-}): Promise<Array<{ eventId: string; title: string; startIso: string; endIso: string; htmlLink?: string }>> {
-  const access = await _getCalendarAccessToken();
-  if (!access) return [];
-  const cfg = readCalendarWriteConfig();
-  const calendarId = (cfg.CALENDAR_ID || 'primary').trim() || 'primary';
-  const days = opts.daysAhead && opts.daysAhead > 0 ? opts.daysAhead : 14;
-  const now = new Date();
-  const future = new Date(now.getTime() + days * 86_400_000);
-  const params = new URLSearchParams({
-    timeMin: now.toISOString(), timeMax: future.toISOString(),
-    singleEvents: 'true', orderBy: 'startTime', maxResults: '20',
-  });
-  if (opts.query) params.set('q', opts.query.slice(0, 80));
-  try {
-    const r = await axios.get(
-      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${params}`,
-      { headers: { Authorization: `Bearer ${access}` }, timeout: 12000, validateStatus: () => true }
-    );
-    if (r.status < 200 || r.status >= 300) return [];
-    const items = Array.isArray(r.data?.items) ? r.data.items : [];
-    return items.slice(0, 5).map((ev: any) => ({
-      eventId: String(ev.id),
-      title: String(ev.summary || '(제목 없음)'),
-      startIso: String(ev.start?.dateTime || ev.start?.date || ''),
-      endIso: String(ev.end?.dateTime || ev.end?.date || ''),
-      htmlLink: ev.htmlLink,
-    }));
-  } catch { return []; }
+async function findCalendarEvents(opts: cal.FindEventsOpts): Promise<cal.CalendarEvent[]> {
+  return cal.findEvents(getCompanyDir(), opts);
 }
 
-/* List upcoming events via OAuth + write to _shared/calendar_cache.md so
-   the rest of the company sees them. Same target file the iCal tool writes
-   to — OAuth users don't need to also run the iCal tool. */
-async function refreshCalendarCacheViaOAuth(daysAhead: number = 14): Promise<{ ok: boolean; count: number; error?: string }> {
-  const access = await _getCalendarAccessToken();
-  if (!access) return { ok: false, count: 0, error: 'no token' };
-  const cfg = readCalendarWriteConfig();
-  const calendarId = (cfg.CALENDAR_ID || 'primary').trim() || 'primary';
-  const now = new Date();
-  const future = new Date(now.getTime() + daysAhead * 86_400_000);
-  const params = new URLSearchParams({
-    timeMin: now.toISOString(),
-    timeMax: future.toISOString(),
-    singleEvents: 'true',
-    orderBy: 'startTime',
-    maxResults: '50',
-  });
-  let events: any[] = [];
-  try {
-    const r = await axios.get(
-      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${params}`,
-      {
-        headers: { Authorization: `Bearer ${access}` },
-        timeout: 12000,
-        validateStatus: () => true,
-      }
-    );
-    if (r.status < 200 || r.status >= 300) {
-      return { ok: false, count: 0, error: `HTTP ${r.status}` };
-    }
-    events = Array.isArray(r.data?.items) ? r.data.items : [];
-  } catch (e: any) {
-    return { ok: false, count: 0, error: e?.message || String(e) };
-  }
-  /* Write the same calendar_cache.md format the iCal tool produces. */
-  const dir = getCompanyDir();
-  fs.mkdirSync(path.join(dir, '_shared'), { recursive: true });
-  const lines: string[] = [];
-  lines.push('# 📅 다가오는 일정 (Google Calendar)');
-  lines.push(`_업데이트: ${now.toLocaleString('ko-KR')} · 향후 ${daysAhead}일 · OAuth 동기화_`);
-  lines.push('');
-  if (events.length === 0) {
-    lines.push('_없음_');
-  } else {
-    for (const ev of events) {
-      const start = ev.start?.dateTime || ev.start?.date;
-      if (!start) continue;
-      const allDay = !!ev.start?.date;
-      let stamp = '';
-      try {
-        const d = new Date(start);
-        stamp = allDay ? d.toISOString().slice(0, 10) : d.toISOString().slice(0, 16).replace('T', ' ');
-      } catch { stamp = String(start); }
-      const summary = (ev.summary || '(제목 없음)').replace(/\n/g, ' ');
-      const loc = ev.location ? ` — 📍 ${String(ev.location).replace(/\n/g, ' ').slice(0, 80)}` : '';
-      lines.push(`- **${stamp}** · ${summary}${loc}`);
-    }
-  }
-  fs.writeFileSync(path.join(dir, '_shared', 'calendar_cache.md'), lines.join('\n') + '\n');
-  return { ok: true, count: events.length };
+async function refreshCalendarCacheViaOAuth(daysAhead: number = 14): Promise<cal.RefreshCacheResult> {
+  return cal.refreshCache(getCompanyDir(), daysAhead);
 }
 
 /* OAuth setup wizard — guides the user through Google Cloud setup, captures
