@@ -87,6 +87,66 @@ export function resolveClaudeBin(): string | null {
   return _cachedFallback || 'claude';
 }
 
+/* Node binary lookup — Claude CLI uses `#!/usr/bin/env node` shebang. VS Code
+   extension host PATH on macOS (when launched from Dock) doesn't include
+   user shell PATH (nvm / Volta / asdf paths missing). spawn('claude') 가 살아도
+   그 안의 `env node` 가 'No such file or directory' 로 죽는다 (exit 127).
+   해결: node 도 찾아서 PATH 에 prepend 한 env 를 spawn 에 넘김. */
+const CANDIDATE_NODE_DIRS = [
+  '/opt/homebrew/bin',
+  '/usr/local/bin',
+  '~/.local/bin',
+  '~/.volta/bin',
+  '~/bin',
+];
+let _cachedNodeBin: string | null | undefined;
+function findNodeFallback(): string | null {
+  const candidates: string[] = [];
+  for (const d of CANDIDATE_NODE_DIRS) candidates.push(path.join(expandTilde(d), 'node'));
+  /* nvm — pick the highest version available (heuristic: lexicographic) */
+  const nvmRoot = expandTilde('~/.nvm/versions/node');
+  try {
+    if (fs.existsSync(nvmRoot)) {
+      const versions = fs.readdirSync(nvmRoot).sort().reverse(); /* newest first */
+      for (const v of versions) candidates.push(path.join(nvmRoot, v, 'bin', 'node'));
+    }
+  } catch { /* ignore */ }
+  /* asdf */
+  const asdfRoot = expandTilde('~/.asdf/installs/nodejs');
+  try {
+    if (fs.existsSync(asdfRoot)) {
+      const versions = fs.readdirSync(asdfRoot).sort().reverse();
+      for (const v of versions) candidates.push(path.join(asdfRoot, v, 'bin', 'node'));
+    }
+  } catch { /* ignore */ }
+  for (const c of candidates) {
+    try { if (fs.existsSync(c) && fs.statSync(c).isFile()) return c; } catch { /* ignore */ }
+  }
+  return null;
+}
+export function resolveNodeBin(): string | null {
+  if (_cachedNodeBin === undefined) _cachedNodeBin = findNodeFallback();
+  return _cachedNodeBin || null;
+}
+
+/** Build a child-process env with node + claude bin dirs prepended to PATH.
+ *  Caller passes the resolved claude bin so we can include its parent dir
+ *  too (claude often depends on co-located helper binaries). */
+export function buildSpawnEnv(claudeBin: string): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  const extra: string[] = [];
+  const nodeBin = resolveNodeBin();
+  if (nodeBin) extra.push(path.dirname(nodeBin));
+  if (claudeBin) {
+    const claudeDir = path.dirname(claudeBin);
+    if (!extra.includes(claudeDir)) extra.push(claudeDir);
+  }
+  if (extra.length > 0) {
+    env.PATH = [...extra, env.PATH || ''].filter(Boolean).join(path.delimiter);
+  }
+  return env;
+}
+
 export async function ask(
   prompt: string,
   tier?: Tier,
@@ -127,7 +187,7 @@ export async function pingClaude(): Promise<string> {
   }
   const { spawn } = await import('child_process');
   return new Promise((resolve, reject) => {
-    const child = spawn(bin, ['--version']);
+    const child = spawn(bin, ['--version'], { env: buildSpawnEnv(bin) });
     let out = '';
     let err = '';
     child.stdout.on('data', (b: Buffer) => { out += b.toString(); });

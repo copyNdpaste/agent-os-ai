@@ -1,4 +1,5 @@
 import { spawn } from 'child_process';
+import { buildSpawnEnv } from './index';
 
 interface RunOptions {
   binPath: string;
@@ -58,7 +59,12 @@ export function runClaudeCli(
 
     let child;
     try {
-      child = spawn(opts.binPath, args);
+      /* PATH-augmented env so the `#!/usr/bin/env node` shebang inside
+         the Claude CLI binary can actually find node. Without this VS
+         Code's Dock-launched extension host gets exit 127 on macOS
+         because nvm/Volta/asdf paths aren't inherited. */
+      const env = buildSpawnEnv(opts.binPath);
+      child = spawn(opts.binPath, args, { env });
     } catch (e) {
       reject(e);
       return;
@@ -127,6 +133,17 @@ export function runClaudeCli(
       }
       if (code !== 0) {
         const detail = stderrBuf.trim() || stdoutBuf.trim() || `exit code ${code}`;
+        /* 흔한 환경 문제 진단 친화적으로 — node 가 PATH 에 없으면
+           shebang 실패라 exit 127 + 'env: node: No such file or directory' */
+        if (code === 127 && /env: node|node: No such file/.test(detail)) {
+          settle(() => reject(new Error(
+            `Claude CLI 가 node 를 못 찾았어요 (exit 127). ` +
+            `Node.js 가 설치돼 있는지 \`which node\` 로 확인하고, ` +
+            `없으면 \`brew install node\` 또는 nvm 으로 설치해주세요. ` +
+            `이미 설치돼 있는데도 이 에러가 나면 VS Code 를 터미널에서 \`code .\` 로 다시 켜보세요.`
+          )));
+          return;
+        }
         settle(() => reject(new Error(`Claude CLI exited ${code}: ${detail}`)));
         return;
       }
