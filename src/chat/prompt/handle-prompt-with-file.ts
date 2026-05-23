@@ -46,7 +46,7 @@ export async function handlePromptWithFile(
         TEXT_MIME.test(f.type || '') || TEXT_EXT.test(f.name || '');
     const isImage = (f: { name: string; type: string }) => (f.type || '').startsWith('image/');
 
-    const tmpDir = path.join(os.tmpdir(), `connect-ai-upload-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+    const tmpDir = path.join(os.tmpdir(), `agent-os-ai-upload-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
     const savedPaths: string[] = [];
 
     try {

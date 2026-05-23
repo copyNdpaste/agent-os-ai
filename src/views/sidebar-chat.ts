@@ -136,6 +136,11 @@ import {
 } from '../chat';
 import { runActionCoordinator } from '../chat/actions/coordinator';
 import { runShortcutTool } from '../chat/shortcuts/run-shortcut-tool';
+import { handleInjectLocalBrain } from '../chat/menu/inject-local-brain';
+import { handleBrainMenu } from '../chat/menu/brain-menu';
+import { handlePrompt } from '../chat/prompt/handle-prompt';
+import { handlePromptWithFile } from '../chat/prompt/handle-prompt-with-file';
+import type { PromptContext } from '../chat/prompt/types';
 import {
     runSpecialistLoop,
     runConferPhase,
@@ -2228,91 +2233,18 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         }
     }
 
+    /* Body lives in `chat/menu/inject-local-brain.ts`; this is a thin host wrapper. */
     private async _handleInjectLocalBrain(files: any[]) {
-        if (!this._view) return;
-        
-        // 폴더 미설정 시 먼저 폴더 선택 강제
-        let brainDir: string;
-        if (!_isBrainDirExplicitlySet()) {
-            const ensured = await _ensureBrainDir();
-            if (!ensured) {
-                vscode.window.showWarningMessage("📁 지식을 저장할 폴더를 먼저 선택해주세요!");
-                return;
-            }
-            brainDir = ensured;
-        } else {
-            brainDir = _getBrainDir();
-        }
-        
-        if (!fs.existsSync(brainDir)) {
-            fs.mkdirSync(brainDir, { recursive: true });
-        }
-        const today = new Date();
-        const dateStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
-        const datePath = path.join(brainDir, '00_Raw', dateStr);
-        
-        if (!fs.existsSync(datePath)) {
-            fs.mkdirSync(datePath, { recursive: true });
-        }
-
-        let injectedTitles: string[] = [];
-        const routedAgents = new Set<string>();
-
-        this._view.webview.postMessage({ type: 'response', value: `🧠 **[P-Reinforce 연동 준비]**\n첨부하신 ${files.length}개의 파일을 로컬 두뇌(\`00_Raw/${dateStr}\`)에 입수하고 자동 푸시를 진행합니다.` });
-
-        for (const file of files) {
-            try {
-                if (typeof file?.name !== 'string' || typeof file?.data !== 'string') continue;
-                const fileContent = Buffer.from(file.data, 'base64').toString('utf-8');
-                const sanitized = file.name.replace(/[^a-zA-Z0-9가-힣_.-]/gi, '_');
-                const safeTitle = safeBasename(sanitized);
-                if (!safeTitle) continue;
-                const filePath = safeResolveInside(datePath, safeTitle);
-                if (!filePath) continue; // path traversal blocked
-                fs.writeFileSync(filePath, fileContent, 'utf-8');
-                injectedTitles.push(safeTitle);
-                /* Route a one-line summary into matching agents' memory.md
-                   so on next cycle they already see "new knowledge inbound"
-                   even before scanning the brain folder themselves. Best-effort. */
-                try {
-                    const recipients = routeBrainInjectionToAgents(filePath, safeTitle);
-                    for (const id of recipients) routedAgents.add(id);
-                } catch (e) {
-                    console.error('Failed to route inject to agent memory:', e);
-                }
-            } catch (err) {
-                console.error('Failed to write brain file:', err);
-            }
-        }
-        /* Surface routing to the user so they know which agents got updated. */
-        if (routedAgents.size > 0) {
-            const labels = Array.from(routedAgents).map(id => {
-                const a = (AGENTS as any)[id];
-                return a ? `${a.emoji} ${a.name}` : id;
-            }).join(', ');
-            this._view.webview.postMessage({ type: 'response', value: `🧠 ${labels} 의 메모리에 새 지식이 자동 연결되었습니다. 다음 사이클부터 활용합니다.` });
-        }
-        
-        const safeTitles = injectedTitles.join(', ');
-
-        _safeGitAutoSync(brainDir, `Auto-Inject Knowledge [Raw]: ${safeTitles}`, this);
-        this._sendStatusUpdate();
-            
-        setTimeout(() => {
-            let combinedContent = '';
-            for (const title of injectedTitles) {
-                try {
-                    const content = fs.readFileSync(path.join(datePath, title), 'utf-8');
-                    combinedContent += `\n\n[원본 데이터: ${title}]\n\`\`\`\n${content.slice(0, 10000)}\n\`\`\``;
-                } catch(e) {}
-            }
-
-            const hiddenPrompt = `[A.U 시스템 지시: P-Reinforce Architect 모드 활성화]\n새로운 비정형 데이터('${safeTitles}')가 글로벌 두뇌(Second Brain)에 입수 및 클라우드 백업 처리 완료되었습니다.\n\n방금 입수된 데이터의 원본 내용은 아래와 같습니다:${combinedContent}\n\n여기서부터 중요합니다! 마스터가 '응'이나 '진행해' 등으로 동의할 경우, 당신은 절대 대화만으로 대답하지 말고 아래의 [P-Reinforce 구조화 규격]에 따라 곧바로 <create_file> Tool들을 사용하십시오.\n\n[P-Reinforce 구조화 규격]\n1. 폴더 생성: 원본 데이터를 주제별로 쪼개어 절대 경로인 \`${brainDir}/10_Wiki/\` 하위의 적절한 폴더(예: 🛠️ Projects, 💡 Topics, ⚖️ Decisions, 🚀 Skills)에 저장하십시오.\n2. 마크다운 양식 준수: 생성되는 각 문서 파일은 반드시 아래 포맷을 따라야 합니다.\n---\nid: {{UUID}}\ncategory: "[[10_Wiki/설정한_폴더]]"\nconfidence_score: 0.9\ntags: [관련태그]\nlast_reinforced: ${dateStr}\n---\n# [[문서 제목]]\n## 📌 한 줄 통찰\n> (핵심 요약)\n## 📖 구조화된 지식\n- (세부 내용 불렛 포인트)\n## 🔗 지식 연결\n- Parent: [[상위_카테고리]]\n- Related: [[연관_개념]]\n- Raw Source: [[00_Raw/${dateStr}/${safeTitles}]]\n\n지시를 숙지했다면 묻지 말고 즉각 \`<create_file path="${brainDir}/10_Wiki/새폴더/새문서.md">\`를 사용하여 지식을 분해 후 생성하십시오. 완료 후 잘라낸 결과를 보고하십시오.`;
-            this._chatHistory.push({ role: 'system', content: hiddenPrompt });
-            
-            const uiMsg = "🧠 데이터가 완벽하게 입수되었습니다! 즉시 P-Reinforce 구조화를 시작할까요?";
-            this.injectSystemMessage(uiMsg);
-        }, 3000);
+        return handleInjectLocalBrain(
+            {
+                view: this._view,
+                chatHistory: this._chatHistory,
+                selfForGitSync: this,
+                sendStatusUpdate: () => this._sendStatusUpdate(),
+                injectSystemMessage: (msg) => this.injectSystemMessage(msg),
+            },
+            files,
+        );
     }
 
     // --------------------------------------------------------
@@ -2326,177 +2258,17 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
 
     // --------------------------------------------------------
     // Second Brain Menu (QuickPick)
+    // Body lives in `chat/menu/brain-menu.ts`; this is a thin host wrapper.
     // --------------------------------------------------------
     private async _handleBrainMenu() {
-        if (!this._view) { return; }
-        
-        const brainDir = _getBrainDir();
-        const brainFiles = fs.existsSync(brainDir) ? this._findBrainFiles(brainDir) : [];
-        const fileCount = brainFiles.length;
-        
-        const currentRepo = vscode.workspace.getConfiguration('agentOs').get<string>('secondBrainRepo', '');
-        const repoLabel = currentRepo ? currentRepo.split('/').pop() : '없음';
-        
-        const items: any[] = [
-            { label: '☁️ 온라인 지식 공간', description: currentRepo ? `GitHub: ${repoLabel}` : 'GitHub 주소 설정', action: 'changeGithub' },
-            { label: '📁 로컬 지식 공간', description: brainDir ? `폴더: ${path.basename(brainDir)} (${fileCount}개 파일)` : '폴더 위치 설정', action: 'changeFolder' },
-            { label: '🔄 지금 백업', description: '온라인과 로컬 동기화', action: 'githubSync' },
-            { label: '🌐 네트워크 보기', description: '지식 연결 그래프', action: 'viewGraph' },
-            { label: '🗑️ 삭제', description: 'GitHub 연결 또는 로컬 폴더 분리', action: 'cleanup' },
-        ];
-
-        const pick = await vscode.window.showQuickPick(items, { placeHolder: '🧠 지식 공간 관리' });
-        if (!pick) return;
-
-        switch (pick.action) {
-            case 'listFiles': {
-                if (fileCount === 0) {
-                    const action = await vscode.window.showInformationMessage(
-                        '📂 아직 저장된 지식이 없어요. 지식 폴더에 .md 파일을 넣어주세요!',
-                        '📁 지식 폴더 열기'
-                    );
-                    if (action === '📁 지식 폴더 열기') {
-                        if (!fs.existsSync(brainDir)) fs.mkdirSync(brainDir, { recursive: true });
-                        vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(brainDir));
-                    }
-                } else {
-                    const fileItems = brainFiles.slice(0, 50).map(f => {
-                        const rel = path.relative(brainDir, f);
-                        let title = '';
-                        try { title = fs.readFileSync(f, 'utf-8').split('\n').find(l => l.trim().length > 0)?.replace(/^#+\s*/, '').slice(0, 60) || ''; } catch {}
-                        return { label: `📄 ${rel}`, description: title, filePath: f };
-                    });
-                    const selected = await vscode.window.showQuickPick(fileItems, { 
-                        placeHolder: `📂 내 지식 파일 (총 ${fileCount}개) — 클릭하면 내용을 볼 수 있어요` 
-                    });
-                    if (selected) {
-                        const doc = await vscode.workspace.openTextDocument(selected.filePath);
-                        vscode.window.showTextDocument(doc);
-                    }
-                }
-                break;
-            }
-            case 'changeFolder': {
-                const folders = await vscode.window.showOpenDialog({
-                    canSelectFiles: false,
-                    canSelectFolders: true,
-                    canSelectMany: false,
-                    openLabel: '이 폴더를 내 지식 폴더로 사용',
-                    title: '📁 AI에게 읽혀줄 지식(.md 파일)이 들어있는 폴더를 선택하세요'
-                });
-                if (folders && folders.length > 0) {
-                    const selectedPath = folders[0].fsPath;
-                    await vscode.workspace.getConfiguration('agentOs').update('localBrainPath', selectedPath, vscode.ConfigurationTarget.Global);
-                    this._brainEnabled = true;
-                    this._ctx.globalState.update('brainEnabled', true);
-                    
-                    // 새 폴더에 git이 없으면 자동 초기화 + 기존 깃허브 URL로 remote 재연결
-                    const newGitDir = path.join(selectedPath, '.git');
-                    if (!fs.existsSync(newGitDir)) {
-                        try {
-                            gitExec(['init'], selectedPath);
-                            gitExecSafe(['branch', '-M', 'main'], selectedPath);
-
-                            const existingRepo = vscode.workspace.getConfiguration('agentOs').get<string>('secondBrainRepo', '');
-                            const cleanRepo = existingRepo ? validateGitRemoteUrl(existingRepo) : null;
-                            if (cleanRepo) {
-                                gitExecSafe(['remote', 'add', 'origin', cleanRepo], selectedPath);
-                            }
-                        } catch (e) {
-                            console.warn('Git init on new brain folder failed:', e);
-                        }
-                    }
-                    
-                    const newFiles = this._findBrainFiles(selectedPath);
-                    vscode.window.showInformationMessage(`✅ 지식 폴더가 변경되었어요! (${newFiles.length}개 지식 파일 발견)`);
-                    this._view.webview.postMessage({ type: 'response', value: `🧠 **지식 폴더 연결 완료!**\n📁 ${selectedPath}\n📄 ${newFiles.length}개의 지식 파일을 읽고 있어요.` });
-                }
-                break;
-            }
-            case 'resync': {
-                this._brainEnabled = true;
-                this._ctx.globalState.update('brainEnabled', true);
-                const refreshedFiles = this._findBrainFiles(brainDir);
-                vscode.window.showInformationMessage(`🔄 지식 새로고침 완료! (${refreshedFiles.length}개)`);
-                this._view.webview.postMessage({ type: 'response', value: `🔄 **지식 새로고침 완료!** ${refreshedFiles.length}개 지식이 연결되어 있어요.\n\n지식 모드가 ON 되었습니다.` });
-                break;
-            }
-            case 'viewGraph': {
-                vscode.commands.executeCommand('agent-os.showBrainNetwork');
-                break;
-            }
-            case 'githubSync': {
-                await this._syncSecondBrain();
-                break;
-            }
-            case 'changeGithub': {
-                const existing = vscode.workspace.getConfiguration('agentOs').get<string>('secondBrainRepo', '');
-                const inputUrl = await vscode.window.showInputBox({
-                    prompt: '☁️ 온라인 지식 공간 — GitHub 주소 (Enter로 저장)',
-                    placeHolder: '예: https://github.com/사용자명/저장소이름',
-                    value: existing,
-                    ignoreFocusOut: true,
-                    validateInput: (val) => {
-                        const v = (val || '').trim();
-                        if (!v) return null;
-                        if (validateGitRemoteUrl(v)) return null;
-                        return '⚠️ 형식: https://github.com/사용자/저장소  또는  git@github.com:사용자/저장소.git';
-                    }
-                });
-                if (inputUrl !== undefined && inputUrl.trim()) {
-                    const cleaned = validateGitRemoteUrl(inputUrl) || inputUrl.trim();
-                    await vscode.workspace.getConfiguration('agentOs').update('secondBrainRepo', cleaned, vscode.ConfigurationTarget.Global);
-                    const saved = vscode.workspace.getConfiguration('agentOs').get<string>('secondBrainRepo', '');
-                    vscode.window.showInformationMessage(`✅ 온라인 지식 공간 저장됨: ${saved}`);
-                    this._sendStatusUpdate();
-                }
-                break;
-            }
-            case 'cleanup': {
-                const cfg = vscode.workspace.getConfiguration('agentOs');
-                const hasGit = !!(cfg.get<string>('secondBrainRepo', '') || '');
-                const hasFolder = _isBrainDirExplicitlySet();
-
-                const items: any[] = [];
-                if (hasGit) items.push({ label: '☁️ 온라인 지식 공간 연결만 끊기', description: '파일은 그대로, GitHub 주소만 제거', kind: 'github' });
-                if (hasFolder) items.push({ label: '📁 로컬 지식 공간 연결만 분리', description: '파일은 디스크에 그대로, 익스텐션에서만 분리', kind: 'folder' });
-                if (items.length === 0) {
-                    vscode.window.showInformationMessage('지울 연결이 없어요. 이미 깨끗합니다 ✨');
-                    break;
-                }
-                items.push({ label: '⛔ 취소', kind: 'cancel' });
-
-                const pick2 = await vscode.window.showQuickPick(items, { placeHolder: '🗑️ 무엇을 끊을까요?' });
-                if (!pick2 || pick2.kind === 'cancel') break;
-
-                if (pick2.kind === 'github') {
-                    const confirm = await vscode.window.showWarningMessage(
-                        '☁️ 온라인 지식 공간 연결을 끊을까요?\n\n• GitHub 저장소 주소만 제거됩니다\n• 로컬 파일과 GitHub 저장소 자체는 그대로 남아요',
-                        { modal: true },
-                        '☁️ 끊기',
-                        '⛔ 취소'
-                    );
-                    if (confirm === '☁️ 끊기') {
-                        await cfg.update('secondBrainRepo', '', vscode.ConfigurationTarget.Global);
-                        vscode.window.showInformationMessage('☁️ 온라인 지식 공간 연결 해제됨.');
-                        this._sendStatusUpdate();
-                    }
-                } else if (pick2.kind === 'folder') {
-                    const confirm = await vscode.window.showWarningMessage(
-                        '📁 로컬 지식 공간 연결을 분리할까요?\n\n• 익스텐션이 더 이상 이 폴더를 참조하지 않습니다\n• 디스크의 파일은 그대로 남아요 (수동 삭제 안 함)',
-                        { modal: true },
-                        '📁 분리',
-                        '⛔ 취소'
-                    );
-                    if (confirm === '📁 분리') {
-                        await cfg.update('localBrainPath', '', vscode.ConfigurationTarget.Global);
-                        vscode.window.showInformationMessage('📁 로컬 지식 공간 연결 분리됨.');
-                        this._sendStatusUpdate();
-                    }
-                }
-                break;
-            }
-        }
+        return handleBrainMenu({
+            view: this._view,
+            ctx: this._ctx,
+            setBrainEnabled: (v) => { this._brainEnabled = v; },
+            findBrainFiles: (dir) => this._findBrainFiles(dir),
+            syncSecondBrain: () => this._syncSecondBrain(),
+            sendStatusUpdate: () => this._sendStatusUpdate(),
+        });
     }
 
     // --------------------------------------------------------
@@ -2759,347 +2531,54 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         return _hGetWorkspaceContext();
     }
 
-    // --------------------------------------------------------
-    // Handle prompt with file attachments (multimodal)
-    // --------------------------------------------------------
-    private async _handlePromptWithFile(prompt: string, modelName: string, files: {name: string, type: string, data: string}[], internetEnabled?: boolean) {
-        if (!this._view) { return; }
-
-        /* v2.90.1 — 이전 코드는 PDF·DOCX 같은 바이너리도 base64→utf-8 디코딩해서
-           프롬프트 -p 인자에 박았음. PDF 깨진 문자열이 Claude CLI 입력을 망가뜨려
-           "Failed to execute 'json' on 'Response'" 류 에러 발생 + ARG_MAX 초과 위험.
-           이제 텍스트는 그대로 인라인, 바이너리/이미지는 OS 임시 디렉토리에 저장하고
-           경로만 프롬프트에 노출 → Claude CLI 의 Read 도구가 직접 처리. */
-        const TEXT_MIME = /^(text\/|application\/(json|xml|javascript|x-yaml|x-sh|x-shellscript))/i;
-        const TEXT_EXT = /\.(txt|md|markdown|json|xml|ya?ml|js|jsx|ts|tsx|py|rb|go|rs|java|kt|swift|c|cc|cpp|h|hpp|cs|sh|bash|zsh|sql|html?|css|scss|less|env|toml|ini|conf|cfg|csv|tsv|log)$/i;
-        const isTextFile = (f: {name:string,type:string}) =>
-            TEXT_MIME.test(f.type || '') || TEXT_EXT.test(f.name || '');
-        const isImage = (f: {name:string,type:string}) => (f.type || '').startsWith('image/');
-
-        const tmpDir = path.join(os.tmpdir(), `agent-os-ai-upload-${Date.now()}-${Math.random().toString(36).slice(2,8)}`);
-        const savedPaths: string[] = [];
-
-        try {
-            let fileContext = '';
-            const inlineTextBlocks: string[] = [];
-            const fileRefs: string[] = [];
-
-            for (const f of files) {
-                if (isTextFile(f) && !isImage(f)) {
-                    const decoded = Buffer.from(f.data, 'base64').toString('utf-8');
-                    inlineTextBlocks.push(`\n\n[첨부 파일: ${f.name}]\n\`\`\`\n${decoded.slice(0, 20000)}\n\`\`\``);
-                } else {
-                    if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
-                    const safeName = (f.name || 'file').replace(/[^\w.\-]+/g, '_').slice(0, MAX_FILE_NAME_LEN);
-                    const p = path.join(tmpDir, safeName);
-                    fs.writeFileSync(p, Buffer.from(f.data, 'base64'));
-                    savedPaths.push(p);
-                    const kind = isImage(f) ? '이미지' : (f.type || '바이너리');
-                    fileRefs.push(`- ${f.name} (${kind}) → \`${p}\``);
-                }
-            }
-
-            if (inlineTextBlocks.length) fileContext += inlineTextBlocks.join('');
-            if (fileRefs.length) {
-                fileContext += `\n\n[첨부된 파일이 디스크에 저장되었습니다. \`Read\` 도구로 아래 경로를 직접 읽어 분석하세요 (PDF·이미지·DOCX 지원):]\n${fileRefs.join('\n')}`;
-            }
-
-            const userContent = prompt + fileContext;
-            this._chatHistory.push({ role: 'user', content: userContent });
-            this._displayMessages.push({ text: prompt + (files.length > 0 ? `\n📎 ${files.map(f=>f.name).join(', ')}` : ''), role: 'user' });
-            /* v2.90.1 — 전송 전에 히스토리 정리 (이전 PDF 깨진 잔재가 있으면 자름) */
-            this._pruneHistory();
-
-            const reqMessages = [...this._chatHistory];
-            if (reqMessages.length > 0 && reqMessages[0].role === 'system') {
-                const contextBlock = _hBuildActiveEditorContext(MAX_CONTEXT_SIZE);
-                const workspaceCtx = this._getWorkspaceContext();
-                const brainCtx = this._brainEnabled ? this._getSecondBrainContext() : '';
-                const projectMemory = this._getProjectMemory();
-                const internetCtx = internetEnabled
-                    ? `\n\n[CRITICAL DIRECTIVE: INTERNET ACCESS IS ENABLED]\nCurrent Time: ${new Date().toLocaleString('ko-KR')}\nYou have FULL internet access via the <read_url> tool. You MUST NEVER say you cannot search, or that your capabilities are limited. To search, ALWAYS output:\n<read_url>https://html.duckduckgo.com/html/?q=YOUR+SEARCH+TERM</read_url>\nIf the user asks to search, or asks for recent info, DO NOT apologize. Just use the tag.`
-                    : '';
-                reqMessages[0] = {
-                    role: 'system',
-                    content: `${this._systemPrompt}${projectMemory}\n\n[BACKGROUND CONTEXT]\n${contextBlock}\n${workspaceCtx}\n${brainCtx}${internetCtx}`
-                };
-            }
-
-            let aiMessage = '';
-            this._view.webview.postMessage({ type: 'streamStart' });
-            this._abortController = new AbortController();
-
-            const tier: Tier = _modelToTier(modelName);
-            const claudePrompt = _serializeMessages(reqMessages);
-            await streamAsk(claudePrompt, tier, (token) => {
-                if (this._abortController?.signal.aborted) return;
-                aiMessage += token;
-                this._view!.webview.postMessage({ type: 'streamChunk', value: token });
-            });
-
-            this._view.webview.postMessage({ type: 'streamEnd' });
-            this._chatHistory.push({ role: 'assistant', content: aiMessage });
-
-            const report = await this._executeActions(aiMessage);
-            if (report.length > 0) {
-                const reportMsg = `\n\n---\n**에이전트 작업 결과**\n${report.join('\n')}`;
-                this._view.webview.postMessage({ type: 'streamChunk', value: reportMsg });
-                this._view.webview.postMessage({ type: 'streamEnd' });
-                aiMessage += reportMsg;
-            }
-            this._displayMessages.push({ text: this._stripActionTags(aiMessage), role: 'ai' });
-            this._pruneHistory();
-            this._saveHistory();
-
-        } catch (error: any) {
-            const msg = error?.message || String(error);
-            const errMsg = _hClassifyChatError(msg);
-
-            this._view.webview.postMessage({ type: 'error', value: errMsg });
-
-            // Axios의 타입이 stream일 때 에러 본문을 파싱해서 원인을 명확히 로그에 남김
-            if (error.response?.data?.on) {
-                let buf = '';
-                error.response.data.on('data', (c: any) => buf += c.toString());
-                error.response.data.on('end', () => {
-                    try {
-                        const parsed = JSON.parse(buf);
-                        if (parsed.error?.message) {
-                            this._view!.webview.postMessage({ type: 'error', value: `⚠️ API 자세한 오류: ${parsed.error.message}` });
-                        }
-                    } catch { /* ignore parsing err */ }
-                });
-            }
-        } finally {
-            /* Claude CLI 가 -p 모드라 await 끝나면 자식 프로세스 종료된 상태 → 안전하게 정리. */
-            for (const p of savedPaths) {
-                try { fs.unlinkSync(p); } catch { /* gone is fine */ }
-            }
-            try { fs.rmdirSync(tmpDir); } catch { /* may not exist or non-empty */ }
-        }
+    /** Builds a PromptContext bag for the extracted prompt handlers.
+        Caller must guard `!this._view` first since PromptContext.view is non-optional. */
+    private _buildPromptContext(view: vscode.WebviewView): PromptContext {
+        return {
+            view,
+            chatHistory: this._chatHistory,
+            displayMessages: this._displayMessages,
+            brainEnabled: this._brainEnabled,
+            systemPrompt: this._systemPrompt,
+            setLastPrompt: (p) => { this._lastPrompt = p; },
+            setLastModel: (m) => { this._lastModel = m; },
+            createAbortController: () => {
+                this._abortController = new AbortController();
+                return this._abortController;
+            },
+            getAbortController: () => this._abortController,
+            setTelegramMirrorPending: (v) => { this._telegramMirrorPending = v; },
+            getTelegramMirrorPending: () => this._telegramMirrorPending,
+            getWorkspaceContext: () => this._getWorkspaceContext(),
+            getSecondBrainContext: () => this._getSecondBrainContext(),
+            getProjectMemory: () => this._getProjectMemory(),
+            readBrainFile: (f) => this._readBrainFile(f),
+            executeActions: (msg, opts) => this._executeActions(msg, opts),
+            stripActionTags: (t) => this._stripActionTags(t),
+            pruneHistory: () => this._pruneHistory(),
+            saveHistory: () => this._saveHistory(),
+            maybeMirrorToTelegram: () => this._maybeMirrorToTelegram(),
+            postThinking: (m) => this._postThinking(m),
+            shouldEmitThinking: () => this._shouldEmitThinking(),
+        };
     }
 
     // --------------------------------------------------------
-    // Handle user prompt → Ollama → agent actions → response
+    // Handle prompt with file attachments (multimodal)
+    // Body lives in `chat/prompt/handle-prompt-with-file.ts`.
+    // --------------------------------------------------------
+    private async _handlePromptWithFile(prompt: string, modelName: string, files: {name: string, type: string, data: string}[], internetEnabled?: boolean) {
+        if (!this._view) { return; }
+        return handlePromptWithFile(this._buildPromptContext(this._view), prompt, modelName, files, internetEnabled);
+    }
+
+    // --------------------------------------------------------
+    // Handle user prompt → Claude → agent actions → response
+    // Body lives in `chat/prompt/handle-prompt.ts`.
     // --------------------------------------------------------
     private async _handlePrompt(prompt: string, modelName: string, internetEnabled?: boolean) {
         if (!this._view) { return; }
-
-        try {
-            // 1. Context: active editor content
-            const contextBlock = _hBuildActiveEditorContext(MAX_CONTEXT_SIZE);
-
-            // 2. Context: workspace file tree + key file contents
-            const workspaceCtx = this._getWorkspaceContext();
-            
-            // 2.5 Inject Second Brain Knowledge (ON/OFF 토글 반영)
-            const brainCtx = this._brainEnabled ? this._getSecondBrainContext() : '';
-
-            // 3. Push user message
-            this._chatHistory.push({
-                role: 'user',
-                content: prompt
-            });
-
-            // 저장용: 유저 메시지 기록 (프롬프트만)
-            this._displayMessages.push({ text: prompt, role: 'user' });
-
-            const reqMessages = [...this._chatHistory];
-            if (reqMessages.length > 0 && reqMessages[0].role === 'system') {
-                const internetCtx = internetEnabled
-                    ? `\n\n[CRITICAL DIRECTIVE: INTERNET ACCESS IS ENABLED]\nCurrent Time: ${new Date().toLocaleString('ko-KR')}\nYou have FULL internet access via the <read_url> tool. You MUST NEVER say you cannot search, or that your capabilities are limited. To search, ALWAYS output:\n<read_url>https://html.duckduckgo.com/html/?q=YOUR+SEARCH+TERM</read_url>\nIf the user asks to search, or asks for recent info, DO NOT apologize. Just use the tag.`
-                    : '';
-                reqMessages[0] = {
-                    role: 'system',
-                    content: `${this._systemPrompt}${this._getProjectMemory()}\n\n[BACKGROUND CONTEXT - DO NOT EXPLAIN THIS TO THE USER UNLESS ASKED]\n${contextBlock}\n${workspaceCtx}\n${brainCtx}${internetCtx}`
-                };
-            }
-
-            let aiMessage = '';
-
-            this._view.webview.postMessage({ type: 'streamStart' });
-            this._lastPrompt = prompt;
-            this._lastModel = modelName;
-            this._abortController = new AbortController();
-
-            if (this._shouldEmitThinking()) {
-                this._postThinking({ type: 'thinking_start', prompt });
-                this._postThinking({
-                    type: 'context_done',
-                    workspace: !!workspaceCtx,
-                    brainCount: this._brainEnabled ? (brainCtx ? brainCtx.split('📄').length - 1 : 0) : 0,
-                    web: !!internetEnabled
-                });
-            }
-
-            const seenBrainReads = new Set<string>();
-            const detectBrainReadsLive = () => {
-                if (!this._shouldEmitThinking()) return;
-                const matches = [...aiMessage.matchAll(/<read_brain>([\s\S]*?)<\/read_brain>/g)];
-                for (const m of matches) {
-                    const note = m[1].trim();
-                    if (note && !seenBrainReads.has(note)) {
-                        seenBrainReads.add(note);
-                        this._postThinking({ type: 'brain_read', note });
-                    }
-                }
-                const fileMatches = [...aiMessage.matchAll(/<(?:read_file|create_file|edit_file)\s+path="([^"]+)"/g)];
-                for (const m of fileMatches) {
-                    let note = m[1].trim();
-                    if (note.includes('Company/')) {
-                        note = note.split('Company/').pop() || note;
-                    }
-                    if (note && !seenBrainReads.has(note)) {
-                        seenBrainReads.add(note);
-                        this._postThinking({ type: 'brain_read', note });
-                    }
-                }
-            };
-            let answerStartFired = false;
-            const fireAnswerStart = () => {
-                if (this._shouldEmitThinking() && !answerStartFired) {
-                    answerStartFired = true;
-                    this._postThinking({ type: 'answer_start' });
-                }
-            };
-
-            const tier: Tier = _modelToTier(modelName);
-            const claudePrompt = _serializeMessages(reqMessages);
-            await streamAsk(claudePrompt, tier, (token) => {
-                if (this._abortController?.signal.aborted) return;
-                aiMessage += token;
-                this._view!.webview.postMessage({ type: 'streamChunk', value: token });
-                detectBrainReadsLive();
-                if (this._shouldEmitThinking()) {
-                    fireAnswerStart();
-                    this._postThinking({ type: 'answer_chunk', text: token });
-                }
-            });
-
-            // 스트리밍 완료 알림 잠시 보류 (연속된 답변을 같은 상자에 이어서 출력하기 위함)
-            
-            // 4.5 자율 열람 (Second Brain 및 웹 검색): AI가 <read_brain> 또는 <read_url>을 사용했는지 확인
-            const brainReads = [...aiMessage.matchAll(/<read_brain>([\s\S]*?)<\/read_brain>/g)];
-            const urlReads = [...aiMessage.matchAll(/<read_url>([\s\S]*?)<\/read_url>/gi)];
-
-            if (brainReads.length > 0 || urlReads.length > 0) {
-                let fetchedContent = '';
-                let uiFeedbackStr = '';
-                
-                // Brain 읽기 처리
-                for (const match of brainReads) {
-                    const requestedFile = match[1].trim();
-                    const fileContent = this._readBrainFile(requestedFile);
-                    fetchedContent += `\n\n[BRAIN DOCUMENT: ${requestedFile}]\n${fileContent}\n`;
-                }
-
-                // URL 읽기 처리
-                for (const match of urlReads) {
-                    const url = match[1].trim();
-                    try {
-                        const { data } = await axios.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 10000 });
-                        let cleaned = data.toString()
-                            .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-                            .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
-                            .replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-                        fetchedContent += `\n\n[WEB CONTENT: ${url}]\n${cleaned.slice(0, 15000)}\n`;
-                        const msg = `\n\n> 🌐 **[웹 검색 완료]** ${url} (${cleaned.length}자)\n\n`;
-                        uiFeedbackStr += msg;
-                        this._view.webview.postMessage({ type: 'streamChunk', value: msg });
-                    } catch (err: any) {
-                        fetchedContent += `\n\n[WEB CONTENT: ${url}] (FAILED: ${err.message})\n`;
-                        const msg = `\n\n> 🌐 **[웹 검색 실패]** ${url} - ${err.message}\n\n`;
-                        uiFeedbackStr += msg;
-                        this._view.webview.postMessage({ type: 'streamChunk', value: msg });
-                    }
-                }
-
-                const cleanedResponse = aiMessage.replace(/<read_brain>[\s\S]*?<\/read_brain>/g, '')
-                                                 .replace(/<read_url>[\s\S]*?<\/read_url>/gi, '').trim();
-                
-                if (brainReads.length > 0) {
-                    const msg = `\n\n> 🧠 **[Second Brain 열람 완료]** 스캔한 핵심 지식을 바탕으로 답변을 구성합니다...\n\n`;
-                    uiFeedbackStr += msg;
-                    this._view.webview.postMessage({ type: 'streamChunk', value: msg });
-                }
-                
-                reqMessages.push({ role: 'assistant', content: cleanedResponse || '탐색을 진행 중입니다...' });
-                reqMessages.push({ role: 'user', content: `[SYSTEM: The following documents and web contents were retrieved based on your actions. Use this information to provide a complete and accurate answer to the user's original question.]\n${fetchedContent}\n\nNow answer the user's question using the above knowledge. Do NOT output <read_brain> or <read_url> again. Answer directly and comprehensively.` });
-
-                aiMessage = cleanedResponse + uiFeedbackStr;
-
-                if (this._shouldEmitThinking()) {
-                    this._postThinking({ type: 'answer_start' });
-                }
-
-                const followUpPrompt = _serializeMessages(reqMessages);
-                const followUpTier: Tier = _modelToTier(modelName);
-                await streamAsk(followUpPrompt, followUpTier, (token) => {
-                    if (this._abortController?.signal.aborted) return;
-                    aiMessage += token;
-                    this._view!.webview.postMessage({ type: 'streamChunk', value: token });
-                    if (this._shouldEmitThinking()) {
-                        this._postThinking({ type: 'answer_chunk', text: token });
-                    }
-                });
-            }
-
-            // 모든 스트리밍(1차 및 2차)이 끝난 후, 박스 포장 완료
-            this._view.webview.postMessage({ type: 'streamEnd' });
-
-            this._chatHistory.push({ role: 'assistant', content: aiMessage });
-
-            // 5. Execute agent actions
-            const report = await this._executeActions(aiMessage);
-
-            // 6. Agent report 추가 (있을 때만)
-            if (report.length > 0) {
-                const reportMsg = `\n\n---\n**에이전트 작업 결과**\n${report.join('\n')}`;
-                this._view.webview.postMessage({ type: 'streamChunk', value: reportMsg });
-                this._view.webview.postMessage({ type: 'streamEnd' });
-                aiMessage += reportMsg;
-            }
-
-            // 저장용: AI 응답 기록
-            this._displayMessages.push({ text: this._stripActionTags(aiMessage), role: 'ai' });
-
-            // 📚 Citation badges + 🎬 final source highlight
-            const allBrainReads = [...aiMessage.matchAll(/<read_brain>([\s\S]*?)<\/read_brain>/g)]
-                .map(m => m[1].trim()).filter(s => s.length > 0);
-            const uniqueSources = [...new Set(allBrainReads)];
-            if (uniqueSources.length > 0) {
-                this._view.webview.postMessage({ type: 'attachCitations', sources: uniqueSources });
-            }
-            if (this._shouldEmitThinking()) {
-                this._postThinking({ type: 'answer_complete', sources: uniqueSources });
-            }
-
-            this._pruneHistory();
-            this._saveHistory();
-
-        } catch (error: any) {
-            const msg = error?.message || String(error);
-            let errMsg: string;
-            if (/ENOENT|not found/i.test(msg)) {
-                errMsg = `⚠️ Claude CLI 를 찾지 못했어요.\n\`claude --version\` 으로 설치를 확인하거나 settings.json 의 \`agentOs.claudeBinPath\` 를 설정해주세요.`;
-            } else if (/timed out|timeout/i.test(msg)) {
-                errMsg = `⚠️ Claude 응답이 너무 오래 걸려요. 질문을 짧게 줄이거나 Claude Max 사용량 한도를 확인해주세요.`;
-            } else if (/aborted/i.test(msg)) {
-                errMsg = `⚠️ 응답이 중간에 취소됐어요.`;
-            } else {
-                errMsg = `⚠️ 오류: ${msg}`;
-            }
-
-            this._view.webview.postMessage({ type: 'error', value: errMsg });
-
-            if (this._telegramMirrorPending) {
-                sendTelegramReport(`⚠️ *AI 응답 실패*\n\n${errMsg.slice(0, 800)}`).catch(() => { /* silent */ });
-                this._telegramMirrorPending = false;
-            }
-        } finally {
-            /* If this prompt came from Telegram, mirror the AI response back. */
-            this._maybeMirrorToTelegram().catch(() => { /* silent */ });
-        }
+        return handlePrompt(this._buildPromptContext(this._view), prompt, modelName, internetEnabled);
     }
 
     /* v2.89.37 — 3단계 fallback. 사용자가 "내 유튜브 채널 분석" 같은 명백한 단일 도구
