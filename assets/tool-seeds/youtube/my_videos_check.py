@@ -124,7 +124,7 @@ def _korean_weekday(dt):
 
 def main():
     if not os.path.exists(ACCOUNT):
-        print("❌ youtube_account.json이 없어요. 직원 에이전트 보기 → YouTube → 도구 ⚙️에서 API 키와 채널 ID를 입력하세요.")
+        print("❌ youtube_account.json이 없어요. 에이전트 업무 대시보드 → YouTube → 도구 ⚙️에서 API 키와 채널 ID를 입력하세요.")
         sys.exit(1)
     acct = _load(ACCOUNT)
     cfg  = _load(CONFIG) if os.path.exists(CONFIG) else {}

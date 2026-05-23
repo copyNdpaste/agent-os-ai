@@ -1,5 +1,5 @@
 /**
- * CompanyDashboardPanel — VS Code 풀-스크린 웹뷰. "👥 직원 에이전트 보기".
+ * CompanyDashboardPanel — VS Code 풀-스크린 웹뷰. "👥 에이전트 업무 대시보드".
  *
  * extension.ts 에서 분리. wrapper 측에서 createOrShow() 호출.
  * 사이드바 위젯 (좁아서 KPI 풀 렌더 불가) 의 폴리쉬 본진 — 에이전트 매트릭스,
@@ -126,7 +126,7 @@ export class CompanyDashboardPanel {
         }
         const panel = vscode.window.createWebviewPanel(
             CompanyDashboardPanel.viewType,
-            '👥 직원 에이전트 보기',
+            '👥 에이전트 업무 대시보드',
             column,
             { enableScripts: true, retainContextWhenHidden: true }
         );
@@ -141,6 +141,20 @@ export class CompanyDashboardPanel {
             try {
                 if (msg?.type === 'refresh') {
                     await this._sendState();
+                } else if (msg?.type === 'loadBoard') {
+                    /* 📋 업무 보드 데이터 요청. period + agent 필터를 받아 tracker +
+                       sessions 합산해서 board snapshot 반환. */
+                    try {
+                        const { buildBoard } = await import('../dispatch/agent-board');
+                        const period = (msg.period === 'today' || msg.period === 'week' || msg.period === 'month' || msg.period === 'all') ? msg.period : 'today';
+                        const agentId = typeof msg.agentId === 'string' ? msg.agentId : undefined;
+                        const snap = buildBoard(getCompanyDir(), { period, agentId });
+                        this._panel.webview.postMessage({ type: 'boardData', snapshot: snap, period, agentId: agentId || 'all' });
+                    } catch (e: any) {
+                        this._panel.webview.postMessage({ type: 'boardData', error: e?.message || String(e) });
+                    }
+                } else if (msg?.type === 'openSessionFolder' && typeof msg.sessionDir === 'string') {
+                    try { vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(msg.sessionDir)); } catch { /* ignore */ }
                 } else if (msg?.type === 'openRevenueDashboard') {
                     /* v2.89.142 — 매출 카드 버튼 → 풀 대시보드 패널 띄움 */
                     RevenueDashboardPanel.createOrShow();
@@ -832,7 +846,7 @@ export class CompanyDashboardPanel {
         </svg>
       </div>
       <div>
-        <div class="hero-eyebrow">AGENT OS AI · 직원 에이전트 보기</div>
+        <div class="hero-eyebrow">AGENT OS AI · 에이전트 업무 대시보드</div>
         <div class="hero-title" id="companyName">불러오는 중…</div>
         <div class="hero-meta">
           <span class="meta-pill" id="todayLabel"></span>
@@ -854,6 +868,33 @@ export class CompanyDashboardPanel {
   <!-- v2.86 layout — agent team is the hero (사용자가 가장 보고 싶어하는 것).
        Below that: today (tasks + approvals merged), then YouTube + Analytics
        only when the channel is connected. Card count: 9 → 4 (or 6 with YT). -->
+
+  <!-- 📋 업무 보드 — 에이전트별·기간별 칸반/테이블. tracker + sessions 자동 집계. -->
+  <section class="card span-12 board-card" id="boardCard">
+    <div class="card-head">
+      <div class="card-title"><span class="title-icon">📋</span> 업무 보드</div>
+      <div class="board-toolbar">
+        <span class="board-counts" id="boardCounts"></span>
+        <select id="boardAgent" class="board-select" title="에이전트 필터">
+          <option value="all">전체 에이전트</option>
+        </select>
+        <div class="board-period seg-group" role="tablist">
+          <button class="seg active" data-period="today">오늘</button>
+          <button class="seg" data-period="week">7일</button>
+          <button class="seg" data-period="month">30일</button>
+          <button class="seg" data-period="all">전체</button>
+        </div>
+        <div class="board-view seg-group" role="tablist">
+          <button class="seg active" data-view="kanban" title="3 column 칸반">▦ 칸반</button>
+          <button class="seg" data-view="table" title="표 형태">≣ 표</button>
+        </div>
+        <button class="btn ghost" id="boardRefresh" title="다시 집계">↻</button>
+      </div>
+    </div>
+    <div class="board-body" id="boardBody">
+      <div class="board-loading">불러오는 중…</div>
+    </div>
+  </section>
 
   <!-- 1) 우리 팀 — hero. v2.89.108: 상태 필터 + 범례 추가. -->
   <section class="card span-12 hero-team" id="teamCard">
