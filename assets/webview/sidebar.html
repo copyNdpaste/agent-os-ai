@@ -566,6 +566,33 @@ body.corp-dispatching .ab-svg{opacity:1}
 .recovery-card .rc-btn-folder:hover{border-color:var(--accent);color:var(--accent)}
 .recovery-card .rc-btn-discard:hover{border-color:#dc2626;color:#dc2626;background:rgba(220,38,38,.05)}
 
+/* === 사장님 모드 (Owner view) — corp-on 일 때 자동 적용 ===
+   사용자(사장님) 는 일론머스크(CEO) 한테 명령만 하고, 일론이 specialist 들과
+   알아서 일한 뒤 CEO 종합 보고서로 보고하는 흐름. 사이드바엔 사장님 메시지 +
+   CEO 보고만 보이고 중간 raw 활동은 숨김 (활동은 사무실 패널의 📡 활동 로그
+   에 그대로 흘러서 보고 싶으면 확인 가능).
+
+   숨기는 것:
+     .brief-card     — DISPATCH PROTOCOL plan (엔지니어한테나 의미있음)
+     .msg-agent      — specialist 한 명 한 명의 raw 답변 카드
+     .agent-card 류  — 사이드바에 떠 있는 specialist 작업 카드 (해당 시)
+   살리는 것:
+     .msg-user       — 사장님 명령
+     .report-card    — CEO 종합 보고 (이번이 사장님이 보는 답)
+     .recovery-card·.chat-recovery-card·.inject-card·.skill-card — 시스템성
+     .msg-error·.msg-note — 알림 */
+body.corp-on .brief-card{display:none}
+body.corp-on .msg-agent{display:none}
+/* 사이드바 상단에 떠 있는 progress·dispatch beam 류 부수 카드들도 숨김 */
+body.corp-on .dispatch-beam, body.corp-on .agent-status-row{display:none}
+/* CEO 종합 보고서가 사장님 모드의 hero — 약간 더 크게, 좌측 amber border 제거
+   (보고서 자체가 답이라 추가 강조 불필요) */
+body.corp-on .report-card{margin-left:29px;padding:20px 24px 18px;max-width:640px}
+body.corp-on .msg:not(.msg-user):not(.msg-agent):not(.msg-error):not(.msg-note):not(.inject-card) .msg-body{border-left:none;padding-left:0;margin-left:29px}
+/* 진행 표시 (ml-loader / 데이터 가져오는 중 같은 progress response 메시지) 는
+   그대로 살림 — 사장님이 "지금 일론이 일하고 있구나" 인지하는 단일 채널.
+   각 specialist raw output 만 가려지고 status 한 줄들은 보임. */
+
 /* ===== Chat inflight recovery card ===== */
 .chat-recovery-card{background:linear-gradient(135deg,rgba(37,99,235,.06),rgba(37,99,235,.02));border:1px solid rgba(37,99,235,.32);border-radius:14px;padding:14px 16px;margin:0 0 14px 0;animation:msgIn .4s cubic-bezier(.16,1,.3,1);box-shadow:0 4px 16px rgba(37,99,235,.08)}
 .chat-recovery-card .crc-header{display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:700;letter-spacing:-.1px;color:var(--accent);margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid rgba(37,99,235,.18);font-family:'Inter','SF Pro Display',sans-serif}
