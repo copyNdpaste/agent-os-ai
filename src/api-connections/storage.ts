@@ -27,6 +27,110 @@ import { API_SERVICES } from './services';
 import { getCompanyDir } from '../paths';
 import { AGENTS } from '../agents';
 import { _safeReadText, ensureCompanyStructure } from '../extension';
+import type { ResolvedServiceValues, CredentialScope } from './types';
+
+/* === Project override files ===
+   When a user opts into a per-project credential set for a service, we write
+   one JSON file per service into `<workspace>/.agent-os-ai/credentials/`.
+   - Single source of truth at runtime: project override > company default.
+   - The folder is auto-gitignored on first write so secrets never reach git.
+   - File name = `${serviceId}.json` (matches service id from API_SERVICES). */
+const PROJECT_CREDENTIALS_REL = path.join('.agent-os-ai', 'credentials');
+
+function projectCredentialsDir(workspaceFolder: string): string {
+    return path.join(workspaceFolder, PROJECT_CREDENTIALS_REL);
+}
+
+function projectCredentialsFile(workspaceFolder: string, serviceId: string): string {
+    return path.join(projectCredentialsDir(workspaceFolder), `${serviceId}.json`);
+}
+
+/** Reads a project-override JSON if present. Returns empty object when the
+ *  file is missing or unparseable so callers can treat "no override" uniformly. */
+function readProjectOverride(workspaceFolder: string | undefined, serviceId: string): Record<string, string> {
+    if (!workspaceFolder) return {};
+    try {
+        const f = projectCredentialsFile(workspaceFolder, serviceId);
+        if (!fs.existsSync(f)) return {};
+        const parsed = JSON.parse(fs.readFileSync(f, 'utf-8') || '{}');
+        const out: Record<string, string> = {};
+        for (const [k, v] of Object.entries(parsed || {})) {
+            if (typeof v === 'string') out[k] = v;
+        }
+        return out;
+    } catch { return {}; }
+}
+
+/** Ensures `<workspace>/.agent-os-ai/.gitignore` exists and excludes credentials.
+ *  Idempotent — appends only when the rules are missing. */
+function ensureProjectGitignore(workspaceFolder: string): void {
+    try {
+        const dir = path.join(workspaceFolder, '.agent-os-ai');
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        const gi = path.join(dir, '.gitignore');
+        const want = `# Agent OS AI — project-scoped API credentials. NEVER commit.\ncredentials/\n`;
+        if (!fs.existsSync(gi)) {
+            fs.writeFileSync(gi, want);
+            return;
+        }
+        const cur = fs.readFileSync(gi, 'utf-8');
+        if (!cur.includes('credentials/')) {
+            fs.writeFileSync(gi, cur.trimEnd() + '\n' + want);
+        }
+    } catch { /* never block save on gitignore failure */ }
+}
+
+/** Atomic write of the project override file for one service. Empty values
+ *  are still written so the UI shows "set to empty (override active)" vs
+ *  "no override". Use `clearProjectOverride` to remove the file entirely. */
+function writeProjectOverride(workspaceFolder: string, serviceId: string, values: Record<string, string>): void {
+    const dir = projectCredentialsDir(workspaceFolder);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    ensureProjectGitignore(workspaceFolder);
+    const file = projectCredentialsFile(workspaceFolder, serviceId);
+    const tmp = file + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(values, null, 2), 'utf-8');
+    fs.renameSync(tmp, file);
+}
+
+/** Delete the project override file for a service so the company default
+ *  takes over. No-op if no override exists. */
+export function clearProjectOverride(workspaceFolder: string | undefined, serviceId: string): boolean {
+    if (!workspaceFolder) return false;
+    try {
+        const f = projectCredentialsFile(workspaceFolder, serviceId);
+        if (fs.existsSync(f)) {
+            fs.unlinkSync(f);
+            return true;
+        }
+    } catch { /* ignore */ }
+    return false;
+}
+
+/** Cascade resolver — returns effective values per service with provenance.
+ *  Reading order: project override (if workspaceFolder provided & override
+ *  file exists for that service) > company default > none.
+ *  Use this in UI to badge each field with its source. */
+export function resolveAllApiConnections(opts: { workspaceFolder?: string } = {}): Record<string, ResolvedServiceValues> {
+    const companyAll = readAllApiConnections();
+    const out: Record<string, ResolvedServiceValues> = {};
+    for (const svc of API_SERVICES) {
+        const companyValues = companyAll[svc.id] || {};
+        const projectValues = readProjectOverride(opts.workspaceFolder, svc.id);
+        const hasProjectOverride = Object.keys(projectValues).length > 0;
+        const effective: Record<string, { value: string; scope: CredentialScope }> = {};
+        for (const f of svc.fields) {
+            if (hasProjectOverride && f.key in projectValues) {
+                effective[f.key] = { value: projectValues[f.key] || '', scope: 'project' };
+            } else {
+                const v = companyValues[f.key] || '';
+                effective[f.key] = { value: v, scope: v ? 'company' : 'none' };
+            }
+        }
+        out[svc.id] = { effective, companyValues, projectValues, hasProjectOverride };
+    }
+    return out;
+}
 
 /* Read all current values from each service's config.md. Empty string when
    not yet set. Returned as { [serviceId]: { key: value } }. */
@@ -145,10 +249,49 @@ export function readAllApiConnections(): Record<string, Record<string, string>> 
 }
 
 /* Save a service's values. Reads the existing config.md, replaces lines for
-   each field (or appends a new section), writes back. Idempotent. */
-export async function saveApiConnection(serviceId: string, values: Record<string, string>): Promise<{ ok: boolean; error?: string; note?: string }> {
+   each field (or appends a new section), writes back. Idempotent.
+   `opts.scope`:
+     - 'company' (default) — writes to company folder (shared across all projects)
+     - 'project' — writes ONLY to `<workspace>/.agent-os-ai/credentials/{id}.json`
+       (overrides company default for this workspace; company file untouched).
+   When scope='project' you must also pass `opts.workspaceFolder`. The project
+   override skips Telegram chat-id detection / OAuth handshake / canonical
+   JSON sync because those side-effects already happened against the company
+   default — project override is purely a credential substitution layer. */
+export async function saveApiConnection(
+    serviceId: string,
+    values: Record<string, string>,
+    opts: { scope?: 'company' | 'project'; workspaceFolder?: string } = {},
+): Promise<{ ok: boolean; error?: string; note?: string; scope?: 'company' | 'project' }> {
     const svc = API_SERVICES.find(s => s.id === serviceId);
     if (!svc) return { ok: false, error: 'Unknown service' };
+    const scope = opts.scope || 'company';
+    /* Project override path — pure JSON write, skip all the company-side
+       side-effects. The runtime resolver will pick this file first. */
+    if (scope === 'project') {
+        if (!opts.workspaceFolder) {
+            return { ok: false, error: '프로젝트 폴더가 열려 있어야 프로젝트 전용 저장이 가능합니다.' };
+        }
+        if (svc.scopeHint === 'company-only') {
+            return { ok: false, error: `${svc.name} 은(는) 회사 전체 단일 계정 전용이라 프로젝트 override 가 지원되지 않습니다.` };
+        }
+        try {
+            /* Sanitize values — only known fields, trim whitespace. */
+            const sanitized: Record<string, string> = {};
+            for (const f of svc.fields) {
+                const v = (values[f.key] || '').trim();
+                sanitized[f.key] = v;
+            }
+            writeProjectOverride(opts.workspaceFolder, serviceId, sanitized);
+            return {
+                ok: true,
+                scope: 'project',
+                note: `🔒 이 프로젝트(workspace)에만 저장됨 — 회사 기본값은 그대로. .agent-os-ai/credentials/${serviceId}.json (git 자동 제외)`,
+            };
+        } catch (e: any) {
+            return { ok: false, error: `프로젝트 override 저장 실패: ${e?.message || e}` };
+        }
+    }
     try {
         ensureCompanyStructure();
         let extraNote = '';

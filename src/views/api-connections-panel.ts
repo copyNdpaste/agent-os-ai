@@ -14,12 +14,22 @@
  *   - _loadWebviewAsset
  */
 import * as vscode from 'vscode';
+import * as path from 'path';
 import {
     saveApiConnection,
-    readAllApiConnections,
     API_SERVICES,
     _loadWebviewAsset,
 } from '../extension';
+import { resolveAllApiConnections, clearProjectOverride } from '../api-connections/storage';
+
+/** Return the absolute path of the first workspace folder, or undefined if
+ *  the user has no folder open. Project-scope credentials require this — the
+ *  override file lives at `<workspaceFolder>/.agent-os-ai/credentials/`. */
+function activeWorkspaceFolder(): string | undefined {
+    const wf = vscode.workspace.workspaceFolders;
+    if (!wf || wf.length === 0) return undefined;
+    return wf[0].uri.fsPath;
+}
 
 export class ApiConnectionsPanel {
     public static current: ApiConnectionsPanel | null = null;
@@ -52,8 +62,33 @@ export class ApiConnectionsPanel {
                 if (msg?.type === 'load') {
                     this._post();
                 } else if (msg?.type === 'save' && msg.serviceId && msg.values) {
-                    const r = await saveApiConnection(msg.serviceId, msg.values);
-                    this._panel.webview.postMessage({ type: 'saved', serviceId: msg.serviceId, ok: r.ok, error: r.error, note: r.note });
+                    /* msg.scope: 'company' (default) | 'project'.
+                       project scope writes to <workspace>/.agent-os-ai/credentials/{id}.json
+                       and skips company-side side-effects (Telegram token verify,
+                       OAuth, canonical JSON sync). UI ensures scope='project' only
+                       fires when a workspace folder is open. */
+                    const scope: 'company' | 'project' = msg.scope === 'project' ? 'project' : 'company';
+                    const workspaceFolder = activeWorkspaceFolder();
+                    const r = await saveApiConnection(msg.serviceId, msg.values, { scope, workspaceFolder });
+                    this._panel.webview.postMessage({
+                        type: 'saved',
+                        serviceId: msg.serviceId,
+                        ok: r.ok,
+                        error: r.error,
+                        note: r.note,
+                        scope: r.scope || scope,
+                    });
+                    this._post();
+                } else if (msg?.type === 'clearProjectOverride' && msg.serviceId) {
+                    const workspaceFolder = activeWorkspaceFolder();
+                    const cleared = clearProjectOverride(workspaceFolder, msg.serviceId);
+                    this._panel.webview.postMessage({
+                        type: 'saved',
+                        serviceId: msg.serviceId,
+                        ok: true,
+                        note: cleared ? '🔄 프로젝트 override 제거 — 회사 기본값 복원' : '이미 회사 기본값을 사용 중이에요',
+                        scope: 'company',
+                    });
                     this._post();
                 } else if (msg?.type === 'wizard' && msg.command) {
                     vscode.commands.executeCommand(msg.command);
@@ -71,17 +106,38 @@ export class ApiConnectionsPanel {
 
     private _post() {
         try {
-            const values = readAllApiConnections();
+            const workspaceFolder = activeWorkspaceFolder();
+            const resolved = resolveAllApiConnections({ workspaceFolder });
+            const workspaceName = workspaceFolder ? path.basename(workspaceFolder) : '';
             this._panel.webview.postMessage({
                 type: 'state',
-                services: API_SERVICES.map(s => ({
-                    id: s.id, name: s.name, icon: s.icon, summary: s.summary,
-                    helpUrl: s.helpUrl || '',
-                    wizardCommand: s.wizardCommand || '',
-                    comingSoon: !!s.comingSoon,
-                    fields: s.fields,
-                    values: values[s.id] || {},
-                })),
+                hasWorkspace: !!workspaceFolder,
+                workspaceName,
+                services: API_SERVICES.map(s => {
+                    const r = resolved[s.id];
+                    return {
+                        id: s.id, name: s.name, icon: s.icon, summary: s.summary,
+                        helpUrl: s.helpUrl || '',
+                        wizardCommand: s.wizardCommand || '',
+                        comingSoon: !!s.comingSoon,
+                        scopeHint: s.scopeHint || 'project-allowed',
+                        fields: s.fields,
+                        /* Backwards compat: existing UI reads `values[fieldKey]` as
+                           a plain string. We pass the EFFECTIVE values (project
+                           override wins) so legacy code paths still render correctly. */
+                        values: Object.fromEntries(
+                            Object.entries(r?.effective || {}).map(([k, v]) => [k, v.value])
+                        ),
+                        /* New: per-field provenance so UI can badge "company" vs
+                           "project" without re-querying. */
+                        fieldScopes: Object.fromEntries(
+                            Object.entries(r?.effective || {}).map(([k, v]) => [k, v.scope])
+                        ),
+                        companyValues: r?.companyValues || {},
+                        projectValues: r?.projectValues || {},
+                        hasProjectOverride: !!r?.hasProjectOverride,
+                    };
+                }),
             });
         } catch { /* panel disposed */ }
     }
@@ -103,7 +159,7 @@ export class ApiConnectionsPanel {
     <div>
       <div class="eyebrow">AGENT OS AI · 외부 연결</div>
       <h1>API 키 한 곳에서 관리</h1>
-      <div class="hero-sub">텔레그램 · YouTube · Google Calendar · GitHub · Instagram — 모든 자격증명을 한 패널에서 입력하고 저장합니다. 같은 값이 <code>_agents/&lt;id&gt;/config.md</code>로 저장돼요.</div>
+      <div class="hero-sub">텔레그램 · YouTube · Calendar · OpenAI · Slack · X · Threads · Instagram — 모든 자격증명을 한 패널에서 관리. 회사 기본값은 모든 프로젝트가 공유, 필요 시 프로젝트별 override 가능. 저장 위치: <code>_company/_agents/&lt;id&gt;/config.md</code> + <code>.agent-os-ai/credentials/</code> (둘 다 git 자동 제외).</div>
     </div>
   </div>
 </header>
