@@ -74,6 +74,8 @@ export class OfficePanel {
             }
         );
         OfficePanel.current = new OfficePanel(panel, ctx, provider);
+        /* Snapshot: 다음 reload 에서 자동 복원되도록 등록. dispose 에서 unmark. */
+        try { require('./panel-registry').markOpen('office'); } catch { /* ignore */ }
     }
 
     private constructor(panel: vscode.WebviewPanel, ctx: vscode.ExtensionContext, provider: SidebarChatProvider) {
@@ -111,8 +113,15 @@ export class OfficePanel {
         return '';
     }
 
-    /** 캐릭터 sprite를 결정. 우선순위: 사용자 LimeZu 폴더 > 번들 자산 > 빈 문자열(이모지 폴백) */
-    private _resolveCharacterSprite(agentId: string): { uri: string; source: 'user' | 'bundled' | 'none' } {
+    /** 캐릭터 sprite를 결정.
+     *  우선순위: photo/ 단일 sprite (사진 기반 픽셀) > 사용자 LimeZu atlas > 번들 atlas > 없음.
+     *  'photo' source 는 atlas 가 아니므로 webview 에서 frame animation 을 끄고 정적으로 표시. */
+    private _resolveCharacterSprite(agentId: string): { uri: string; source: 'photo' | 'user' | 'bundled' | 'none' } {
+        // 사진 기반 단일 sprite (assets/pixel/characters/photo/{id}.png)
+        const photo = vscode.Uri.joinPath(this._ctx.extensionUri, 'assets', 'pixel', 'characters', 'photo', `${agentId}.png`);
+        if (fs.existsSync(photo.fsPath)) {
+            return { uri: this._panel.webview.asWebviewUri(photo).toString(), source: 'photo' };
+        }
         const userPath = OfficePanel._resolveUserAssetsPath();
         if (userPath) {
             const idx: Record<string, number> = {
@@ -239,7 +248,10 @@ export class OfficePanel {
             emoji: AGENTS[id].emoji,
             color: AGENTS[id].color,
             specialty: AGENTS[id].specialty,
-            sprite: characterUris[id] || ''
+            sprite: characterUris[id] || '',
+            /* 'photo' = 단일 사진-기반 픽셀 sprite (atlas 아님 → walking frame animation 비활성).
+               'user'/'bundled' = LimeZu atlas (48×96 cells × 24 frames). */
+            spriteSource: sources[id] || 'none'
         }));
         const dir = getCompanyDir();
         const userPath = OfficePanel._resolveUserAssetsPath();
@@ -281,6 +293,7 @@ export class OfficePanel {
     public dispose() {
         try { this._provider.unregisterCorporateBroadcastTarget(this._panel.webview); } catch { /* ignore */ }
         OfficePanel.current = undefined;
+        try { require('./panel-registry').markClosed('office'); } catch { /* ignore */ }
         try { this._provider.broadcastOfficeState(false); } catch { /* ignore */ }
         this._panel.dispose();
         while (this._disposables.length) {

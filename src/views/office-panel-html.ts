@@ -22,7 +22,7 @@ export function renderOfficePanelHtml(args: OfficePanelHtmlArgs): string {
    so the office, dashboard, and chat all share one identity. The amber
    override that used to flip on for "1인 기업 모드" is removed — having
    two parallel colors made the product feel like two different apps. */
-:root{--accent:#00FF41;--accent2:#008F11;--accent-glow:rgba(0,255,65,.22);--bg:#040608;--bg2:#080B10;--surface:rgba(15,22,30,.78);--border:rgba(255,255,255,.06);--text:#E5E7EB;--text-dim:#8A95A3;--text-bright:#fff}
+:root{--accent:#38BDF8;--accent2:#1E40AF;--accent-glow:rgba(56,189,248,.22);--bg:#040608;--bg2:#080B10;--surface:rgba(15,22,30,.78);--border:rgba(255,255,255,.06);--text:#E5E7EB;--text-dim:#8A95A3;--text-bright:#fff}
 html,body{width:100%;height:100%;background:var(--bg);color:var(--text);overflow:hidden}
 body{display:flex;flex-direction:column}
 
@@ -48,10 +48,10 @@ body{display:flex;flex-direction:column}
 .brand-block{display:flex;align-items:center;gap:14px;min-width:0}
 .brand-mark{
   width:38px;height:38px;border-radius:12px;flex-shrink:0;
-  background:linear-gradient(135deg,rgba(0,255,65,.18),rgba(0,143,17,.04));
+  background:linear-gradient(135deg,rgba(56,189,248,.18),rgba(30,64,175,.04));
   border:1px solid var(--accent-glow);
   display:flex;align-items:center;justify-content:center;font-size:20px;
-  box-shadow:0 0 16px rgba(0,255,65,.18),inset 0 0 0 1px rgba(255,255,255,.04);
+  box-shadow:0 0 16px rgba(56,189,248,.18),inset 0 0 0 1px rgba(255,255,255,.04);
 }
 .brand-text{display:flex;flex-direction:column;gap:2px;min-width:0}
 .brand-row{display:flex;align-items:center;gap:6px;min-width:0}
@@ -80,11 +80,11 @@ body{display:flex;flex-direction:column}
 .hud .stat{
   display:flex;align-items:center;gap:8px;
   padding:7px 13px;border-radius:10px;
-  background:rgba(0,255,65,.04);
-  border:1px solid rgba(0,255,65,.16);
+  background:rgba(56,189,248,.04);
+  border:1px solid rgba(56,189,248,.16);
   transition:border-color .2s,background .2s;
 }
-.hud .stat:hover{border-color:rgba(0,255,65,.32);background:rgba(0,255,65,.06)}
+.hud .stat:hover{border-color:rgba(56,189,248,.32);background:rgba(56,189,248,.06)}
 .hud .stat .icon{font-size:14px;opacity:.85;line-height:1}
 .hud .stat .text{display:flex;flex-direction:column;line-height:1.1}
 .hud .stat .lbl{
@@ -122,18 +122,18 @@ body{display:flex;flex-direction:column}
   letter-spacing:-.1px;
 }
 .topbtn:hover{
-  background:rgba(255,255,255,.06);border-color:rgba(0,255,65,.3);
+  background:rgba(255,255,255,.06);border-color:rgba(56,189,248,.3);
   color:var(--accent);transform:translateY(-1px);
   box-shadow:0 4px 14px rgba(0,0,0,.4);
 }
 .topbtn.primary{
-  background:linear-gradient(135deg,#6cff7c 0%,#00FF41 50%,#008F11 100%);
+  background:linear-gradient(135deg,#7dd3fc 0%,#38BDF8 50%,#1E40AF 100%);
   color:#001a0d;border-color:transparent;font-weight:700;
-  box-shadow:0 4px 16px rgba(0,255,65,.3),inset 0 1px 0 rgba(255,255,255,.3);
+  box-shadow:0 4px 16px rgba(56,189,248,.3),inset 0 1px 0 rgba(255,255,255,.3);
 }
 .topbtn.primary:hover{
   filter:brightness(1.08);transform:translateY(-2px);
-  box-shadow:0 8px 28px rgba(0,255,65,.45),inset 0 1px 0 rgba(255,255,255,.3);
+  box-shadow:0 8px 28px rgba(56,189,248,.45),inset 0 1px 0 rgba(255,255,255,.3);
 }
 .topbtn.ghost{background:transparent;color:var(--text-dim)}
 .topbtn.ghost:hover{background:rgba(255,255,255,.04);color:var(--text)}
@@ -145,10 +145,10 @@ body{display:flex;flex-direction:column}
   background:var(--text-dim);transition:all .3s;flex-shrink:0;
 }
 #workdayBtn.on{
-  background:linear-gradient(135deg,rgba(0,255,65,.20),rgba(0,255,65,.06));
+  background:linear-gradient(135deg,rgba(56,189,248,.20),rgba(56,189,248,.06));
   border-color:var(--accent);color:var(--accent);
   text-shadow:0 0 8px var(--accent-glow);
-  box-shadow:0 0 16px rgba(0,255,65,.20),inset 0 0 0 1px rgba(0,255,65,.20);
+  box-shadow:0 0 16px rgba(56,189,248,.20),inset 0 0 0 1px rgba(56,189,248,.20);
 }
 #workdayBtn.on::before{
   background:var(--accent);
@@ -195,7 +195,7 @@ body{display:flex;flex-direction:column}
    regardless of panel size. */
 .office-stage{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:0;background:#070A0F}
 /* stageInner sized inline by fitStage() to maintain world aspect ratio (1400/700). */
-.office-stage-inner{position:relative;--char-scale:1.5;overflow:hidden;border-radius:6px;box-shadow:0 0 0 1px rgba(0,255,65,.18),0 8px 32px rgba(0,0,0,.6)}
+.office-stage-inner{position:relative;--char-scale:1.5;overflow:hidden;border-radius:6px;box-shadow:0 0 0 1px rgba(56,189,248,.18),0 8px 32px rgba(0,0,0,.6)}
 
 /* Garden grass — tiled LimeZu grass texture (base layer of world canvas).
    Tile size set inline by JS based on world scale so pixels stay crisp. */
@@ -211,27 +211,32 @@ body{display:flex;flex-direction:column}
 .world-decorations img{position:absolute;image-rendering:pixelated;image-rendering:crisp-edges;filter:drop-shadow(0 2px 3px rgba(0,0,0,.5));display:block;transform:translate(-50%,-100%)}
 .office-bg{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated;image-rendering:crisp-edges;pointer-events:none;display:block}
 .office-zones{position:absolute;inset:0;pointer-events:none;z-index:2}
-.office-zones .zone-label{position:absolute;font-family:'SF Mono',monospace;font-size:8px;letter-spacing:1px;color:var(--accent);text-transform:uppercase;text-shadow:0 0 6px rgba(0,255,65,.7),0 1px 2px rgba(0,0,0,.95);opacity:.55;transform:translate(-50%,-100%);white-space:nowrap;padding:1px 4px;border-radius:2px;background:rgba(0,8,4,.45)}
+.office-zones .zone-label{position:absolute;font-family:'SF Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--accent);text-transform:uppercase;text-shadow:0 0 8px rgba(56,189,248,.85),0 1px 2px rgba(0,0,0,.95);opacity:.8;transform:translate(-50%,-100%);white-space:nowrap;padding:2px 6px;border-radius:3px;background:rgba(0,8,4,.55);border:1px solid rgba(56,189,248,.25)}
+
+/* Ambient decor — 빈 영역에 떠다니는 작은 이모지. opacity 살짝, 천천히 위아래 */
+.ambient-decor{position:absolute;inset:0;pointer-events:none;z-index:3}
+.adeco{position:absolute;font-size:14px;opacity:.55;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4));animation:adecoFloat 6s ease-in-out infinite;transform:translate(-50%,-50%)}
+@keyframes adecoFloat{0%,100%{transform:translate(-50%,-50%) translateY(0)}50%{transform:translate(-50%,-50%) translateY(-4px)}}
 /* Hide legacy single-room overlay UI in unified-office mode. */
 body.floorplan .conf-room,body.floorplan .location{display:none!important}
 .office-vignette{position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.45) 100%);pointer-events:none;z-index:3}
 
 /* Floating particles drifting up — feels alive */
 .particles{position:absolute;inset:0;pointer-events:none;z-index:4;overflow:hidden}
-.particles span{position:absolute;width:2px;height:2px;border-radius:50%;background:rgba(0,255,65,.45);box-shadow:0 0 4px rgba(0,255,65,.7);animation:floatUp 14s linear infinite;opacity:0}
+.particles span{position:absolute;width:2px;height:2px;border-radius:50%;background:rgba(56,189,248,.45);box-shadow:0 0 4px rgba(56,189,248,.7);animation:floatUp 14s linear infinite;opacity:0}
 @keyframes floatUp{0%{transform:translateY(0);opacity:0}10%{opacity:.8}90%{opacity:.6}100%{transform:translateY(-100vh);opacity:0}}
 
 /* Conference room — glass-walled boardroom with holographic projection */
 .conf-room{position:absolute;left:50%;top:3%;transform:translateX(-50%);width:42%;min-width:340px;max-width:560px;height:20%;min-height:130px;
   background:
-    linear-gradient(180deg,rgba(0,255,65,.07),rgba(0,143,17,.02)),
-    radial-gradient(ellipse at 50% 100%,rgba(0,255,65,.12),transparent 60%);
-  border:1px solid rgba(0,255,65,.5);border-radius:14px;
+    linear-gradient(180deg,rgba(56,189,248,.07),rgba(30,64,175,.02)),
+    radial-gradient(ellipse at 50% 100%,rgba(56,189,248,.12),transparent 60%);
+  border:1px solid rgba(56,189,248,.5);border-radius:14px;
   box-shadow:
-    inset 0 0 40px rgba(0,255,65,.1),
+    inset 0 0 40px rgba(56,189,248,.1),
     inset 0 0 0 1px rgba(0,0,0,.5),
-    0 8px 28px rgba(0,255,65,.18),
-    0 0 60px rgba(0,255,65,.08);
+    0 8px 28px rgba(56,189,248,.18),
+    0 0 60px rgba(56,189,248,.08);
   z-index:4;
   backdrop-filter:blur(2px)}
 /* corner brackets — futuristic frame */
@@ -244,43 +249,43 @@ body.floorplan .conf-room,body.floorplan .location{display:none!important}
 /* glass holographic projection — shows brief during commands */
 .whiteboard{position:absolute;top:20px;left:50%;transform:translateX(-50%);width:82%;max-width:420px;height:54px;
   background:linear-gradient(180deg,rgba(0,30,15,.92),rgba(0,15,8,.95));
-  border:1px solid rgba(0,255,65,.3);border-radius:6px;
+  border:1px solid rgba(56,189,248,.3);border-radius:6px;
   display:flex;align-items:center;justify-content:center;
   font-family:'SF Mono',monospace;font-size:10.5px;color:var(--text-dim);text-align:center;padding:8px;line-height:1.4;overflow:hidden;
-  box-shadow:inset 0 0 14px rgba(0,255,65,.06),0 0 0 1px rgba(0,0,0,.5)}
-.whiteboard::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent 0 2px,rgba(0,255,65,.05) 2px 3px);pointer-events:none}
-.whiteboard.active{border-color:var(--accent);background:linear-gradient(180deg,rgba(0,40,20,.95),rgba(0,20,10,.98));color:var(--text);box-shadow:inset 0 0 22px rgba(0,255,65,.18),0 0 24px var(--accent-glow);animation:wbPulse 2.4s ease-in-out infinite}
-@keyframes wbPulse{0%,100%{box-shadow:inset 0 0 22px rgba(0,255,65,.18),0 0 24px var(--accent-glow)}50%{box-shadow:inset 0 0 28px rgba(0,255,65,.28),0 0 38px var(--accent-glow)}}
+  box-shadow:inset 0 0 14px rgba(56,189,248,.06),0 0 0 1px rgba(0,0,0,.5)}
+.whiteboard::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent 0 2px,rgba(56,189,248,.05) 2px 3px);pointer-events:none}
+.whiteboard.active{border-color:var(--accent);background:linear-gradient(180deg,rgba(0,40,20,.95),rgba(0,20,10,.98));color:var(--text);box-shadow:inset 0 0 22px rgba(56,189,248,.18),0 0 24px var(--accent-glow);animation:wbPulse 2.4s ease-in-out infinite}
+@keyframes wbPulse{0%,100%{box-shadow:inset 0 0 22px rgba(56,189,248,.18),0 0 24px var(--accent-glow)}50%{box-shadow:inset 0 0 28px rgba(56,189,248,.28),0 0 38px var(--accent-glow)}}
 .whiteboard .wb-line{display:block;animation:wbType .4s ease-out backwards;position:relative;z-index:1}
 @keyframes wbType{from{opacity:0;transform:translateY(2px)}to{opacity:1;transform:translateY(0)}}
 
 /* conference table with holographic glow on top */
 .conf-table{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);width:78%;height:26%;
   background:linear-gradient(180deg,#1a2028 0%,#0c1218 100%);
-  border:1px solid rgba(0,255,65,.25);border-radius:50px;
+  border:1px solid rgba(56,189,248,.25);border-radius:50px;
   box-shadow:
     0 6px 14px rgba(0,0,0,.6),
-    inset 0 1px 0 rgba(0,255,65,.15),
-    inset 0 0 20px rgba(0,255,65,.06)}
-.conf-table::before{content:'';position:absolute;left:8%;right:8%;top:30%;bottom:30%;background:radial-gradient(ellipse,rgba(0,255,65,.15),transparent 70%);border-radius:50%;animation:tablePulse 3s ease-in-out infinite}
+    inset 0 1px 0 rgba(56,189,248,.15),
+    inset 0 0 20px rgba(56,189,248,.06)}
+.conf-table::before{content:'';position:absolute;left:8%;right:8%;top:30%;bottom:30%;background:radial-gradient(ellipse,rgba(56,189,248,.15),transparent 70%);border-radius:50%;animation:tablePulse 3s ease-in-out infinite}
 @keyframes tablePulse{0%,100%{opacity:.5}50%{opacity:1}}
 
 /* Workstations — proper desk with dual monitors, LED strip, PC tower */
 .desk{position:absolute;width:108px;height:78px;transform:translate(-50%,-50%);z-index:3;pointer-events:none}
 .desk .ds-top{position:absolute;left:0;right:0;top:24px;height:32px;
   background:linear-gradient(180deg,#1a2028 0%,#0c1218 100%);
-  border:1px solid rgba(0,255,65,.2);border-radius:4px;
+  border:1px solid rgba(56,189,248,.2);border-radius:4px;
   box-shadow:0 4px 8px rgba(0,0,0,.65),inset 0 1px 0 rgba(255,255,255,.04)}
 /* desk LED strip — glows in agent color */
 .desk .ds-top::before{content:'';position:absolute;left:6px;right:6px;bottom:1px;height:1.5px;background:var(--ag-color,var(--accent));box-shadow:0 0 6px var(--ag-color,var(--accent));opacity:.8;border-radius:1px;animation:ledStripPulse 3s ease-in-out infinite}
 @keyframes ledStripPulse{0%,100%{opacity:.5}50%{opacity:1}}
 /* PC tower under desk */
-.desk .ds-top::after{content:'';position:absolute;right:4px;bottom:-12px;width:9px;height:14px;background:linear-gradient(135deg,#1c2228,#0a0e14);border:1px solid rgba(255,255,255,.06);border-radius:1.5px;box-shadow:0 0 4px rgba(0,255,65,.2)}
+.desk .ds-top::after{content:'';position:absolute;right:4px;bottom:-12px;width:9px;height:14px;background:linear-gradient(135deg,#1c2228,#0a0e14);border:1px solid rgba(255,255,255,.06);border-radius:1.5px;box-shadow:0 0 4px rgba(56,189,248,.2)}
 
 /* Dual monitor frame */
 .desk .ds-monitor{position:absolute;left:50%;top:0;transform:translateX(-50%);width:80px;height:30px;display:flex;gap:2px;justify-content:center}
 .desk .ds-screen{flex:0 0 38px;height:26px;background:#000;border:1.2px solid #2a3038;border-radius:2px;
-  box-shadow:0 0 10px rgba(0,255,65,.18),inset 0 0 0 1px rgba(0,0,0,.5);
+  box-shadow:0 0 10px rgba(56,189,248,.18),inset 0 0 0 1px rgba(0,0,0,.5);
   overflow:hidden;position:relative}
 /* monitor stand */
 .desk .ds-monitor::after{content:'';position:absolute;left:50%;bottom:-4px;transform:translateX(-50%);width:14px;height:4px;background:#1a1f26;border-radius:0 0 4px 4px;box-shadow:0 1px 2px rgba(0,0,0,.6)}
@@ -290,7 +295,7 @@ body.floorplan .conf-room,body.floorplan .location{display:none!important}
 
 /* Per-agent screen content */
 /* CEO: command graph with sweeping radar arm */
-.desk[data-agent="ceo"] .ds-screen::before{background:radial-gradient(circle at 50% 50%,rgba(0,255,65,.4) 0%,rgba(0,255,65,0) 1px,rgba(0,255,65,.1) 2px,rgba(0,255,65,0) 3px,rgba(0,255,65,.1) 6px,rgba(0,255,65,0) 7px,rgba(0,255,65,.08) 12px,rgba(0,255,65,0) 13px),conic-gradient(from 0deg,rgba(0,255,65,.5),transparent 70%);animation:radarSweep 4s linear infinite}
+.desk[data-agent="ceo"] .ds-screen::before{background:radial-gradient(circle at 50% 50%,rgba(56,189,248,.4) 0%,rgba(56,189,248,0) 1px,rgba(56,189,248,.1) 2px,rgba(56,189,248,0) 3px,rgba(56,189,248,.1) 6px,rgba(56,189,248,0) 7px,rgba(56,189,248,.08) 12px,rgba(56,189,248,0) 13px),conic-gradient(from 0deg,rgba(56,189,248,.5),transparent 70%);animation:radarSweep 4s linear infinite}
 @keyframes radarSweep{from{transform:rotate(0)}to{transform:rotate(360deg)}}
 
 /* Developer: scrolling code lines */
@@ -298,7 +303,7 @@ body.floorplan .conf-room,body.floorplan .location{display:none!important}
 @keyframes codeScroll{from{background-position:0 0}to{background-position:0 22px}}
 
 /* Designer: rotating color swatches */
-.desk[data-agent="designer"] .ds-screen::before{background:conic-gradient(from 0deg,#FF0033 0deg 60deg,#FBBF24 60deg 120deg,#22D3EE 120deg 180deg,#A78BFA 180deg 240deg,#34D399 240deg 300deg,#E1306C 300deg 360deg);filter:saturate(.85) brightness(.7);animation:colorSpin 8s linear infinite;border-radius:50%;margin:6px}
+.desk[data-agent="designer"] .ds-screen::before{background:conic-gradient(from 0deg,#FF0033 0deg 60deg,#FBBF24 60deg 120deg,#22D3EE 120deg 180deg,#A78BFA 180deg 240deg,#22D3EE 240deg 300deg,#E1306C 300deg 360deg);filter:saturate(.85) brightness(.7);animation:colorSpin 8s linear infinite;border-radius:50%;margin:6px}
 @keyframes colorSpin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
 
 /* YouTube: red bars rising/falling like audio meter */
@@ -322,7 +327,7 @@ body.floorplan .conf-room,body.floorplan .location{display:none!important}
 @keyframes barsRise{from{filter:brightness(.7)}to{filter:brightness(1.2)}}
 
 /* Secretary: scrolling event list */
-.desk[data-agent="secretary"] .ds-screen::before{background:repeating-linear-gradient(0deg,rgba(52,211,153,.55) 0 2px,transparent 2px 4px,rgba(52,211,153,.3) 4px 5px,transparent 5px 8px);background-size:100% 16px;animation:listScroll 4s linear infinite}
+.desk[data-agent="secretary"] .ds-screen::before{background:repeating-linear-gradient(0deg,rgba(34,211,238,.55) 0 2px,transparent 2px 4px,rgba(34,211,238,.3) 4px 5px,transparent 5px 8px);background-size:100% 16px;animation:listScroll 4s linear infinite}
 @keyframes listScroll{from{background-position:0 0}to{background-position:0 16px}}
 
 /* second screen — slightly dimmer secondary feed */
@@ -330,7 +335,7 @@ body.floorplan .conf-room,body.floorplan .location{display:none!important}
 
 .desk .ds-chair{position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:30px;height:18px;
   background:linear-gradient(180deg,#1a2030,#0c1220);
-  border:1px solid rgba(0,255,65,.18);border-radius:5px 5px 9px 9px;
+  border:1px solid rgba(56,189,248,.18);border-radius:5px 5px 9px 9px;
   box-shadow:0 2px 4px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.04)}
 .desk[data-side="bottom"] .ds-chair{top:0;bottom:auto;border-radius:9px 9px 5px 5px}
 .desk[data-side="bottom"] .ds-monitor{top:auto;bottom:0}
@@ -345,7 +350,7 @@ body.floorplan .conf-room,body.floorplan .location{display:none!important}
 @keyframes decorFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
 
 /* ===== Locations — Smallville routine destinations (JS positions to bg-image %) ===== */
-.location{position:absolute;transform:translate(-50%,-50%);z-index:5;pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:2px;background:rgba(0,0,0,.65);border:1px solid rgba(0,255,65,.4);border-radius:8px;padding:4px 8px;backdrop-filter:blur(2px)}
+.location{position:absolute;transform:translate(-50%,-50%);z-index:5;pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:2px;background:rgba(0,0,0,.65);border:1px solid rgba(56,189,248,.4);border-radius:8px;padding:4px 8px;backdrop-filter:blur(2px)}
 .location .loc-icon{font-size:18px;filter:drop-shadow(0 2px 3px rgba(0,0,0,.8))}
 .location .loc-label{font-family:'SF Mono',monospace;font-size:7px;letter-spacing:1.5px;color:var(--accent);opacity:.85;white-space:nowrap;text-transform:uppercase;text-shadow:0 0 4px var(--accent-glow)}
 .location.active{animation:locPulse 1.5s ease-in-out infinite;border-color:var(--accent);box-shadow:0 0 14px var(--accent-glow)}
@@ -384,7 +389,7 @@ body.floorplan .conf-room,body.floorplan .location{display:none!important}
   background:linear-gradient(180deg,rgba(20,16,10,.97),rgba(12,9,5,.98));
   border:1px solid var(--border);border-radius:18px;padding:24px;
   display:flex;flex-direction:column;gap:18px;
-  box-shadow:0 24px 72px rgba(0,0,0,.85),0 0 60px rgba(0,255,65,.18),inset 0 1px 0 rgba(255,255,255,.04);
+  box-shadow:0 24px 72px rgba(0,0,0,.85),0 0 60px rgba(56,189,248,.18),inset 0 1px 0 rgba(255,255,255,.04);
   overflow-y:auto;
   animation:amdIn .4s cubic-bezier(.16,1,.3,1);
   font-family:'Inter','SF Pro Display',sans-serif;
@@ -407,7 +412,7 @@ body.floorplan .conf-room,body.floorplan .location{display:none!important}
   display:flex;align-items:center;justify-content:center;
   background:linear-gradient(135deg,rgba(255,182,39,.14),rgba(255,182,39,.03));
   border:1px solid var(--accent-glow);border-radius:14px;
-  box-shadow:0 0 18px rgba(0,255,65,.18),inset 0 0 0 1px rgba(255,255,255,.04);
+  box-shadow:0 0 18px rgba(56,189,248,.18),inset 0 0 0 1px rgba(255,255,255,.04);
   overflow:hidden;
 }
 /* When a custom portrait is loaded (프로필 이미지 제공 에이전트), drop the gradient and let
@@ -467,10 +472,10 @@ body.floorplan .conf-room,body.floorplan .location{display:none!important}
 .amd-content::-webkit-scrollbar{width:4px}
 .amd-content::-webkit-scrollbar-thumb{background:var(--accent);opacity:.4;border-radius:2px}
 .amd-sessions{display:flex;flex-direction:column;gap:3px;font-size:10px;font-family:'SF Mono',monospace;color:var(--text-dim)}
-.amd-sessions .amd-sess{padding:3px 8px;background:rgba(0,255,65,.03);border:1px solid rgba(0,255,65,.1);border-radius:4px}
-.amd-foot{padding-top:8px;border-top:1px solid rgba(0,255,65,.18);display:flex;gap:6px}
-.amd-btn{flex:1;background:rgba(0,255,65,.06);border:1px solid rgba(0,255,65,.3);color:var(--accent);padding:7px 10px;border-radius:6px;cursor:pointer;font-size:10px;font-family:'SF Mono',monospace;letter-spacing:.5px;transition:all .2s}
-.amd-btn:hover{background:rgba(0,255,65,.12);box-shadow:0 0 10px var(--accent-glow)}
+.amd-sessions .amd-sess{padding:3px 8px;background:rgba(56,189,248,.03);border:1px solid rgba(56,189,248,.1);border-radius:4px}
+.amd-foot{padding-top:8px;border-top:1px solid rgba(56,189,248,.18);display:flex;gap:6px}
+.amd-btn{flex:1;background:rgba(56,189,248,.06);border:1px solid rgba(56,189,248,.3);color:var(--accent);padding:7px 10px;border-radius:6px;cursor:pointer;font-size:10px;font-family:'SF Mono',monospace;letter-spacing:.5px;transition:all .2s}
+.amd-btn:hover{background:rgba(56,189,248,.12);box-shadow:0 0 10px var(--accent-glow)}
 .amd-btn.primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#000;border-color:transparent;font-weight:700}
 .amd-btn.primary:hover{filter:brightness(1.15);box-shadow:0 4px 14px var(--accent-glow)}
 
@@ -479,12 +484,12 @@ body.floorplan .conf-room,body.floorplan .location{display:none!important}
 .amd-field{display:flex;flex-direction:column;gap:3px}
 .amd-field-lbl{font-family:'SF Mono',monospace;font-size:8.5px;letter-spacing:1.2px;color:var(--text-dim);text-transform:uppercase;opacity:.85}
 .amd-field-help{font-size:9px;color:var(--text-dim);opacity:.6;margin-top:1px;font-style:italic}
-.amd-input{background:rgba(0,255,65,.04);border:1px solid rgba(0,255,65,.18);border-radius:5px;padding:7px 9px;font-size:11px;color:var(--text);font-family:'SF Mono',monospace;outline:none;transition:all .2s}
-.amd-input:focus{border-color:var(--accent);box-shadow:0 0 8px var(--accent-glow);background:rgba(0,255,65,.08)}
+.amd-input{background:rgba(56,189,248,.04);border:1px solid rgba(56,189,248,.18);border-radius:5px;padding:7px 9px;font-size:11px;color:var(--text);font-family:'SF Mono',monospace;outline:none;transition:all .2s}
+.amd-input:focus{border-color:var(--accent);box-shadow:0 0 8px var(--accent-glow);background:rgba(56,189,248,.08)}
 textarea.amd-input{resize:vertical;min-height:50px;line-height:1.45}
 .amd-save-status{font-size:9.5px;font-family:'SF Mono',monospace;letter-spacing:.5px;text-align:center;padding:4px;border-radius:4px;opacity:0;transition:opacity .3s}
 .amd-save-status.show{opacity:1}
-.amd-save-status.success{color:var(--accent);background:rgba(0,255,65,.08)}
+.amd-save-status.success{color:var(--accent);background:rgba(56,189,248,.08)}
 .amd-save-status.error{color:#ef4444;background:rgba(239,68,68,.08)}
 
 
@@ -502,6 +507,9 @@ textarea.amd-input{resize:vertical;min-height:50px;line-height:1.45}
    Idle frame: row 1, col 0 → background-position: 0 -96px
    Walking row: row 2 (y=-192), 6 frames per direction (down 0–5, left 6–11, right 12–17, up 18–23) */
 .character{width:48px;height:96px;position:relative;overflow:hidden;image-rendering:pixelated;cursor:default;background-repeat:no-repeat;background-position:0 -96px;background-size:auto;filter:drop-shadow(0 6px 8px rgba(0,0,0,.65));animation:charBob 2.4s ease-in-out infinite;transform:scale(0.8);transform-origin:center bottom}
+/* photo-sprite: 사진 기반 단일 픽셀 sprite. atlas 가 아니므로 background-position 시프트
+   금지하고 한 장 그대로 contain 으로 보여줌. 비율 살리려면 width 도 자연히 채워야 함. */
+.character.photo-sprite{width:64px;height:96px;background-position:center center !important;background-size:contain !important;overflow:visible}
 @keyframes charBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-1px)}}
 
 /* State glow under character */
@@ -553,11 +561,60 @@ body.dispatching .beams{opacity:1}
   background:linear-gradient(180deg,rgba(14,11,7,.92),rgba(8,7,4,.85));
   border-left:1px solid var(--border);
   display:flex;flex-direction:column;min-height:0;
-  transition:width .3s cubic-bezier(.16,1,.3,1),border-left-width .3s ease;
   font-family:'Inter','SF Pro Display',sans-serif;
   backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
 }
+/* width transition 은 collapse 토글 때만 켠다. drag 중엔 따라가지 못해서 끊긴다. */
+.side.animated{transition:width .3s cubic-bezier(.16,1,.3,1),border-left-width .3s ease}
 .side.collapsed{width:0;border-left-width:0;overflow:hidden}
+/* Drag-resize handle — office floor 와 side 패널 사이 세로 막대.
+   collapse 시 side 와 같이 사라진다. */
+.side-resizer{
+  width:6px;flex-shrink:0;cursor:col-resize;
+  background:rgba(255,255,255,.02);
+  border-left:1px solid var(--border);border-right:1px solid var(--border);
+  position:relative;z-index:5;user-select:none;
+  transition:background .15s,box-shadow .15s;
+}
+.side-resizer:hover,.side-resizer.dragging{
+  background:var(--accent-glow);
+  box-shadow:0 0 12px var(--accent-glow),inset 0 0 4px var(--accent-glow);
+}
+.side-resizer::before{
+  content:'⋮';position:absolute;left:50%;top:50%;
+  transform:translate(-50%,-50%);color:var(--text-dim);
+  font-size:14px;font-weight:900;pointer-events:none;
+  text-shadow:0 0 6px rgba(0,0,0,.6);line-height:1;
+}
+.side-resizer:hover::before,.side-resizer.dragging::before{color:var(--accent)}
+.side-resizer.hidden{display:none}
+
+/* === Custom tooltip (1s delay) ===
+   브라우저 기본 title tooltip 은 2-3초 후에 떠서 발견이 늦다. 1초 후
+   네온 톤으로 띄우고, 줄바꿈도 지원. data-tip 속성을 읽는다. */
+.custom-tooltip{
+  position:fixed;z-index:9999;pointer-events:none;
+  background:linear-gradient(180deg,rgba(8,12,20,.98),rgba(4,8,14,.98));
+  color:var(--text-bright,#fff);font-size:11.5px;line-height:1.5;
+  font-family:'Inter','SF Pro Display',-apple-system,system-ui,sans-serif;
+  padding:8px 12px;border-radius:8px;max-width:320px;
+  border:1px solid var(--accent-glow);
+  box-shadow:0 8px 28px rgba(0,0,0,.55),0 0 16px var(--accent-glow),inset 0 1px 0 rgba(255,255,255,.04);
+  white-space:pre-wrap;word-break:keep-all;
+  opacity:0;transform:translateY(-4px);
+  transition:opacity .15s ease,transform .15s ease;
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+}
+.custom-tooltip.show{opacity:1;transform:translateY(0)}
+.custom-tooltip::before{
+  content:'';position:absolute;width:8px;height:8px;
+  background:inherit;border-left:1px solid var(--accent-glow);
+  border-top:1px solid var(--accent-glow);
+  transform:rotate(45deg);
+}
+.custom-tooltip.below::before{top:-5px;left:14px}
+.custom-tooltip.above::before{bottom:-5px;left:14px;border-left:none;border-top:none;
+  border-right:1px solid var(--accent-glow);border-bottom:1px solid var(--accent-glow)}
 .side-tabs{
   display:flex;border-bottom:1px solid var(--border);flex-shrink:0;
   background:rgba(0,0,0,.25);
@@ -572,7 +629,7 @@ body.dispatching .beams{opacity:1}
 .side-tab:hover{color:var(--text);background:rgba(255,255,255,.02)}
 .side-tab.active{
   color:var(--accent);border-bottom-color:var(--accent);
-  background:linear-gradient(180deg,rgba(0,255,65,.06),transparent);
+  background:linear-gradient(180deg,rgba(56,189,248,.06),transparent);
   text-shadow:0 0 8px var(--accent-glow);
 }
 .side-tab .tab-count{
@@ -582,9 +639,24 @@ body.dispatching .beams{opacity:1}
 }
 .side-tab.active .tab-count{background:var(--accent);color:#1a0f00}
 .side-pane{flex:1;overflow-y:auto;padding:14px 12px;display:none}
+/* Markdown 요소 — 대화록·산출물 탭 안에서 읽기 좋게. side-pane 다크 톤에 맞춤. */
+.md-h1{font-size:14px;font-weight:700;color:var(--accent);margin:14px 0 6px;letter-spacing:-.2px}
+.md-h2{font-size:13px;font-weight:700;color:var(--text-bright,#f1f5f9);margin:12px 0 5px;padding-bottom:3px;border-bottom:1px solid rgba(56,189,248,.2)}
+.md-h3{font-size:12px;font-weight:700;color:var(--accent);margin:10px 0 4px;display:inline-block}
+.md-quote{border-left:2px solid var(--accent);padding:3px 10px;margin:3px 0 3px 8px;color:var(--text,#cbd5e1);background:rgba(56,189,248,.04);border-radius:0 4px 4px 0;font-size:11.5px;line-height:1.55}
+.md-quote strong{color:var(--text-bright,#f1f5f9)}
+.md-pre{background:rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:8px 10px;overflow-x:auto;margin:6px 0;font-family:'SF Mono','JetBrains Mono',monospace;font-size:11px;line-height:1.5}
+.md-pre code{color:#a5f3fc}
+.md-code{background:rgba(0,0,0,.45);color:#a5f3fc;padding:1px 5px;border-radius:3px;font-family:'SF Mono','JetBrains Mono',monospace;font-size:11px;border:1px solid rgba(255,255,255,.08)}
+.md-hr{border:none;height:1px;background:linear-gradient(90deg,transparent,rgba(56,189,248,.4),transparent);margin:10px 0}
+.md-ul,.md-ol{padding-left:18px;margin:4px 0}
+.md-ul li,.md-ol li{margin:2px 0;font-size:11.5px;line-height:1.6}
+.md-gap{height:6px}
+#convBody strong{color:var(--text-bright,#f1f5f9);font-weight:700}
+#convBody em{color:var(--text,#cbd5e1);font-style:italic}
 .side-pane.active{display:block}
 .side-pane::-webkit-scrollbar{width:5px}
-.side-pane::-webkit-scrollbar-thumb{background:rgba(0,255,65,.35);border-radius:3px}
+.side-pane::-webkit-scrollbar-thumb{background:rgba(56,189,248,.35);border-radius:3px}
 .side-pane::-webkit-scrollbar-track{background:transparent}
 .side-empty{
   display:flex;flex-direction:column;align-items:center;justify-content:center;
@@ -643,15 +715,23 @@ body.dispatching .beams{opacity:1}
 }
 .out-head .oh-task{color:var(--text-dim);font-weight:500;font-size:10px;letter-spacing:.2px}
 .out-body{
-  font-size:11.5px;color:var(--text);line-height:1.6;
-  white-space:pre-wrap;word-break:break-word;
-  max-height:220px;overflow-y:auto;
+  font-size:12px;color:var(--text);line-height:1.65;
+  word-break:break-word;
+  max-height:320px;overflow-y:auto;
   font-family:'Inter',sans-serif;
 }
 .out-body::-webkit-scrollbar{width:4px}
 .out-body::-webkit-scrollbar-thumb{background:var(--ag-color,var(--accent));opacity:.4;border-radius:2px}
-.report-block{background:linear-gradient(135deg,rgba(0,255,65,.05),rgba(0,143,17,.02));border:1px solid rgba(0,255,65,.3);border-radius:8px;padding:14px;margin-top:10px;color:var(--text);font-size:11.5px;line-height:1.65;white-space:pre-wrap;animation:logIn .4s ease-out;box-shadow:0 0 14px rgba(0,255,65,.08)}
-.report-block .rb-head{font-family:'SF Mono',monospace;font-size:10px;letter-spacing:1.5px;color:var(--accent);margin-bottom:8px;text-transform:uppercase}
+/* Markdown 렌더된 산출물 — 위 md-* 와 시각 통일 */
+.out-body .md-h1,.out-body .md-h2,.out-body .md-h3{margin-top:8px}
+.out-body .md-h1:first-child,.out-body .md-h2:first-child,.out-body .md-h3:first-child{margin-top:0}
+.out-body strong{color:var(--text-bright,#f1f5f9);font-weight:700}
+.out-body em{color:var(--text-bright,#f1f5f9);font-style:italic}
+.out-body p{margin:4px 0}
+.report-block{background:linear-gradient(135deg,rgba(56,189,248,.06),rgba(30,64,175,.03));border:1px solid rgba(56,189,248,.32);border-radius:10px;padding:16px;margin-top:12px;color:var(--text-bright);font-size:12.5px;line-height:1.7;animation:logIn .4s ease-out;box-shadow:0 0 14px rgba(56,189,248,.10)}
+.report-block .rb-head{font-family:'Inter',sans-serif;font-size:13px;font-weight:700;letter-spacing:-.1px;color:var(--accent);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid rgba(56,189,248,.18)}
+.report-block .md-h1,.report-block .md-h2,.report-block .md-h3{margin-top:10px}
+.report-block .md-h1:first-of-type,.report-block .md-h2:first-of-type{margin-top:0}
 
 /* ===== Bottom command bar ===== */
 .cmdbar{display:flex;align-items:center;gap:8px;padding:10px 14px;background:rgba(8,10,15,.96);border-top:1px solid var(--border);flex-shrink:0;z-index:10}
@@ -715,13 +795,13 @@ body.dispatching .beams{opacity:1}
 }
 .fr-live{
   display:inline-flex;align-items:center;gap:4px;
-  padding:1px 6px;background:rgba(52,211,153,.15);
-  border:1px solid rgba(52,211,153,.35);border-radius:999px;
-  color:#34d399;font-size:.55rem;letter-spacing:.1em;
+  padding:1px 6px;background:rgba(34,211,238,.15);
+  border:1px solid rgba(34,211,238,.35);border-radius:999px;
+  color:#22d3ee;font-size:.55rem;letter-spacing:.1em;
 }
 .fr-pulse{
-  width:5px;height:5px;border-radius:50%;background:#34d399;
-  box-shadow:0 0 6px #34d399;animation:hudRevPulse 1.4s ease-in-out infinite;
+  width:5px;height:5px;border-radius:50%;background:#22d3ee;
+  box-shadow:0 0 6px #22d3ee;animation:hudRevPulse 1.4s ease-in-out infinite;
 }
 .fr-name{
   font-size:1.05rem;font-weight:900;
@@ -840,11 +920,19 @@ body.dispatching .beams{opacity:1}
 
   <!-- Action zone — primary CTA prominent, secondary toggles ghost. -->
   <div class="actions">
-    <button class="topbtn" id="workdayBtn" title="24시간 자동 운영 — 설정 로딩 중...">24h ⋯</button>
-    <button class="topbtn primary" id="dashboardBtn" title="👥 직원 에이전트 보기 — 팀 전체 한눈에">👥 직원 에이전트 보기</button>
-    <button class="topbtn ghost" id="apiBtn" title="🔌 외부 연결 — Telegram · YouTube · Google Calendar 등 API 키 한 곳에서">🔌</button>
-    <button class="topbtn ghost" id="toggleSideBtn" title="활동 로그 패널 토글">📋</button>
-    <button class="topbtn ghost" id="folderBtn" title="회사 폴더 열기">📁</button>
+    <button class="topbtn" id="workdayBtn" title="24시간 자동 운영 토글
+ON 이면 에이전트들이 15분마다 미션을 향해 자동으로 한 스텝씩 실행합니다.
+OFF 면 사용자가 명령할 때만 동작.">24h ⋯</button>
+    <button class="topbtn primary" id="dashboardBtn" title="👥 에이전트 업무 대시보드
+업무 보드(칸반)·각 에이전트 목표/메모리/도구/자가검증 기준·모델 매핑·매출 등 한 화면에서 관리.">👥 에이전트 업무 대시보드</button>
+    <button class="topbtn ghost" id="revenueBtn" title="💰 매출 컨트롤 센터
+이번 달 PayPal 매출, 14일 차트, 베조스 분석을 미니 카드로 우상단에 띄움.">💰</button>
+    <button class="topbtn ghost" id="apiBtn" title="🔌 외부 연결 (API 키 관리)
+Telegram, YouTube, Google Calendar, PayPal 등 외부 서비스 자격증명을 한 곳에서 등록·테스트.">🔌</button>
+    <button class="topbtn ghost" id="toggleSideBtn" title="📋 오른쪽 사이드 패널 열기/닫기
+활동 로그·산출물·오늘 대화록 3개 탭. 드래그로 너비 조절 가능.">📋</button>
+    <button class="topbtn ghost" id="folderBtn" title="📁 회사 데이터 폴더를 Finder/탐색기에서 열기
+에이전트 메모리(_agents/*/memory.md), 세션 산출물(sessions/*), 대화록(conversations/*) 등 원본 파일을 직접 확인·수정.">📁</button>
   </div>
 </div>
 
@@ -859,7 +947,7 @@ body.dispatching .beams{opacity:1}
 <!-- v2.89.143 — Floating Revenue Command Center overlay. 사무실 화면 우상단
      에 떠 있는 매트릭스 풍 HUD. 미니 KPI + 14일 sparkline + 풀스크린 진입 버튼.
      사무실 분위기 안 깨고 별도 레이어로 매출 한눈에 확인. -->
-<div class="floating-revenue" id="floatingRevenue">
+<div class="floating-revenue hidden" id="floatingRevenue">
   <div class="fr-glow"></div>
   <div class="fr-head">
     <div class="fr-icon">💰</div>
@@ -897,7 +985,8 @@ body.dispatching .beams{opacity:1}
 </div>
 
 <!-- 숨김 상태에서 다시 열 수 있는 작은 핍 (floating 닫혔을 때만 보임) -->
-<button class="fr-reopen" id="frReopen" title="매출 컨트롤 센터 열기">💰</button>
+<!-- 플로팅 reopen 핍은 헤더 #revenueBtn 으로 대체됨. 호환을 위해 hidden 상태로 유지. -->
+<button class="fr-reopen" id="frReopen" title="매출 컨트롤 센터 열기" style="display:none">💰</button>
 
 <div class="office-wrap">
   <div class="office-floor" id="floor">
@@ -912,6 +1001,14 @@ body.dispatching .beams{opacity:1}
         <div class="world-buildings" id="worldBuildings"></div>
         <div class="world-decorations" id="worldDecor"></div>
         <div class="office-zones" id="officeZones"></div>
+        <!-- Ambient decor — 빈 영역에 작은 floating emoji 5개. 디테일만 살짝. -->
+        <div class="ambient-decor" aria-hidden="true">
+          <span class="adeco" style="left:5%;top:10%;animation-delay:0s">🌿</span>
+          <span class="adeco" style="left:97%;top:14%;animation-delay:1.2s">☕</span>
+          <span class="adeco" style="left:48%;top:6%;animation-delay:2.4s">✨</span>
+          <span class="adeco" style="left:8%;top:88%;animation-delay:3.1s">📚</span>
+          <span class="adeco" style="left:92%;top:90%;animation-delay:4.5s">🕐</span>
+        </div>
         <!-- agents inserted here by JS — coords resolve % of stageInner -->
       </div>
     </div>
@@ -974,11 +1071,15 @@ body.dispatching .beams{opacity:1}
       </div>
     </div>
   </div>
+  <div class="side-resizer hidden" id="sideResizer" title="드래그해서 사이드 패널 너비 조절"></div>
   <div class="side">
     <div class="side-tabs">
-      <button class="side-tab active" data-pane="logPane">📡 활동</button>
-      <button class="side-tab" data-pane="outPane">📦 산출물</button>
-      <button class="side-tab" data-pane="convPane">📜 대화록</button>
+      <button class="side-tab active" data-pane="logPane" title="📡 활동 로그
+지금 어떤 에이전트가 무엇을 하고 있는지 실시간 흐름. 디스패치·도구 실행·완료가 시간순으로 쌓입니다.">📡 활동</button>
+      <button class="side-tab" data-pane="outPane" title="📦 산출물
+에이전트가 만들어낸 파일·보고서·코드 등 결과물 목록.">📦 산출물</button>
+      <button class="side-tab" data-pane="convPane" title="📜 오늘 대화록
+오늘 날짜로 저장된 대화 기록 (conversations/YYYY-MM-DD.md). 새로고침으로 다시 읽음.">📜 대화록</button>
     </div>
     <div class="side-pane active" id="logPane">
       <div class="side-empty" id="logEmpty">
@@ -1014,6 +1115,94 @@ body.dispatching .beams{opacity:1}
 
 <script>
 const vscode = acquireVsCodeApi();
+
+/* === Custom tooltip system (1s delay, neon style) ===
+   브라우저 기본 title 은 너무 느리고(2-3초) hover 위치도 마우스 따라 깜빡임.
+   대신 모든 [title] 을 data-tip 으로 옮겨서 native tooltip 끄고, 우리가
+   1초 후에 정확히 element 아래에 띄운다. dynamic 으로 추가되는 element 도
+   event delegation 으로 자동 캐치. */
+(function setupTooltips(){
+  const tipEl = document.createElement('div');
+  tipEl.className = 'custom-tooltip';
+  document.body.appendChild(tipEl);
+  let showTimer = null;
+  let activeEl = null;
+
+  function migrateTitle(el){
+    if (!el || !el.getAttribute) return;
+    const t = el.getAttribute('title');
+    if (t && !el.hasAttribute('data-tip')) {
+      el.setAttribute('data-tip', t);
+      el.removeAttribute('title');
+    }
+  }
+  /* 초기 sweep — 페이지의 모든 [title] 을 data-tip 으로 변환. */
+  document.querySelectorAll('[title]').forEach(migrateTitle);
+  /* MutationObserver — 동적으로 추가되는 [title] 도 잡아냄. */
+  const mo = new MutationObserver((records) => {
+    for (const r of records) {
+      r.addedNodes.forEach((n) => {
+        if (n.nodeType !== 1) return;
+        migrateTitle(n);
+        n.querySelectorAll && n.querySelectorAll('[title]').forEach(migrateTitle);
+      });
+      if (r.type === 'attributes' && r.attributeName === 'title') {
+        migrateTitle(r.target);
+      }
+    }
+  });
+  mo.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['title'] });
+
+  function hideTip(){
+    if (showTimer) { clearTimeout(showTimer); showTimer = null; }
+    tipEl.classList.remove('show');
+    activeEl = null;
+  }
+  function showTipFor(el){
+    const text = el.getAttribute('data-tip');
+    if (!text) return;
+    tipEl.textContent = text;
+    /* 위치: element 아래쪽 기본, 화면 하단 가까우면 위쪽으로 flip */
+    const r = el.getBoundingClientRect();
+    const margin = 8;
+    /* 임시로 표시해서 실제 크기 측정 */
+    tipEl.style.left = '-9999px';
+    tipEl.style.top = '0';
+    tipEl.classList.add('show');
+    const tw = tipEl.offsetWidth, th = tipEl.offsetHeight;
+    const winW = window.innerWidth, winH = window.innerHeight;
+    let left = r.left;
+    let top = r.bottom + margin;
+    let placement = 'below';
+    if (top + th > winH - 8) { top = r.top - th - margin; placement = 'above'; }
+    if (left + tw > winW - 8) left = winW - tw - 8;
+    if (left < 8) left = 8;
+    tipEl.classList.toggle('below', placement === 'below');
+    tipEl.classList.toggle('above', placement === 'above');
+    tipEl.style.left = left + 'px';
+    tipEl.style.top = top + 'px';
+  }
+  document.addEventListener('mouseover', (e) => {
+    const el = e.target && e.target.closest && e.target.closest('[data-tip]');
+    if (!el || el === activeEl) return;
+    if (showTimer) clearTimeout(showTimer);
+    activeEl = el;
+    tipEl.classList.remove('show');
+    showTimer = setTimeout(() => showTipFor(el), 1000);
+  });
+  document.addEventListener('mouseout', (e) => {
+    const leaving = e.target && e.target.closest && e.target.closest('[data-tip]');
+    if (!leaving) return;
+    /* mouseout 은 자식으로 옮겨갈 때도 발사되므로 relatedTarget 확인 */
+    const to = e.relatedTarget;
+    if (to && leaving.contains(to)) return;
+    hideTip();
+  });
+  document.addEventListener('mousedown', hideTip, true);
+  window.addEventListener('blur', hideTip);
+  window.addEventListener('scroll', hideTip, true);
+})();
+
 const floor = document.getElementById('floor');
 const beams = document.getElementById('beams');
 const whiteboard = document.getElementById('whiteboard');
@@ -1064,9 +1253,11 @@ function makeAgent(a){
   d.style.setProperty('--ag-color-glow', a.color + '55');
   positionAgentToImageCoord(d, home.x, home.y);
   
-  /* Sprite character */
+  /* Sprite character — atlas (LimeZu 48×96 × 24 frames) OR single photo-sprite.
+     photo-sprite 모드는 background 한 장을 contain 으로 채우고 frame animation 끔. */
   const character = document.createElement('div');
   character.className = 'character';
+  if (a.spriteSource === 'photo') character.classList.add('photo-sprite');
   if (a.sprite) {
     character.style.backgroundImage = 'url(' + a.sprite + ')';
   } else {
@@ -1359,12 +1550,12 @@ function spawnMeetingEndBanner() {
   ].join(';');
   banner.innerHTML =
     '<div style="font-size:clamp(22px,3.2vw,32px); font-weight:900; letter-spacing:.1em;' +
-    'background:linear-gradient(135deg,#34d399,#67e8f9);' +
+    'background:linear-gradient(135deg,#22d3ee,#67e8f9);' +
     '-webkit-background-clip:text;background-clip:text;color:transparent;' +
-    'text-shadow:0 0 40px rgba(52,211,153,.5);">' +
+    'text-shadow:0 0 40px rgba(34,211,238,.5);">' +
     '✨ MEETING COMPLETE' +
     '</div>' +
-    '<div style="font-size:clamp(11px,1.2vw,14px); color:#34d399; margin-top:4px;' +
+    '<div style="font-size:clamp(11px,1.2vw,14px); color:#22d3ee; margin-top:4px;' +
     'letter-spacing:.18em; font-weight:700; text-transform:uppercase;">' +
     'AGENTS DISPATCHED TO WORKSTATIONS' +
     '</div>';
@@ -1872,12 +2063,56 @@ function appendOutChunk(agentId, value){
   if (!c) { startOutCard(agentId, ''); c = outCardEls[agentId]; }
   if (!c) return;
   c.raw = (c.raw||'') + value;
-  c.body.textContent = c.raw;
+  /* 산출물도 markdown 렌더. 스트리밍 중엔 매 chunk 마다 다시 렌더되지만
+     크기가 한정적이라(max 320px scroll) 비용 미미. renderMarkdown 은
+     escapeHtml 부터 시작하므로 XSS 안전. */
+  c.body.innerHTML = renderMarkdown(c.raw);
   outPane.scrollTop = outPane.scrollHeight;
 }
 function endOutCard(agentId){ delete outCardEls[agentId]; }
 
 function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+/* 대화록·산출물용 미니 markdown 렌더러. heading(#·##·###), bold(**), italic(_·*),
+   inline code(\`\`), blockquote(>), hr(---), list (-·*·1.), 줄바꿈 처리.
+   외부 라이브러리 없이 webview 안에서 동작. XSS 방어 위해 escape 먼저.
+   ⚠️ 이 함수는 office-panel-html.ts 의 template literal 안에 들어가므로,
+   regex/string 안의 backslash escape (\\n, \\s, \\*, \\d, \\.) 는 반드시 이중
+   backslash 로 써야 한다. TS 가 template literal 을 처리할 때 단일 \\ 가
+   사라져서 regex literal 이 두 줄로 깨지거나 \\s 가 그냥 s 로 바뀌어 정규식
+   자체가 잘못된다 (Uncaught SyntaxError: missing /). */
+function renderMarkdown(text){
+  if (!text) return '';
+  let html = escapeHtml(text);
+  // code fences (triple backtick blocks) — backtick via \\x60 to avoid template-string clash
+  html = html.replace(new RegExp('\\x60\\x60\\x60([\\s\\S]*?)\\x60\\x60\\x60', 'g'), function(_, code){ return '<pre class="md-pre"><code>'+code.replace(/^\\n/,'')+'</code></pre>'; });
+  // inline code (single backtick spans)
+  html = html.replace(new RegExp('\\x60([^\\x60\\n]+)\\x60', 'g'), '<code class="md-code">$1</code>');
+  // headings
+  html = html.replace(/^### (.+)$/gm, '<h3 class="md-h3">$1</h3>');
+  html = html.replace(/^## (.+)$/gm, '<h2 class="md-h2">$1</h2>');
+  html = html.replace(/^# (.+)$/gm, '<h1 class="md-h1">$1</h1>');
+  // hr
+  html = html.replace(/^[-_*]{3,}\\s*$/gm, '<hr class="md-hr">');
+  // blockquote — 연속 > 라인을 하나로 묶지 않고 한 줄씩 (간단하게)
+  html = html.replace(/^&gt; (.+)$/gm, '<div class="md-quote">$1</div>');
+  // bold + italic
+  html = html.replace(/\\*\\*([^*]+)\\*\\*/g, '<strong>$1</strong>');
+  html = html.replace(/(^|[\\s(])_([^_\\n]+)_(?=[\\s).,!?:;]|$)/g, '$1<em>$2</em>');
+  // unordered list — - or * 시작 줄들을 <li> 로
+  html = html.replace(/(?:^|\\n)([-*] .+(?:\\n[-*] .+)*)/g, (m, block) => {
+    const items = block.split(/\\n/).map(l => l.replace(/^[-*] /, '').trim()).filter(Boolean);
+    return '\\n<ul class="md-ul">'+items.map(i => '<li>'+i+'</li>').join('')+'</ul>';
+  });
+  // ordered list
+  html = html.replace(/(?:^|\\n)(\\d+\\. .+(?:\\n\\d+\\. .+)*)/g, (m, block) => {
+    const items = block.split(/\\n/).map(l => l.replace(/^\\d+\\. /, '').trim()).filter(Boolean);
+    return '\\n<ol class="md-ol">'+items.map(i => '<li>'+i+'</li>').join('')+'</ol>';
+  });
+  // line breaks (남은 일반 줄은 <br>)
+  html = html.replace(/\\n{2,}/g, '<div class="md-gap"></div>');
+  html = html.replace(/\\n/g, '<br>');
+  return html;
+}
 
 function drawBeams(taskAgentIds){
   if (!beams || !deskEls.ceo) return;
@@ -1977,16 +2212,85 @@ const apiBtn = document.getElementById('apiBtn');
 if (apiBtn) apiBtn.addEventListener('click', () => {
   vscode.postMessage({ type: 'openApiConnections' });
 });
-/* Side panel toggle — start collapsed so the map gets all the room */
+/* Side panel toggle + drag-resize.
+   - 시작은 collapsed (지도가 화면을 다 차지하도록).
+   - 📋 클릭 → collapse 토글 (열 때는 저장된 너비 복원).
+   - .side-resizer 드래그 → 너비 실시간 변경 + vscode.setState 로 영구 저장.
+   - 너비 범위: 220px ~ 윈도우 너비의 80%. */
 const sideEl = document.querySelector('.side');
 const toggleSideBtn = document.getElementById('toggleSideBtn');
-if (sideEl) sideEl.classList.add('collapsed');
+const sideResizer = document.getElementById('sideResizer');
+const SIDE_MIN_W = 220;
+const sideMaxW = () => Math.max(SIDE_MIN_W, Math.floor(window.innerWidth * 0.8));
+function getSavedSideWidth(){
+  try { const s = vscode.getState() || {}; return Number(s.sideWidth) || 0; } catch { return 0; }
+}
+function saveSideWidth(w){
+  try { const s = vscode.getState() || {}; vscode.setState({ ...s, sideWidth: w }); } catch {}
+}
+function applySideWidth(w){
+  if (!sideEl) return;
+  const clamped = Math.max(SIDE_MIN_W, Math.min(sideMaxW(), w));
+  sideEl.style.width = clamped + 'px';
+  return clamped;
+}
+function showResizer(show){
+  if (sideResizer) sideResizer.classList.toggle('hidden', !show);
+}
+if (sideEl) {
+  sideEl.classList.add('collapsed');
+  const saved = getSavedSideWidth();
+  if (saved >= SIDE_MIN_W) sideEl.style.width = saved + 'px';
+}
 if (toggleSideBtn && sideEl) {
   toggleSideBtn.addEventListener('click', () => {
-    sideEl.classList.toggle('collapsed');
-    toggleSideBtn.style.color = sideEl.classList.contains('collapsed') ? '' : 'var(--accent)';
-    /* Re-fit world canvas after panel width change */
-    setTimeout(() => { try { fitAndScale(); } catch {} window.dispatchEvent(new Event('resize')); }, 280);
+    sideEl.classList.add('animated');
+    const collapsing = !sideEl.classList.contains('collapsed');
+    sideEl.classList.toggle('collapsed', collapsing);
+    toggleSideBtn.style.color = collapsing ? '' : 'var(--accent)';
+    showResizer(!collapsing);
+    setTimeout(() => {
+      sideEl.classList.remove('animated');
+      try { fitAndScale(); } catch {}
+      window.dispatchEvent(new Event('resize'));
+    }, 320);
+  });
+}
+if (sideResizer && sideEl) {
+  let dragging = false, startX = 0, startW = 0;
+  sideResizer.addEventListener('mousedown', (e) => {
+    if (sideEl.classList.contains('collapsed')) return;
+    dragging = true;
+    startX = e.clientX;
+    startW = sideEl.offsetWidth;
+    sideResizer.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    /* resizer 가 side 의 LEFT 에 붙어있으니, 왼쪽으로 끌면 side 가 커지고
+       오른쪽으로 끌면 작아진다. */
+    const delta = startX - e.clientX;
+    const newW = applySideWidth(startW + delta);
+    if (newW) saveSideWidth(newW);
+    try { fitAndScale(); } catch {}
+  });
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    sideResizer.classList.remove('dragging');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    window.dispatchEvent(new Event('resize'));
+  });
+  /* Double-click resizer to reset to default 300px */
+  sideResizer.addEventListener('dblclick', () => {
+    if (sideEl.classList.contains('collapsed')) return;
+    const w = applySideWidth(300);
+    if (w) saveSideWidth(w);
+    try { fitAndScale(); } catch {}
   });
 }
 /* === Connected campus world — Office + Cafe + Garden in one coord space === */
@@ -2233,6 +2537,8 @@ window.addEventListener('message', e => {
         agents.forEach(a => {
           const el = deskEls[a.id]; if (!el) return;
           const characterEl = el.querySelector('.character'); if (!characterEl) return;
+          /* photo-sprite 는 atlas 가 아니라 단일 이미지 — frame shift skip. CSS bob 만 적용됨. */
+          if (characterEl.classList.contains('photo-sprite')) return;
 
           let colOffset = 0;
           switch (el.dataset.dir) {
@@ -2451,7 +2757,7 @@ window.addEventListener('message', e => {
         try {
           const desk = deskEls[m.agent];
           if (desk) {
-            const color = a.color || '#00ff88';
+            const color = a.color || '#38BDF8';
             for (let k = 0; k < 5; k++) {
               const sp = document.createElement('div');
               sp.className = 'spark';
@@ -2503,7 +2809,7 @@ window.addEventListener('message', e => {
       whiteboard.classList.add('active');
       whiteboard.innerHTML = '<span class="wb-line">📝 '+escapeHtml((m.brief||'').slice(0,80))+'</span>';
       const block = document.createElement('div'); block.className = 'report-block';
-      block.innerHTML = '<div class="rb-head">📝 CEO 종합 보고서</div>'+escapeHtml(m.report||'');
+      block.innerHTML = '<div class="rb-head">📝 CEO 종합 보고서</div>'+renderMarkdown(m.report||'');
       outPane.appendChild(block);
       outPane.scrollTop = outPane.scrollHeight;
       logActivity('📝','ceo','<strong>종합 보고서 발표</strong> · '+escapeHtml(m.sessionPath||''));
@@ -2580,7 +2886,7 @@ window.addEventListener('message', e => {
       const dateEl = document.getElementById('convDate');
       const bodyEl = document.getElementById('convBody');
       if (dateEl) dateEl.textContent = m.date ? '📅 ' + m.date : '';
-      if (bodyEl) bodyEl.textContent = m.content || '';
+      if (bodyEl) bodyEl.innerHTML = renderMarkdown(m.content || '');
       /* Auto-scroll to latest entry at the bottom */
       const pane = document.getElementById('convPane');
       if (pane) pane.scrollTop = pane.scrollHeight;
@@ -2660,6 +2966,12 @@ window.addEventListener('message', e => {
   $$('frClose')?.addEventListener('click', frClose);
   REOPEN?.addEventListener('click', frOpen);
   HUD_STAT?.addEventListener('click', frOpen);
+  /* v2.92 — 헤더 매출 버튼. 클릭하면 카드 토글. */
+  $$('revenueBtn')?.addEventListener('click', () => {
+    if (!FR) return;
+    if (FR.classList.contains('hidden')) frOpen();
+    else frClose();
+  });
   $$('frOpenDashboard')?.addEventListener('click', () => {
     vscode.postMessage({ type: 'openRevenueDashboard' });
   });

@@ -27,6 +27,110 @@ import { API_SERVICES } from './services';
 import { getCompanyDir } from '../paths';
 import { AGENTS } from '../agents';
 import { _safeReadText, ensureCompanyStructure } from '../extension';
+import type { ResolvedServiceValues, CredentialScope } from './types';
+
+/* === Project override files ===
+   When a user opts into a per-project credential set for a service, we write
+   one JSON file per service into `<workspace>/.agent-os-ai/credentials/`.
+   - Single source of truth at runtime: project override > company default.
+   - The folder is auto-gitignored on first write so secrets never reach git.
+   - File name = `${serviceId}.json` (matches service id from API_SERVICES). */
+const PROJECT_CREDENTIALS_REL = path.join('.agent-os-ai', 'credentials');
+
+function projectCredentialsDir(workspaceFolder: string): string {
+    return path.join(workspaceFolder, PROJECT_CREDENTIALS_REL);
+}
+
+function projectCredentialsFile(workspaceFolder: string, serviceId: string): string {
+    return path.join(projectCredentialsDir(workspaceFolder), `${serviceId}.json`);
+}
+
+/** Reads a project-override JSON if present. Returns empty object when the
+ *  file is missing or unparseable so callers can treat "no override" uniformly. */
+function readProjectOverride(workspaceFolder: string | undefined, serviceId: string): Record<string, string> {
+    if (!workspaceFolder) return {};
+    try {
+        const f = projectCredentialsFile(workspaceFolder, serviceId);
+        if (!fs.existsSync(f)) return {};
+        const parsed = JSON.parse(fs.readFileSync(f, 'utf-8') || '{}');
+        const out: Record<string, string> = {};
+        for (const [k, v] of Object.entries(parsed || {})) {
+            if (typeof v === 'string') out[k] = v;
+        }
+        return out;
+    } catch { return {}; }
+}
+
+/** Ensures `<workspace>/.agent-os-ai/.gitignore` exists and excludes credentials.
+ *  Idempotent — appends only when the rules are missing. */
+function ensureProjectGitignore(workspaceFolder: string): void {
+    try {
+        const dir = path.join(workspaceFolder, '.agent-os-ai');
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        const gi = path.join(dir, '.gitignore');
+        const want = `# Agent OS AI — project-scoped API credentials. NEVER commit.\ncredentials/\n`;
+        if (!fs.existsSync(gi)) {
+            fs.writeFileSync(gi, want);
+            return;
+        }
+        const cur = fs.readFileSync(gi, 'utf-8');
+        if (!cur.includes('credentials/')) {
+            fs.writeFileSync(gi, cur.trimEnd() + '\n' + want);
+        }
+    } catch { /* never block save on gitignore failure */ }
+}
+
+/** Atomic write of the project override file for one service. Empty values
+ *  are still written so the UI shows "set to empty (override active)" vs
+ *  "no override". Use `clearProjectOverride` to remove the file entirely. */
+function writeProjectOverride(workspaceFolder: string, serviceId: string, values: Record<string, string>): void {
+    const dir = projectCredentialsDir(workspaceFolder);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    ensureProjectGitignore(workspaceFolder);
+    const file = projectCredentialsFile(workspaceFolder, serviceId);
+    const tmp = file + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(values, null, 2), 'utf-8');
+    fs.renameSync(tmp, file);
+}
+
+/** Delete the project override file for a service so the company default
+ *  takes over. No-op if no override exists. */
+export function clearProjectOverride(workspaceFolder: string | undefined, serviceId: string): boolean {
+    if (!workspaceFolder) return false;
+    try {
+        const f = projectCredentialsFile(workspaceFolder, serviceId);
+        if (fs.existsSync(f)) {
+            fs.unlinkSync(f);
+            return true;
+        }
+    } catch { /* ignore */ }
+    return false;
+}
+
+/** Cascade resolver — returns effective values per service with provenance.
+ *  Reading order: project override (if workspaceFolder provided & override
+ *  file exists for that service) > company default > none.
+ *  Use this in UI to badge each field with its source. */
+export function resolveAllApiConnections(opts: { workspaceFolder?: string } = {}): Record<string, ResolvedServiceValues> {
+    const companyAll = readAllApiConnections();
+    const out: Record<string, ResolvedServiceValues> = {};
+    for (const svc of API_SERVICES) {
+        const companyValues = companyAll[svc.id] || {};
+        const projectValues = readProjectOverride(opts.workspaceFolder, svc.id);
+        const hasProjectOverride = Object.keys(projectValues).length > 0;
+        const effective: Record<string, { value: string; scope: CredentialScope }> = {};
+        for (const f of svc.fields) {
+            if (hasProjectOverride && f.key in projectValues) {
+                effective[f.key] = { value: projectValues[f.key] || '', scope: 'project' };
+            } else {
+                const v = companyValues[f.key] || '';
+                effective[f.key] = { value: v, scope: v ? 'company' : 'none' };
+            }
+        }
+        out[svc.id] = { effective, companyValues, projectValues, hasProjectOverride };
+    }
+    return out;
+}
 
 /* Read all current values from each service's config.md. Empty string when
    not yet set. Returned as { [serviceId]: { key: value } }. */
@@ -83,24 +187,46 @@ export function readAllApiConnections(): Record<string, Record<string, string>> 
                     }
                 } catch { /* fall through */ }
             }
-            /* v2.89.139 — PayPal 은 paypal_revenue.json 이 단일 진실의 출처. */
+            /* v2.89.139 — PayPal 은 paypal_revenue.json 이 단일 진실의 출처.
+               sandbox 와 live 자격증명을 동시에 보관 → MODE 만 바꿔서 즉시 전환.
+               JSON 스키마:
+                 { MODE, sandbox:{CLIENT_ID,CLIENT_SECRET}, live:{CLIENT_ID,CLIENT_SECRET},
+                   CLIENT_ID, CLIENT_SECRET   // 활성 모드 mirror (python BC)
+                   LOOKBACK_DAYS, CURRENCY }  // 공유 설정
+               기존(레거시) 사용자: top-level CLIENT_ID/SECRET 만 있고 namespace
+               없는 경우 → sandbox 슬롯으로 옮겨 표시 (자동 마이그레이션). */
             if (svc.id === 'paypal') {
                 try {
                     const jsonPath = path.join(getCompanyDir(), '_agents', 'business', 'tools', 'paypal_revenue.json');
                     if (fs.existsSync(jsonPath)) {
                         const cfg = JSON.parse(fs.readFileSync(jsonPath, 'utf-8') || '{}');
-                        /* 폼 키 → JSON 키 매핑 */
-                        const map: Record<string, string> = {
-                            PAYPAL_MODE: 'MODE',
-                            PAYPAL_CLIENT_ID: 'CLIENT_ID',
-                            PAYPAL_CLIENT_SECRET: 'CLIENT_SECRET',
-                            PAYPAL_LOOKBACK_DAYS: 'LOOKBACK_DAYS',
-                            PAYPAL_CURRENCY: 'CURRENCY',
+                        const rawMode = String(cfg['MODE'] || 'sandbox').toLowerCase();
+                        const mode = (rawMode === 'live') ? 'live' : 'sandbox';
+                        const sandboxBucket = (cfg['sandbox'] && typeof cfg['sandbox'] === 'object') ? cfg['sandbox'] : {};
+                        const liveBucket = (cfg['live'] && typeof cfg['live'] === 'object') ? cfg['live'] : {};
+                        /* Legacy fallback: 기존 top-level CLIENT_ID/SECRET 이 있고
+                           sandbox/live 둘 다 비어있다면 = 마이그레이션 안 된 사용자.
+                           활성 모드 슬롯으로 인식. */
+                        const legacyId = String(cfg['CLIENT_ID'] || '').trim();
+                        const legacySecret = String(cfg['CLIENT_SECRET'] || '').trim();
+                        const sandboxId = String(sandboxBucket['CLIENT_ID'] || '').trim() || (mode === 'sandbox' ? legacyId : '');
+                        const sandboxSecret = String(sandboxBucket['CLIENT_SECRET'] || '').trim() || (mode === 'sandbox' ? legacySecret : '');
+                        const liveId = String(liveBucket['CLIENT_ID'] || '').trim() || (mode === 'live' ? legacyId : '');
+                        const liveSecret = String(liveBucket['CLIENT_SECRET'] || '').trim() || (mode === 'live' ? legacySecret : '');
+                        const readField = (k: string): string => {
+                            switch (k) {
+                                case 'PAYPAL_MODE': return mode;
+                                case 'PAYPAL_SANDBOX_CLIENT_ID':     return sandboxId;
+                                case 'PAYPAL_SANDBOX_CLIENT_SECRET': return sandboxSecret;
+                                case 'PAYPAL_LIVE_CLIENT_ID':        return liveId;
+                                case 'PAYPAL_LIVE_CLIENT_SECRET':    return liveSecret;
+                                case 'PAYPAL_LOOKBACK_DAYS': return String(cfg['LOOKBACK_DAYS'] || '').trim();
+                                case 'PAYPAL_CURRENCY':      return String(cfg['CURRENCY'] || '').trim();
+                                default: return '';
+                            }
                         };
                         for (const f of svc.fields) {
-                            const canonical = map[f.key] || f.key;
-                            const raw = cfg[canonical];
-                            const v = (raw === undefined || raw === null) ? '' : String(raw).trim();
+                            const v = readField(f.key);
                             out[svc.id][f.key] = looksLikeJunk(f.key, v) ? '' : v;
                         }
                         if (Object.values(out[svc.id]).some(v => !!v)) continue;
@@ -145,10 +271,49 @@ export function readAllApiConnections(): Record<string, Record<string, string>> 
 }
 
 /* Save a service's values. Reads the existing config.md, replaces lines for
-   each field (or appends a new section), writes back. Idempotent. */
-export async function saveApiConnection(serviceId: string, values: Record<string, string>): Promise<{ ok: boolean; error?: string; note?: string }> {
+   each field (or appends a new section), writes back. Idempotent.
+   `opts.scope`:
+     - 'company' (default) — writes to company folder (shared across all projects)
+     - 'project' — writes ONLY to `<workspace>/.agent-os-ai/credentials/{id}.json`
+       (overrides company default for this workspace; company file untouched).
+   When scope='project' you must also pass `opts.workspaceFolder`. The project
+   override skips Telegram chat-id detection / OAuth handshake / canonical
+   JSON sync because those side-effects already happened against the company
+   default — project override is purely a credential substitution layer. */
+export async function saveApiConnection(
+    serviceId: string,
+    values: Record<string, string>,
+    opts: { scope?: 'company' | 'project'; workspaceFolder?: string } = {},
+): Promise<{ ok: boolean; error?: string; note?: string; scope?: 'company' | 'project' }> {
     const svc = API_SERVICES.find(s => s.id === serviceId);
     if (!svc) return { ok: false, error: 'Unknown service' };
+    const scope = opts.scope || 'company';
+    /* Project override path — pure JSON write, skip all the company-side
+       side-effects. The runtime resolver will pick this file first. */
+    if (scope === 'project') {
+        if (!opts.workspaceFolder) {
+            return { ok: false, error: '프로젝트 폴더가 열려 있어야 프로젝트 전용 저장이 가능합니다.' };
+        }
+        if (svc.scopeHint === 'company-only') {
+            return { ok: false, error: `${svc.name} 은(는) 회사 전체 단일 계정 전용이라 프로젝트 override 가 지원되지 않습니다.` };
+        }
+        try {
+            /* Sanitize values — only known fields, trim whitespace. */
+            const sanitized: Record<string, string> = {};
+            for (const f of svc.fields) {
+                const v = (values[f.key] || '').trim();
+                sanitized[f.key] = v;
+            }
+            writeProjectOverride(opts.workspaceFolder, serviceId, sanitized);
+            return {
+                ok: true,
+                scope: 'project',
+                note: `🔒 이 프로젝트(workspace)에만 저장됨 — 회사 기본값은 그대로. .agent-os-ai/credentials/${serviceId}.json (git 자동 제외)`,
+            };
+        } catch (e: any) {
+            return { ok: false, error: `프로젝트 override 저장 실패: ${e?.message || e}` };
+        }
+    }
     try {
         ensureCompanyStructure();
         let extraNote = '';
@@ -274,30 +439,61 @@ export async function saveApiConnection(serviceId: string, values: Record<string
                 if (fs.existsSync(ppJsonPath)) {
                     try { existing = JSON.parse(fs.readFileSync(ppJsonPath, 'utf-8') || '{}'); } catch { /* malformed */ }
                 }
-                const mode = (values['PAYPAL_MODE'] || 'sandbox').trim().toLowerCase();
-                const clientId = (values['PAYPAL_CLIENT_ID'] || '').trim();
-                const clientSecret = (values['PAYPAL_CLIENT_SECRET'] || '').trim();
+                const modeRaw = (values['PAYPAL_MODE'] || 'sandbox').trim().toLowerCase();
+                const mode = (modeRaw === 'live' || modeRaw === 'sandbox') ? modeRaw : 'sandbox';
+                /* Sandbox / Live 자격증명 분리 보관. 빈 값으로 들어와도 기존 값을
+                   덮어쓰진 않음 — 사용자가 다른 모드 키만 추가하려는 케이스 보호. */
+                const sandboxId = (values['PAYPAL_SANDBOX_CLIENT_ID'] || '').trim();
+                const sandboxSecret = (values['PAYPAL_SANDBOX_CLIENT_SECRET'] || '').trim();
+                const liveId = (values['PAYPAL_LIVE_CLIENT_ID'] || '').trim();
+                const liveSecret = (values['PAYPAL_LIVE_CLIENT_SECRET'] || '').trim();
                 const lookback = parseInt((values['PAYPAL_LOOKBACK_DAYS'] || '').trim(), 10);
                 const currency = (values['PAYPAL_CURRENCY'] || '').trim().toUpperCase();
-                existing['MODE'] = (mode === 'live' || mode === 'sandbox') ? mode : 'sandbox';
-                if (clientId) existing['CLIENT_ID'] = clientId;
-                if (clientSecret) existing['CLIENT_SECRET'] = clientSecret;
+
+                /* Legacy migration — 기존 top-level CLIENT_ID/SECRET 만 있던 사용자.
+                   현재 모드 슬롯이 비어있으면 그 값을 옮겨주고 legacy top-level 은
+                   아래에서 활성 모드 mirror 로 어차피 덮어씀. */
+                if (!existing['sandbox'] && !existing['live'] && existing['CLIENT_ID']) {
+                    const seedKey = (existing['MODE'] === 'live') ? 'live' : 'sandbox';
+                    existing[seedKey] = {
+                        CLIENT_ID: String(existing['CLIENT_ID'] || ''),
+                        CLIENT_SECRET: String(existing['CLIENT_SECRET'] || ''),
+                    };
+                }
+
+                /* 모드별 namespace 갱신 — 빈 입력은 무시 (덮어쓰기 방지). */
+                if (!existing['sandbox'] || typeof existing['sandbox'] !== 'object') existing['sandbox'] = {};
+                if (!existing['live'] || typeof existing['live'] !== 'object') existing['live'] = {};
+                if (sandboxId) existing['sandbox']['CLIENT_ID'] = sandboxId;
+                if (sandboxSecret) existing['sandbox']['CLIENT_SECRET'] = sandboxSecret;
+                if (liveId) existing['live']['CLIENT_ID'] = liveId;
+                if (liveSecret) existing['live']['CLIENT_SECRET'] = liveSecret;
+
+                existing['MODE'] = mode;
+                /* 활성 모드 mirror 를 top-level 에 — paypal_revenue.py 가 그대로 읽음 (BC). */
+                const activeBucket = existing[mode];
+                existing['CLIENT_ID'] = String(activeBucket['CLIENT_ID'] || '');
+                existing['CLIENT_SECRET'] = String(activeBucket['CLIENT_SECRET'] || '');
                 existing['LOOKBACK_DAYS'] = isNaN(lookback) ? 30 : Math.max(1, Math.min(31, lookback));
                 existing['CURRENCY'] = currency;
                 if (!('_schema' in existing)) {
                     existing['_schema'] = {
                         MODE: { type: 'select', options: ['sandbox', 'live'] },
-                        CLIENT_ID: { type: 'password' },
-                        CLIENT_SECRET: { type: 'password' },
+                        sandbox: { CLIENT_ID: { type: 'password' }, CLIENT_SECRET: { type: 'password' } },
+                        live: { CLIENT_ID: { type: 'password' }, CLIENT_SECRET: { type: 'password' } },
+                        CLIENT_ID: { type: 'password', note: 'mirror of active MODE' },
+                        CLIENT_SECRET: { type: 'password', note: 'mirror of active MODE' },
                         LOOKBACK_DAYS: { type: 'number' },
                         CURRENCY: { type: 'text' },
                     };
                 }
                 fs.writeFileSync(ppJsonPath, JSON.stringify(existing, null, 2));
-                if (clientId && clientSecret) {
-                    extraNote = `💰 paypal_revenue.json 동기화 — 매출 대시보드·watcher 즉시 사용 가능 (${existing['MODE']} 모드)`;
+                const activeId = String(activeBucket['CLIENT_ID'] || '');
+                const activeSecret = String(activeBucket['CLIENT_SECRET'] || '');
+                if (activeId && activeSecret) {
+                    extraNote = `💰 paypal_revenue.json 동기화 — 활성 모드 ${mode} 키로 매출 분석 가능. (다른 모드 키도 같이 보관 중)`;
                 } else {
-                    extraNote = `⚠️ Client ID + Secret 둘 다 입력해야 매출 분석 가능 (현재 일부 빈 값)`;
+                    extraNote = `⚠️ 활성 모드(${mode})의 Client ID + Secret 둘 다 채워야 매출 분석 가능. 다른 모드 슬롯은 보존됨.`;
                 }
             } catch (e: any) {
                 console.warn('[saveApiConnection] paypal_revenue.json sync failed:', e?.message || e);

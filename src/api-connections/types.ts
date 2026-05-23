@@ -35,6 +35,36 @@ export interface ApiServiceDef {
     wizardCommand?: string;
     /* When true, the service shows as "준비 중" — fields disabled, no save. */
     comingSoon?: boolean;
+    /** Where this service's credentials naturally live:
+     *  - `company-only`  — single account per machine. Hide project override UI.
+     *    (Telegram bot, Slack workspace, Google Calendar — one shared assistant.)
+     *  - `project-allowed` — can be overridden per workspace. Show toggle.
+     *    (Instagram/X/Threads/OpenAI/PayPal — each project may use a different
+     *    account.)
+     *  Defaults to 'project-allowed' if unset. */
+    scopeHint?: 'company-only' | 'project-allowed';
+}
+
+/** A field's value plus where it came from. UI uses this to badge each input
+ *  (✓ company / ✓ project) and decide whether to show the override toggle. */
+export type CredentialScope = 'company' | 'project' | 'none';
+
+export interface ApiFieldValue {
+    value: string;
+    scope: CredentialScope;
+}
+
+/** Per-service resolved values. Each field carries provenance so the UI can
+ *  tell user "this is the company default" vs "you overrode it here". */
+export interface ResolvedServiceValues {
+    /** Effective values used at runtime (project override wins). */
+    effective: Record<string, ApiFieldValue>;
+    /** Raw company-default values (for "되돌리기" button to compare against). */
+    companyValues: Record<string, string>;
+    /** Raw project override values, or empty if no override file. */
+    projectValues: Record<string, string>;
+    /** True when this workspace has an override file for this service. */
+    hasProjectOverride: boolean;
 }
 
 /** saveApiConnection 결과 — UI 가 노트/에러 표시에 사용. */
