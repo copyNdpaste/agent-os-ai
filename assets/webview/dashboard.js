@@ -1120,9 +1120,190 @@ function showAgentDetailModal(a){
   document.addEventListener('keydown', escH);
 }
 
+/* ============================================================
+   📋 업무 보드 (Kanban + Table) — 에이전트별·기간별 진행상황
+   ============================================================ */
+const BOARD_STATE = { period: 'today', agentId: 'all', view: 'kanban' };
+const BOARD_AGENT_META = {};   /* agentId → { name, emoji, color } */
+
+function _boardFetch(){
+  try {
+    vscode.postMessage({ type: 'loadBoard', period: BOARD_STATE.period, agentId: BOARD_STATE.agentId });
+  } catch { /* webview API missing — diagnostic only */ }
+}
+
+function _boardEscape(s){ return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function _boardWhen(ms){
+  if (!ms) return '';
+  const diff = Date.now() - ms;
+  if (diff < 60000) return '방금';
+  if (diff < 3600000) return Math.floor(diff/60000) + '분 전';
+  if (diff < 86400000) return Math.floor(diff/3600000) + '시간 전';
+  const d = new Date(ms);
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const dd = String(d.getDate()).padStart(2,'0');
+  return mm + '/' + dd;
+}
+function _boardAgentLabel(id){
+  const m = BOARD_AGENT_META[id];
+  if (!m) return id;
+  return (m.emoji ? m.emoji + ' ' : '') + (m.name || id);
+}
+function _boardAgentColor(id){
+  return BOARD_AGENT_META[id]?.color || '#38BDF8';
+}
+
+function _boardRenderKanban(entries){
+  const COLS = [
+    { id: 'pending',     label: '🟡 예정' },
+    { id: 'in_progress', label: '🔵 진행 중' },
+    { id: 'done',        label: '✅ 완료' },
+  ];
+  const buckets = { pending: [], in_progress: [], done: [] };
+  for (const e of entries) buckets[e.status]?.push(e);
+  return '<div class="board-kanban">' + COLS.map(col => {
+    const items = buckets[col.id];
+    const cards = items.length === 0
+      ? '<div class="kc-empty">_없음_</div>'
+      : items.map(_boardCard).join('');
+    return '<div class="kc-col kc-' + col.id + '">'
+      + '<div class="kc-head">'
+      + '<span class="kc-title">' + col.label + '</span>'
+      + '<span class="kc-pill">' + items.length + '</span>'
+      + '</div>'
+      + '<div class="kc-list">' + cards + '</div>'
+      + '</div>';
+  }).join('') + '</div>';
+}
+
+function _boardCard(e){
+  const color = _boardAgentColor(e.agentId);
+  const clickable = e.sessionDir ? ' data-clickable="1" data-session-dir="' + _boardEscape(e.sessionDir) + '"' : '';
+  const badge = e.badge ? '<span class="kc-badge kc-badge-' + e.badge + '">' + e.badge + '</span>' : '';
+  const summary = e.summary ? '<div class="kc-summary">' + _boardEscape(e.summary) + '</div>' : '';
+  return '<div class="kc-card" style="--ag-color:' + color + '"' + clickable + '>'
+    + '<div class="kc-agent">' + _boardEscape(_boardAgentLabel(e.agentId)) + '</div>'
+    + '<div class="kc-title-text">' + _boardEscape(e.title) + '</div>'
+    + summary
+    + '<div class="kc-foot">'
+    +   '<span class="kc-source kc-source-' + e.source + '">' + e.source + '</span>'
+    +   badge
+    +   '<span style="margin-left:auto">' + _boardEscape(_boardWhen(e.updatedAt)) + '</span>'
+    + '</div>'
+    + '</div>';
+}
+
+function _boardRenderTable(entries){
+  if (entries.length === 0) return '<div class="board-empty"><span class="be-icon">📋</span>이 필터에 해당하는 작업이 없어요.<br><span style="font-size:11px">기간을 늘리거나 다른 에이전트를 선택해보세요.</span></div>';
+  const rows = entries.map(e => {
+    const color = _boardAgentColor(e.agentId);
+    const clickable = e.sessionDir ? ' data-clickable="1" data-session-dir="' + _boardEscape(e.sessionDir) + '"' : '';
+    const badge = e.badge ? ' <span class="kc-badge kc-badge-' + e.badge + '">' + e.badge + '</span>' : '';
+    const statusLabel = e.status === 'pending' ? '🟡 예정' : e.status === 'in_progress' ? '🔵 진행' : '✅ 완료';
+    return '<tr' + clickable + '>'
+      + '<td class="bt-status s-' + e.status + '">' + statusLabel + '</td>'
+      + '<td class="bt-agent" style="--ag-color:' + color + '">' + _boardEscape(_boardAgentLabel(e.agentId)) + '</td>'
+      + '<td class="bt-title">' + _boardEscape(e.title) + badge + '</td>'
+      + '<td class="bt-source">' + e.source + '</td>'
+      + '<td class="bt-when">' + _boardEscape(_boardWhen(e.updatedAt)) + '</td>'
+      + '</tr>';
+  }).join('');
+  return '<div style="max-height:520px;overflow-y:auto"><table class="board-table">'
+    + '<thead><tr><th style="width:90px">상태</th><th style="width:130px">에이전트</th><th>작업</th><th style="width:80px">소스</th><th style="width:80px">시각</th></tr></thead>'
+    + '<tbody>' + rows + '</tbody></table></div>';
+}
+
+function _boardRender(snap){
+  const body = document.getElementById('boardBody');
+  const countsEl = document.getElementById('boardCounts');
+  if (!body) return;
+  if (!snap || !snap.entries) {
+    body.innerHTML = '<div class="board-empty"><span class="be-icon">⚠️</span>보드 데이터를 불러오지 못했어요.</div>';
+    if (countsEl) countsEl.textContent = '';
+    return;
+  }
+  if (snap.entries.length === 0) {
+    body.innerHTML = '<div class="board-empty"><span class="be-icon">📋</span>이 필터에 해당하는 작업이 없어요.<br><span style="font-size:11px">기간을 늘리거나 다른 에이전트를 선택해보세요.</span></div>';
+    if (countsEl) countsEl.textContent = (snap.totalBeforeFilter ? '전체 ' + snap.totalBeforeFilter + '건' : '');
+    return;
+  }
+  body.innerHTML = BOARD_STATE.view === 'kanban' ? _boardRenderKanban(snap.entries) : _boardRenderTable(snap.entries);
+  if (countsEl) {
+    countsEl.textContent = '🟡 ' + snap.counts.pending + '  🔵 ' + snap.counts.in_progress + '  ✅ ' + snap.counts.done + '  · 전체 ' + snap.totalBeforeFilter + '건';
+  }
+  /* Sync agent filter dropdown with what's actually in scope (preserve current selection). */
+  const sel = document.getElementById('boardAgent');
+  if (sel) {
+    const cur = sel.value;
+    const existing = new Set(Array.from(sel.options).map(o => o.value));
+    for (const id of snap.agentsInScope) {
+      if (!existing.has(id)) {
+        const o = document.createElement('option');
+        o.value = id; o.textContent = _boardAgentLabel(id);
+        sel.appendChild(o);
+      }
+    }
+    sel.value = cur;
+  }
+  /* Wire card/row click → open session folder. */
+  body.querySelectorAll('[data-clickable="1"]').forEach(el => {
+    el.onclick = () => {
+      const dir = el.getAttribute('data-session-dir');
+      if (dir) vscode.postMessage({ type: 'openSessionFolder', sessionDir: dir });
+    };
+  });
+}
+
+function _boardInit(){
+  /* Period segments */
+  document.querySelectorAll('.board-period .seg').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.board-period .seg').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      BOARD_STATE.period = btn.dataset.period;
+      _boardFetch();
+    };
+  });
+  /* View segments */
+  document.querySelectorAll('.board-view .seg').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.board-view .seg').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      BOARD_STATE.view = btn.dataset.view;
+      _boardFetch();
+    };
+  });
+  /* Agent filter */
+  const sel = document.getElementById('boardAgent');
+  if (sel) {
+    sel.onchange = () => {
+      BOARD_STATE.agentId = sel.value || 'all';
+      _boardFetch();
+    };
+  }
+  /* Refresh */
+  const refresh = document.getElementById('boardRefresh');
+  if (refresh) refresh.onclick = () => _boardFetch();
+  /* Initial fetch — start with 오늘 view */
+  _boardFetch();
+}
+
 window.addEventListener('message', e => {
   const m = e.data;
-  if (m.type === 'state') render(m);
+  if (m.type === 'state') {
+    /* state 메시지의 agentTeam 에서 보드 표시용 agent meta(name/emoji/color)
+       캐싱. 새 보드 카드가 에이전트 라벨 / 좌측 컬러 border 렌더링에 사용. */
+    try {
+      const team = m.agentTeam || m.team || m.agents || [];
+      for (const a of team) {
+        if (a && a.id) BOARD_AGENT_META[a.id] = { name: a.name, emoji: a.emoji, color: a.color };
+      }
+      /* 보드도 함께 갱신 — refresh 누르면 매트릭스와 보드 둘 다 최신. */
+      _boardFetch();
+    } catch { /* ignore */ }
+    render(m);
+  }
+  else if (m.type === 'boardData') _boardRender(m.snapshot);
   else if (m.type === 'toast') toast(m.text, m.err);
   else if (m.type === 'skillRunOutput') {
     /* v2.89.12 — 스킬 단독 실행 결과 라이브 표시 */
@@ -1179,6 +1360,10 @@ window.addEventListener('message', e => {
   }
 });
 vscode.postMessage({ type: 'refresh' });
+/* 📋 업무 보드 — toolbar 와이어링 + 최초 로드. team 데이터(state) 가 도착하면
+   _boardRender 가 agent meta 를 알아서 캐싱. */
+try { _boardInit(); } catch (e) { console.warn('[board] init failed', e); }
+
 /* ───────── v2.89.142 — Revenue Card (회사 대시보드의 매출 위젯) ───────── */
 (function setupRevenueCard() {
   const openBtn = document.getElementById('openRevDashBtn');

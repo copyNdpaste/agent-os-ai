@@ -19,7 +19,7 @@ export function registerDashboardCommands(
                 CompanyDashboardPanel.createOrShow(context.extensionUri);
             } catch (e: any) {
                 /* v2.89.14 — 진단: 대시보드 패널 생성 실패 시 사용자에게 안내. */
-                vscode.window.showErrorMessage(`👥 직원 에이전트 보기 열기 실패: ${e?.message || e}. (Cmd+Shift+P → "Developer: Reload Window" 시도)`);
+                vscode.window.showErrorMessage(`👥 에이전트 업무 대시보드 열기 실패: ${e?.message || e}. (Cmd+Shift+P → "Developer: Reload Window" 시도)`);
                 console.error('[dashboard.open] failed:', e);
             }
         }),

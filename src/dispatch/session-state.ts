@@ -180,6 +180,18 @@ export class SessionStateWriter {
         this.flushNow();
     }
 
+    /** Force-write the current state to disk immediately, bypassing throttle.
+     *  Useful when the caller knows a crash window is imminent (e.g. before
+     *  spawning a long external process) or in tests that need to read state
+     *  back synchronously without waiting for the throttle timer. */
+    flush(): void {
+        if (this.throttleTimer) {
+            clearTimeout(this.throttleTimer);
+            this.throttleTimer = null;
+        }
+        this.flushNow();
+    }
+
     finish(status: 'completed' | 'failed' | 'aborted', error?: string): void {
         this.state.status = status;
         if (error) this.state.errorMessage = error;

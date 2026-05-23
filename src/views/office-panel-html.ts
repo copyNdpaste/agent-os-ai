@@ -915,8 +915,8 @@ body.dispatching .beams{opacity:1}
     <button class="topbtn" id="workdayBtn" title="24시간 자동 운영 토글
 ON 이면 에이전트들이 15분마다 미션을 향해 자동으로 한 스텝씩 실행합니다.
 OFF 면 사용자가 명령할 때만 동작.">24h ⋯</button>
-    <button class="topbtn primary" id="dashboardBtn" title="👥 직원 에이전트 보기
-각 에이전트의 목표·메모리·도구·자가검증 기준을 한 화면에서 관리하는 풀스크린 대시보드.">👥 직원 에이전트 보기</button>
+    <button class="topbtn primary" id="dashboardBtn" title="👥 에이전트 업무 대시보드
+업무 보드(칸반)·각 에이전트 목표/메모리/도구/자가검증 기준·모델 매핑·매출 등 한 화면에서 관리.">👥 에이전트 업무 대시보드</button>
     <button class="topbtn ghost" id="revenueBtn" title="💰 매출 컨트롤 센터
 이번 달 PayPal 매출, 14일 차트, 베조스 분석을 미니 카드로 우상단에 띄움.">💰</button>
     <button class="topbtn ghost" id="apiBtn" title="🔌 외부 연결 (API 키 관리)
