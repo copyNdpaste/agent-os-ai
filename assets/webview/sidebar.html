@@ -566,6 +566,23 @@ body.corp-dispatching .ab-svg{opacity:1}
 .recovery-card .rc-btn-folder:hover{border-color:var(--accent);color:var(--accent)}
 .recovery-card .rc-btn-discard:hover{border-color:#dc2626;color:#dc2626;background:rgba(220,38,38,.05)}
 
+/* ===== Chat inflight recovery card ===== */
+.chat-recovery-card{background:linear-gradient(135deg,rgba(37,99,235,.06),rgba(37,99,235,.02));border:1px solid rgba(37,99,235,.32);border-radius:14px;padding:14px 16px;margin:0 0 14px 0;animation:msgIn .4s cubic-bezier(.16,1,.3,1);box-shadow:0 4px 16px rgba(37,99,235,.08)}
+.chat-recovery-card .crc-header{display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:700;letter-spacing:-.1px;color:var(--accent);margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid rgba(37,99,235,.18);font-family:'Inter','SF Pro Display',sans-serif}
+.chat-recovery-card .crc-stale{font-size:11px;color:var(--text-dim);font-family:'SF Mono','JetBrains Mono',monospace;font-weight:600}
+.chat-recovery-card .crc-prompt{font-size:13px;color:var(--text-bright);font-style:italic;margin-bottom:8px;line-height:1.55;background:rgba(15,23,42,.04);padding:8px 12px;border-radius:6px;border-left:2px solid var(--accent)}
+.chat-recovery-card .crc-meta{font-size:11.5px;color:var(--text-dim);margin-bottom:10px;line-height:1.5}
+.chat-recovery-card .crc-err{font-size:11.5px;color:#b45309;background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.35);border-radius:6px;padding:6px 10px;margin-bottom:10px;line-height:1.5}
+.chat-recovery-card .crc-partial{margin-bottom:10px;background:transparent;border:1px solid rgba(37,99,235,.18);border-radius:8px;overflow:hidden}
+.chat-recovery-card .crc-partial summary{padding:7px 12px;font-size:11.5px;font-weight:600;color:var(--accent);cursor:pointer;background:rgba(37,99,235,.04);user-select:none}
+.chat-recovery-card .crc-partial summary:hover{background:rgba(37,99,235,.08)}
+.chat-recovery-card .crc-partial pre{margin:0;padding:10px 12px;font-size:11.5px;line-height:1.6;color:var(--text-bright);background:transparent;border:none;font-family:'SF Mono','JetBrains Mono',monospace;white-space:pre-wrap;word-break:break-word;max-height:260px;overflow-y:auto}
+.chat-recovery-card .crc-actions{display:flex;gap:8px}
+.chat-recovery-card .crc-btn{cursor:pointer;border:1px solid rgba(15,23,42,.15);background:rgba(255,255,255,.6);color:var(--text-bright);padding:6px 12px;border-radius:6px;font-size:11.5px;font-weight:600;font-family:inherit;transition:all .15s}
+.chat-recovery-card .crc-btn:hover{background:#fff;border-color:rgba(15,23,42,.3)}
+.chat-recovery-card .crc-btn-retry:hover{border-color:var(--accent);color:var(--accent);background:rgba(37,99,235,.04)}
+.chat-recovery-card .crc-btn-discard:hover{border-color:#dc2626;color:#dc2626;background:rgba(220,38,38,.05)}
+
 /* ===== Onboarding & Interview Cards ===== */
 .onboard-card,.interview-card{background:linear-gradient(135deg,rgba(37,99,235,.05),rgba(37,99,235,.02));border:1px solid rgba(37,99,235,.28);border-radius:16px;padding:18px 20px;margin-left:29px;animation:msgIn .5s cubic-bezier(.16,1,.3,1);position:relative;overflow:hidden;backdrop-filter:blur(8px);box-shadow:0 8px 32px rgba(0,0,0,.4),0 0 18px rgba(37,99,235,.08)}
 .onboard-card::before,.interview-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);animation:reportLine 3s ease-in-out infinite}
@@ -1633,7 +1650,47 @@ vscode.postMessage({type:'corporateInit'});
 setTimeout(()=>vscode.postMessage({type:'ready'}),300);
 // Initial welcome render
 const _wr=document.getElementById('welcomeRoot'); if(_wr) _wr.outerHTML=welcomeHtml();
-input.addEventListener('input',()=>{input.style.height='auto';input.style.height=Math.min(input.scrollHeight,150)+'px'});
+
+/* === 입력창 draft 자동 저장 + 복원 ===
+   매 keystroke 마다 300ms throttle 로 vscode.setState 에 텍스트 저장. 패널
+   닫혔다 열려도 / VS Code 재시작해도 입력 중이던 글 살아있음. 전송 시점에
+   삭제. 또한 attached files 메타도 같이 저장 (이름·타입만 — base64 데이터는
+   너무 커서 제외). */
+let _draftSaveTimer = null;
+function _saveInputDraft(){
+  if(_draftSaveTimer) clearTimeout(_draftSaveTimer);
+  _draftSaveTimer = setTimeout(() => {
+    try {
+      const cur = vscode.getState() || {};
+      const txt = input.value || '';
+      if (txt) cur.inputDraft = txt;
+      else delete cur.inputDraft;
+      vscode.setState(cur);
+    } catch { /* ignore quota etc */ }
+  }, 300);
+}
+function _clearInputDraft(){
+  try {
+    const cur = vscode.getState() || {};
+    delete cur.inputDraft;
+    vscode.setState(cur);
+  } catch { /* ignore */ }
+}
+function _restoreInputDraft(){
+  try {
+    const cur = vscode.getState() || {};
+    if (typeof cur.inputDraft === 'string' && cur.inputDraft) {
+      input.value = cur.inputDraft;
+      input.style.height = 'auto';
+      input.style.height = Math.min(input.scrollHeight, 150) + 'px';
+    }
+  } catch { /* ignore */ }
+}
+_restoreInputDraft();
+input.addEventListener('input',()=>{
+  input.style.height='auto';input.style.height=Math.min(input.scrollHeight,150)+'px';
+  _saveInputDraft();
+});
 function getTime(){return new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'})}
 function esc(s){const d=document.createElement('div');d.innerText=s;return d.innerHTML}
 /* v2.89.53 — full markdown 렌더링. 이전엔 코드·볼드·링크만 다뤘고 ###/>/리스트/표는
@@ -1865,6 +1922,48 @@ function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;',
  *  near the top of the chat with one row per session, each with [폐기] /
  *  [세션 폴더 열기] actions. Dismissed when user discards all. */
 let _recoveryCardEl = null;
+/** 채팅 inflight 복구 카드 — 단일 답변 중단된 경우. 사용자에게 prompt + 받은
+ *  답변 일부 + [같은 프롬프트로 재시도] / [폐기]. partial response 는 보존된
+ *  텍스트 그대로 보여줘서 사용자가 필요하면 복사 가능. */
+let _chatRecoveryEl = null;
+function showChatRecoveryCard(rec){
+  if(!rec){
+    if(_chatRecoveryEl){ try{_chatRecoveryEl.remove()}catch{} _chatRecoveryEl=null; }
+    return;
+  }
+  if(_chatRecoveryEl){ try{_chatRecoveryEl.remove()}catch{} _chatRecoveryEl=null; }
+  const el = document.createElement('div');
+  el.className = 'chat-recovery-card';
+  const promptShort = escapeHtml((rec.prompt||'').slice(0, 200));
+  const errBlock = rec.errorMessage
+    ? '<div class="crc-err">⚠️ ' + escapeHtml(rec.errorMessage) + '</div>'
+    : '';
+  const partialBlock = rec.partialResponsePreview
+    ? '<details class="crc-partial"><summary>📄 받은 답변 일부 (' + rec.partialResponseLen + '자) — 펼쳐서 확인</summary><pre>' + escapeHtml(rec.partialResponsePreview) + (rec.partialResponseLen > 600 ? '\n\n…(이후 생략)' : '') + '</pre></details>'
+    : '<div class="crc-meta">답변이 한 글자도 도착하기 전 중단됐어요.</div>';
+  el.innerHTML = '<div class="crc-header">'
+    + '<span>⏸ 이전 답변 중단됨</span>'
+    + '<span class="crc-stale">' + rec.staleMinutes + '분 전</span>'
+    + '</div>'
+    + '<div class="crc-prompt">"' + promptShort + '"</div>'
+    + errBlock
+    + partialBlock
+    + '<div class="crc-actions">'
+    + '<button class="crc-btn crc-btn-retry">↻ 같은 프롬프트로 재시도</button>'
+    + '<button class="crc-btn crc-btn-discard">🗑 폐기</button>'
+    + '</div>';
+  el.querySelector('.crc-btn-retry').addEventListener('click', () => {
+    vscode.postMessage({ type: 'retryChatInflight' });
+    try{el.remove()}catch{}; _chatRecoveryEl=null;
+  });
+  el.querySelector('.crc-btn-discard').addEventListener('click', () => {
+    vscode.postMessage({ type: 'discardChatInflight' });
+    try{el.remove()}catch{}; _chatRecoveryEl=null;
+  });
+  chat.insertBefore(el, chat.firstChild);
+  _chatRecoveryEl = el;
+}
+
 function showIncompleteSessionsCard(sessions){
   if(!sessions || sessions.length === 0){
     if(_recoveryCardEl){ try{_recoveryCardEl.remove()}catch{} _recoveryCardEl=null; }
@@ -2063,6 +2162,8 @@ function send(opts){
   }
   addMsg(displayText,'user');
   input.value='';input.style.height='auto';setSending(true);
+  /* 메시지 전송됐으니 입력창 draft 도 제거 (다시 reload 했을 때 옛 글 안 뜨게). */
+  _clearInputDraft();
   /* v2.89.100 — corp 모드에서도 로더 띄움. 카드 보드가 펄스로 시각화하긴 하지만
      CEO 단계에서 시간이 길어지면 사용자에게 "뭐 일어나고 있는지" 단일 정보 채널이
      필요. 매트릭스 4단계 로더가 그 역할 — 카드 보드와 병행해도 시각적으로 안 부딪힘. */
@@ -4760,9 +4861,10 @@ window.addEventListener('message',e=>{const msg=e.data;switch(msg.type){
   case 'skillInject':showSkillCard(msg);break;
   case 'incompleteSessions':{
     /* extension 시작 시 sessions/* 에 status='running' 인 state.json 이 있으면
-       사이드바 상단에 복구 카드를 띄움. 사용자는 [폐기] 로 정리하거나
-       [세션 폴더 열기] 로 sessions/{ts}/state.json·산출물 직접 확인. */
+       사이드바 상단에 복구 카드를 띄움. chatRecovery 는 _chat/inflight.json
+       기반의 단일 채팅 중단 복구 (별도 카드). */
     showIncompleteSessionsCard(msg.sessions || []);
+    showChatRecoveryCard(msg.chatRecovery || null);
     break;
   }
   case 'allSkillsLoaded':

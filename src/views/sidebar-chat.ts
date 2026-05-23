@@ -939,13 +939,15 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
 
     /** Scan sessions/* for state.json files left in 'running' status (extension
      *  crashed mid-dispatch, network died, user closed VS Code, etc) and post
-     *  a recovery card to the sidebar webview. No-op when none found. */
+     *  a recovery card to the sidebar webview. Also surfaces a chat-level
+     *  inflight (_chat/inflight.json) so single-turn prompts that were
+     *  interrupted mid-stream are recoverable too. No-op when none found. */
     private async _postIncompleteSessions(): Promise<void> {
         if (!this._view) return;
         try {
             const { scanIncompleteSessions } = await import('../dispatch/session-state');
+            const { findInterruptedChat } = await import('../dispatch/chat-inflight');
             const incomplete = scanIncompleteSessions(getCompanyDir());
-            if (incomplete.length === 0) return;
             const summary = incomplete.map(s => ({
                 sessionDir: s.state.sessionDir,
                 id: s.state.id,
@@ -956,7 +958,22 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
                 hasReport: !!s.state.report,
                 agentCount: Object.keys(s.state.outputs).length,
             }));
-            this._view.webview.postMessage({ type: 'incompleteSessions', sessions: summary });
+            const chatInflight = findInterruptedChat(getCompanyDir());
+            const chatRecovery = chatInflight ? {
+                prompt: chatInflight.prompt,
+                modelName: chatInflight.modelName,
+                status: chatInflight.status,
+                partialResponseLen: chatInflight.partialResponse.length,
+                partialResponsePreview: chatInflight.partialResponse.slice(0, 600),
+                staleMinutes: Math.round((Date.now() - chatInflight.lastUpdatedAt) / 60000),
+                errorMessage: chatInflight.errorMessage,
+            } : null;
+            if (summary.length === 0 && !chatRecovery) return;
+            this._view.webview.postMessage({
+                type: 'incompleteSessions',
+                sessions: summary,
+                chatRecovery,
+            });
         } catch (e) {
             console.error('[sidebar-chat] postIncompleteSessions failed:', e);
         }
@@ -981,6 +998,35 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(sessionDir));
         } catch (e) {
             console.error('[sidebar-chat] openSessionFolder failed:', e);
+        }
+    }
+
+    /** Discard the chat inflight file (recovery card "폐기" button). */
+    private async _discardChatInflight(): Promise<void> {
+        try {
+            const { discardChatInflight } = await import('../dispatch/chat-inflight');
+            discardChatInflight(getCompanyDir());
+        } catch (e) {
+            console.error('[sidebar-chat] discardChatInflight failed:', e);
+        }
+    }
+
+    /** Retry the interrupted chat prompt — discards inflight and re-runs.
+     *  We just replay the prompt against current model; we don't try to splice
+     *  in the previously-received partial answer because Claude can't pick up
+     *  mid-stream. The recovery card already shows the partial to the user
+     *  for context if they want to copy/paste. */
+    private async _retryChatInflight(): Promise<void> {
+        try {
+            const { readChatInflight, discardChatInflight } = await import('../dispatch/chat-inflight');
+            const state = readChatInflight(getCompanyDir());
+            if (!state) return;
+            const prompt = state.prompt;
+            const modelName = state.modelName || this._lastModel || '';
+            discardChatInflight(getCompanyDir());
+            await this._handlePrompt(prompt, modelName);
+        } catch (e) {
+            console.error('[sidebar-chat] retryChatInflight failed:', e);
         }
     }
 
@@ -2281,6 +2327,8 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             postIncompleteSessions: () => this._postIncompleteSessions(),
             discardSession: (dir) => this._discardSession(dir),
             openSessionFolder: (dir) => this._openSessionFolder(dir),
+            discardChatInflight: () => this._discardChatInflight(),
+            retryChatInflight: () => this._retryChatInflight(),
             sendModels: () => this._sendModels(),
             sendCompanyState: (note) => this._sendCompanyState(note),
             sendStatusUpdate: () => this._sendStatusUpdate(),
@@ -2348,10 +2396,26 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
     // --------------------------------------------------------
     // Handle user prompt → Claude → agent actions → response
     // Body lives in `chat/prompt/handle-prompt.ts`.
+    // 추가: chat-inflight 체크포인트 — 응답 스트리밍 중 crash 시 _chat/
+    // inflight.json 에 prompt + 누적 응답 보존. 다음 ready 에서 복구 카드.
     // --------------------------------------------------------
     private async _handlePrompt(prompt: string, modelName: string, internetEnabled?: boolean) {
         if (!this._view) { return; }
-        return handlePrompt(this._buildPromptContext(this._view), prompt, modelName, internetEnabled);
+        const { ChatInflightWriter } = await import('../dispatch/chat-inflight');
+        const writer = new ChatInflightWriter({ companyDir: getCompanyDir(), prompt, modelName });
+        const ctx = this._buildPromptContext(this._view);
+        ctx.inflightAppendChunk = (chunk) => writer.appendChunk(chunk);
+        try {
+            await handlePrompt(ctx, prompt, modelName, internetEnabled);
+            /* 정상 종료 — inflight 파일 삭제. */
+            writer.finish('completed');
+        } catch (e: any) {
+            /* abort / 네트워크 실패 / Claude CLI 실패 — 파일 유지해서 다음
+               ready 에서 복구 카드 띄움. */
+            const aborted = this._abortController?.signal.aborted;
+            writer.finish(aborted ? 'aborted' : 'failed', String(e?.message || e).slice(0, 500));
+            throw e;
+        }
     }
 
     /* v2.89.37 — 3단계 fallback. 사용자가 "내 유튜브 채널 분석" 같은 명백한 단일 도구

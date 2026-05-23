@@ -64,4 +64,10 @@ export interface PromptContext {
     maybeMirrorToTelegram: () => Promise<void>;
     postThinking: (message: any) => void;
     shouldEmitThinking: () => boolean;
+
+    /* --- optional inflight checkpoint hooks ---
+     *  When attached, the prompt helper streams each token to the writer so a
+     *  mid-stream crash leaves a recoverable file at `_chat/inflight.json`.
+     *  Wrapper owns lifecycle (create/finish); helpers just call appendChunk. */
+    inflightAppendChunk?: (chunk: string) => void;
 }
