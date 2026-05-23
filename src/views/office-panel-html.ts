@@ -715,15 +715,23 @@ body.dispatching .beams{opacity:1}
 }
 .out-head .oh-task{color:var(--text-dim);font-weight:500;font-size:10px;letter-spacing:.2px}
 .out-body{
-  font-size:11.5px;color:var(--text);line-height:1.6;
-  white-space:pre-wrap;word-break:break-word;
-  max-height:220px;overflow-y:auto;
+  font-size:12px;color:var(--text);line-height:1.65;
+  word-break:break-word;
+  max-height:320px;overflow-y:auto;
   font-family:'Inter',sans-serif;
 }
 .out-body::-webkit-scrollbar{width:4px}
 .out-body::-webkit-scrollbar-thumb{background:var(--ag-color,var(--accent));opacity:.4;border-radius:2px}
-.report-block{background:linear-gradient(135deg,rgba(56,189,248,.05),rgba(30,64,175,.02));border:1px solid rgba(56,189,248,.3);border-radius:8px;padding:14px;margin-top:10px;color:var(--text);font-size:11.5px;line-height:1.65;white-space:pre-wrap;animation:logIn .4s ease-out;box-shadow:0 0 14px rgba(56,189,248,.08)}
-.report-block .rb-head{font-family:'SF Mono',monospace;font-size:10px;letter-spacing:1.5px;color:var(--accent);margin-bottom:8px;text-transform:uppercase}
+/* Markdown 렌더된 산출물 — 위 md-* 와 시각 통일 */
+.out-body .md-h1,.out-body .md-h2,.out-body .md-h3{margin-top:8px}
+.out-body .md-h1:first-child,.out-body .md-h2:first-child,.out-body .md-h3:first-child{margin-top:0}
+.out-body strong{color:var(--text-bright,#f1f5f9);font-weight:700}
+.out-body em{color:var(--text-bright,#f1f5f9);font-style:italic}
+.out-body p{margin:4px 0}
+.report-block{background:linear-gradient(135deg,rgba(56,189,248,.06),rgba(30,64,175,.03));border:1px solid rgba(56,189,248,.32);border-radius:10px;padding:16px;margin-top:12px;color:var(--text-bright);font-size:12.5px;line-height:1.7;animation:logIn .4s ease-out;box-shadow:0 0 14px rgba(56,189,248,.10)}
+.report-block .rb-head{font-family:'Inter',sans-serif;font-size:13px;font-weight:700;letter-spacing:-.1px;color:var(--accent);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid rgba(56,189,248,.18)}
+.report-block .md-h1,.report-block .md-h2,.report-block .md-h3{margin-top:10px}
+.report-block .md-h1:first-of-type,.report-block .md-h2:first-of-type{margin-top:0}
 
 /* ===== Bottom command bar ===== */
 .cmdbar{display:flex;align-items:center;gap:8px;padding:10px 14px;background:rgba(8,10,15,.96);border-top:1px solid var(--border);flex-shrink:0;z-index:10}
@@ -2055,7 +2063,10 @@ function appendOutChunk(agentId, value){
   if (!c) { startOutCard(agentId, ''); c = outCardEls[agentId]; }
   if (!c) return;
   c.raw = (c.raw||'') + value;
-  c.body.textContent = c.raw;
+  /* 산출물도 markdown 렌더. 스트리밍 중엔 매 chunk 마다 다시 렌더되지만
+     크기가 한정적이라(max 320px scroll) 비용 미미. renderMarkdown 은
+     escapeHtml 부터 시작하므로 XSS 안전. */
+  c.body.innerHTML = renderMarkdown(c.raw);
   outPane.scrollTop = outPane.scrollHeight;
 }
 function endOutCard(agentId){ delete outCardEls[agentId]; }
@@ -2798,7 +2809,7 @@ window.addEventListener('message', e => {
       whiteboard.classList.add('active');
       whiteboard.innerHTML = '<span class="wb-line">📝 '+escapeHtml((m.brief||'').slice(0,80))+'</span>';
       const block = document.createElement('div'); block.className = 'report-block';
-      block.innerHTML = '<div class="rb-head">📝 CEO 종합 보고서</div>'+escapeHtml(m.report||'');
+      block.innerHTML = '<div class="rb-head">📝 CEO 종합 보고서</div>'+renderMarkdown(m.report||'');
       outPane.appendChild(block);
       outPane.scrollTop = outPane.scrollHeight;
       logActivity('📝','ceo','<strong>종합 보고서 발표</strong> · '+escapeHtml(m.sessionPath||''));
