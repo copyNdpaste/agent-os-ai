@@ -98,10 +98,10 @@ body.corp-on .msg:not(.msg-user):not(.msg-agent):not(.msg-error):not(.msg-note):
 .inject-card .inject-path{font-family:'SF Mono',monospace;font-size:11px;color:#7c7f8a;margin-bottom:12px;position:relative;z-index:1;word-break:break-all}
 .inject-card .inject-quote{font-size:13px;color:#5DE0E6;font-weight:600;letter-spacing:.3px;position:relative;z-index:1;display:flex;align-items:center;gap:6px}
 .inject-card .inject-quote::before{content:'';width:14px;height:1px;background:linear-gradient(90deg,#5DE0E6,transparent);flex-shrink:0}
-.msg-body pre{background:var(--code-bg);border:1px solid var(--border2);border-radius:10px;padding:14px 16px;overflow-x:auto;margin:8px 0;font-size:12px;line-height:1.6;color:#0f172a;position:relative}
-/* v2.89.92 — 코드블록 매트릭스 스캔라인. 매우 미세한 가로줄(rgba .025)이
-   터미널 CRT 느낌을 줌. opacity 절제 — 가독성 안 해침. */
-.msg-body pre::before{content:'';position:absolute;inset:0;border-radius:10px;background:repeating-linear-gradient(0deg,transparent 0,transparent 3px,rgba(37,99,235,.025) 3px,rgba(37,99,235,.025) 4px);pointer-events:none;mix-blend-mode:overlay}
+/* 코드블록 — 회색 배경 제거, 미세한 blue border + 거의 투명한 fill 로 정리.
+   라이트 테마에서 #f1f5f9 fill 이 너무 무거워보였던 문제. CRT 가로줄도 같이 제거. */
+.msg-body pre{background:transparent;border:1px solid rgba(37,99,235,.18);border-radius:10px;padding:14px 16px;overflow-x:auto;margin:8px 0;font-size:12px;line-height:1.6;color:#0f172a;position:relative}
+.msg-body pre code{background:transparent;color:inherit;padding:0;border:none;font-weight:400}
 .msg-body pre::-webkit-scrollbar{height:6px}
 .msg-body pre::-webkit-scrollbar-track{background:rgba(0,0,0,.2);border-radius:4px}
 .msg-body pre::-webkit-scrollbar-thumb{background:rgba(37,99,235,.25);border-radius:4px}
@@ -4736,7 +4736,17 @@ function showBriefCard(brief,tasks){
 function showReportCard(brief,report,sessionPath,sessionRel){
   leaveInitState();
   const el=document.createElement('div');el.className='report-card';
-  el.innerHTML='<div class="report-head"><span>📝 CEO · 종합 보고서</span><span class="rh-tag">SESSION COMPLETE</span></div><div class="report-body">'+fmt(report)+'</div><div class="report-foot"><span>📁 '+esc(sessionPath||'')+'</span><span class="rf-link" data-sub="'+esc(sessionRel||'')+'">업무 일지 열람 →</span></div>';
+  /* 빈 report 가 와도 카드가 헤더만 떠서 "비어 있는 박스" 처럼 보이지 않게
+     의미 있는 fallback. 보통 빈 경우는 단일 에이전트 dispatch + LLM 호출 실패. */
+  const trimmed = String(report||'').trim();
+  const bodyHtml = trimmed
+    ? fmt(report)
+    : '<div style="font-size:12.5px;color:var(--text-dim);line-height:1.7;padding:8px 0">'
+      + '⚠️ 이번 세션은 종합 보고서로 정리할 내용이 비어있어요 '
+      + '(에이전트 LLM 호출이 실패했거나, 단일 에이전트 dispatch 라 산출물이 위 메시지로 이미 표시됐을 수 있어요).<br>'
+      + '<span style="font-size:11px">아래 \"업무 일지 열람 →\" 버튼으로 세션 폴더를 열면 각 에이전트의 raw 산출물(.md) 을 직접 확인 가능합니다.</span>'
+      + '</div>';
+  el.innerHTML='<div class="report-head"><span>📝 CEO · 종합 보고서</span><span class="rh-tag">SESSION COMPLETE</span></div><div class="report-body">'+bodyHtml+'</div><div class="report-foot"><span>📁 '+esc(sessionPath||'')+'</span><span class="rf-link" data-sub="'+esc(sessionRel||'')+'">업무 일지 열람 →</span></div>';
   const link=el.querySelector('.rf-link');
   if(link)link.addEventListener('click',()=>vscode.postMessage({type:'openCompanyFolder',sub:link.dataset.sub.replace(/^Company\//,'')}));
   chat.appendChild(el);scrollChatToBottomIfNear();
