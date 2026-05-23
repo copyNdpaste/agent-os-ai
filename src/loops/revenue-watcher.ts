@@ -33,7 +33,7 @@ import { getCompanyDir } from '../paths';
 
 /* ── v2.89.137 — Revenue Watcher (PayPal polling) ──────────────────────────
    5분마다 paypal_revenue.py OUTPUT=json 호출 → 마지막 본 transaction id 와
-   비교 → 새 결제 발견 시 텔레그램 푸시 + 사무실 영숙 책상 펄스. paypal 미설정
+   비교 → 새 결제 발견 시 텔레그램 푸시 + 사무실 카리나 책상 펄스. paypal 미설정
    시 silently skip. 이게 진짜 "AI 회사가 자고 있어도 결제 알아차림" 의 코어. */
 let _revenueWatcherTimer: NodeJS.Timeout | null = null;
 const _REVENUE_LAST_SEEN_KEY = 'revenueLastSeenTxId';
@@ -99,7 +99,7 @@ export async function _runRevenueWatcherOnce(): Promise<void> {
                     body: `${arrow}: ${subj} ${amount}`
                 });
             } catch { /* ignore */ }
-            /* 사무실 영숙 책상 펄스 + 알림 */
+            /* 사무실 카리나 책상 펄스 + 알림 */
             try {
                 _activeChatProvider?.pulseAgent?.('secretary', isRefund ? '↩️' : '💰', 6000, `${arrow}: ${amount}`);
             } catch { /* ignore */ }

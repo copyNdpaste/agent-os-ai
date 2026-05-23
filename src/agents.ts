@@ -27,7 +27,7 @@ export interface AgentDef {
    *  the pixel sprite at assets/pixel/characters/{id}.png if absent. */
   profileImage?: string;
   /** v2.89.45 — Optional voice/personality. Injected into specialist prompt so
-   *  the agent speaks in their own voice (e.g. 레오 = 데이터 중심·솔직). */
+   *  each agent keeps its expert voice (e.g. 일론머스크 = direct CEO, 카리나 = assistant). */
   persona?: string;
   /** Default Claude model tier for this agent's LLM calls.
    *  heavy = Opus 4.7, standard = Sonnet 4.6, light = Haiku 4.5. */

@@ -144,14 +144,14 @@ export class CompanyDashboardPanel {
                 } else if (msg?.type === 'openRevenueDashboard') {
                     /* v2.89.142 — 매출 카드 버튼 → 풀 대시보드 패널 띄움 */
                     RevenueDashboardPanel.createOrShow();
-                } else if (msg?.type === 'askHyunbinRevenue') {
+                } else if (msg?.type === 'askBezosRevenue') {
                     /* v2.89.146 — corporate dispatch 직접 호출. injectPrompt 는
                        bypassCorporate=true 라 shortcut 건너뛰는 버그 회피. */
                     try {
                         if (_activeChatProvider) {
                             const model = _activeChatProvider.getDefaultModel();
                             _activeChatProvider.runCorporatePromptExternal(
-                                '제프베조스아, 이번 달 PayPal 매출 실데이터 가져와서 분석하고 다음 액션 1개 추천해줘.',
+                                '베조스야, 이번 달 PayPal 매출 실데이터 가져와서 분석하고 다음 액션 1개 추천해줘.',
                                 model
                             ).catch(() => { /* ignore */ });
                         }
@@ -195,20 +195,20 @@ export class CompanyDashboardPanel {
                         this._panel.webview.postMessage({ type: 'revenueMini', data: { error: e?.message || String(e) } });
                     }
                 } else if (msg?.type === 'setAgentActive' && msg.agent) {
-                    /* v2.89.107 — 활성/비활성 토글. PIN 안 받음 (Luna는 별도 hireAgent). */
+                    /* v2.89.107 — 활성/비활성 토글. PIN 안 받음 (한스짐머는 별도 hireAgent). */
                     const aid = String(msg.agent || '').trim();
                     const want = !!msg.active;
                     if (ALWAYS_ON_AGENTS.has(aid)) {
                         this._postToast(`⚠️ ${aid}는 핵심 에이전트라 비활성화할 수 없어요.`, true);
                     } else if (LOCKED_AGENTS_DEFAULT[aid] && want) {
-                        /* Luna 활성화는 PIN 통해서만 — 별도 핸들러 */
+                        /* 한스짐머 활성화는 PIN 통해서만 — 별도 핸들러 */
                         this._postToast(`🔒 ${aid}는 PIN 인증이 필요해요. 카드를 클릭하세요.`, true);
                     } else {
                         const ok = setAgentActive(aid, want);
                         if (ok) {
                             const verb = want ? '활성화됨' : '비활성화됨';
                             this._postToast(`✅ ${AGENTS[aid]?.emoji || ''} ${AGENTS[aid]?.name || aid} ${verb}`, false);
-                            /* v2.89.112 — 코다리(developer) 첫 활성화 시 시니어 코더 모델 추천. */
+                            /* v2.89.112 — 개발신(developer) 첫 활성화 시 시니어 코더 모델 추천. */
                             if (want && aid === 'developer') {
                                 _maybeRecommendCoderModel(this._panel.webview);
                             }
@@ -567,7 +567,7 @@ export class CompanyDashboardPanel {
 
         /* Build agent team section — one card per agent with persona + open
            task count + autonomy level + most recent memory line + custom
-           profile photo when available (영숙/레오). The photo URI is resolved
+           profile photo when available (프로필 이미지 제공 에이전트). The photo URI is resolved
            through the panel's webview so the asset is reachable from the
            sandboxed iframe. */
         const agentTeam = AGENT_ORDER.map(id => {
@@ -894,7 +894,7 @@ export class CompanyDashboardPanel {
           <span>풀스크린 매출 대시보드</span>
           <span class="rev-btn-arrow">→</span>
         </button>
-        <button class="rev-btn ghost" id="askHyunbinBtn" title="제프베조스 에이전트에게 매출 분석 요청">🧠 제프베조스에게 분석 의뢰</button>
+        <button class="rev-btn ghost" id="askBezosBtn" title="제프베조스 에이전트에게 매출 분석 요청">🧠 제프베조스에게 분석 의뢰</button>
       </div>
     </div>
   </section>

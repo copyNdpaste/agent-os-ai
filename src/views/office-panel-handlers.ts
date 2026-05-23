@@ -42,15 +42,15 @@ export async function handleOfficeMessage(hctx: OfficeHandlerCtx, msg: any): Pro
             /* v2.89.143 — 가상 사무실 HUD 클릭 → 풀스크린 매출 대시보드 */
             RevenueDashboardPanel.createOrShow();
             break;
-        case 'askHyunbinRevenue': {
+        case 'askBezosRevenue': {
             /* v2.89.146 — 매출 shortcut 발동 위해 corporate dispatch 직접 호출
                (injectPrompt 는 bypassCorporate=true 라 명시적 호출 라우팅·shortcut
                건너뛰는 버그). runCorporatePromptExternal 로 specialist dispatch
-               진입 → "현빈아" explicit detection → _tryRevenueShortcut 발동. */
+               진입 → "베조스야" explicit detection → _tryRevenueShortcut 발동. */
             try {
                 const model = provider.getDefaultModel();
                 provider.runCorporatePromptExternal(
-                    '제프베조스아, 이번 달 PayPal 매출 실데이터 가져와서 분석하고 다음 액션 1개 추천해줘.',
+                    '베조스야, 이번 달 PayPal 매출 실데이터 가져와서 분석하고 다음 액션 1개 추천해줘.',
                     model
                 ).catch((e) => {
                     try { panel.webview.postMessage({ type: 'error', value: `⚠️ ${e?.message || e}` }); } catch { /* ignore */ }
@@ -208,7 +208,7 @@ function handleAgentProfileRequest(hctx: OfficeHandlerCtx, msg: any): void {
             recentSessions = entries.sort().slice(-5).reverse();
             sessionCount = entries.length;
         }
-        /* Profile photo (영숙/레오 등) — convert to a webview URI so
+        /* Profile photo (프로필 이미지 제공 에이전트 등) — convert to a webview URI so
            the modal can render the real face instead of just the
            sprite. Empty string when no custom photo is declared. */
         let profileImageUri = '';

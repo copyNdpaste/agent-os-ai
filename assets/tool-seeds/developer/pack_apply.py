@@ -11,7 +11,7 @@
      - app_imports: App.tsx 또는 App.tsx 에 import 추가 + JSX 본문 자동
   4. 결과 출력 — 다음 단계 안내 (npm run dev 등)
 
-이 도구가 코다리에게 주는 슈퍼파워:
+이 도구가 개발신에게 주는 슈퍼파워:
   - 매뉴얼 cp + npm install 호출 안 해도 됨
   - 한 명령으로 "키트 적용 완료"
   - 의존성 누락 없음 (manifest 가 진실 소스)

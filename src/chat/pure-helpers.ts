@@ -315,12 +315,11 @@ export function getWorkspaceContext(): string {
 export function detectExplicitMention(prompt: string): { agentId: string; agentName: string } | null {
     const lower = prompt.toLowerCase();
     /* 호출 후보: 한글 닉네임·영문 id·역할 키워드 → agentId 매핑.
-       우선순위 높은 것부터 (코다리 같은 고유 닉네임이 일반어 "개발자"보다 강함). */
+       우선순위 높은 것부터 (일론머스크·제프베조스 같은 고유 페르소나명이 일반 역할어보다 강함). */
     const candidates: Array<{ patterns: RegExp[]; agentId: string; agentName: string }> = [
         { patterns: [/개발신[야아!,~ ]/, /개발신아/, /@developer\b/, /@개발신\b/], agentId: 'developer', agentName: '개발신' },
         { patterns: [/제프베조스[야아!,~ ]/, /베조스[야아!,~ ]/, /제프[야아!,~ ]/, /@business\b/, /@제프베조스\b/, /@베조스\b/], agentId: 'business', agentName: '제프베조스' },
         { patterns: [/한스짐머[야아!,~ ]/, /짐머[야아!,~ ]/, /@editor\b/, /@한스짐머\b/, /@짐머\b/], agentId: 'editor', agentName: '한스짐머' },
-        { patterns: [/레오[야아!,~ ]/, /레오야/, /@youtube\b/, /@레오\b/], agentId: 'youtube', agentName: '레오' },
         { patterns: [/카리나[야아!,~ ]/, /카리나야/, /@secretary\b/, /@카리나\b/], agentId: 'secretary', agentName: '카리나' },
         { patterns: [/일론머스크[야아!,~ ]/, /일론[야아!,~ ]/, /머스크[야아!,~ ]/, /@ceo\b/, /@일론머스크\b/, /@일론\b/], agentId: 'ceo', agentName: '일론머스크' },
         { patterns: [/박재범[야아!,~ ]/, /재범[야아!,~ ]/, /@instagram\b/, /@박재범\b/, /@재범\b/], agentId: 'instagram', agentName: '박재범' },
@@ -400,7 +399,7 @@ export async function tryRevenueShortcut(_userPrompt: string): Promise<string | 
 }
 
 // ---------------------------------------------------------------------------
-// Developer "kit" shortcut — when the user explicitly calls 코다리 with a
+// Developer "kit" shortcut — when the user explicitly calls 개발신 with a
 // prompt strongly matching a brain-folder kit manifest, bypass the LLM and
 // produce a pre-baked `<run_command>` response that drives `pack_apply.py`.
 // Scoring: keyword=10 / name=5 / category=3, threshold 10.

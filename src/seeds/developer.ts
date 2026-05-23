@@ -1,5 +1,5 @@
 /**
- * Developer (코다리) 에이전트 도구 시드.
+ * Developer (개발신) 에이전트 도구 시드.
  *   - web_init     : 5종 템플릿 자동 셋업 (vite·next·astro·expo·vanilla)
  *   - web_preview  : dev server 백그라운드 + URL 자동 오픈
  *   - pwa_setup    : manifest·sw·아이콘 자동 생성

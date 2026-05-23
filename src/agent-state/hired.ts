@@ -2,7 +2,7 @@
  * Agent hire-state persistence (`_shared/hired.json`).
  *
  * extension.ts 에서 분리됨 (god-file Agent-state 모듈화). 채용 잠금
- * 시스템(v2.89.103) — 일부 에이전트(현재: editor=루나)는 PIN 입력으로 채용해야
+ * 시스템(v2.89.103) — 일부 에이전트(현재: editor=한스짐머)는 PIN 입력으로 채용해야
  * 활성화된다. 채용 통과한 에이전트는 active.json 에도 자동 등록되어 즉시 사용 가능.
  *
  * companyDir 는 외부에서 주입한다. setActive 는 ./active 에서 import 하여 모듈

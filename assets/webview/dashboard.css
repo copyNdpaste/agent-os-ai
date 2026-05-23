@@ -1038,7 +1038,7 @@ body::before {
 /* ============================================================
    v2.89.107 — 비활성 에이전트 카드 + 활성화 confirm 모달
    비활성 = OFFLINE (클릭 시 가벼운 confirm)
-   잠긴(Luna) = LOCKED (PIN 필요) — 별도
+   잠긴(한스짐머) = LOCKED (PIN 필요) — 별도
    ============================================================ */
 
 /* 비활성 카드 — locked과 비슷하지만 톤 약간 다르게 (회색) */
@@ -1083,7 +1083,7 @@ body::before {
   box-shadow:0 0 10px rgba(255,255,255,.15),inset 0 0 0 1px rgba(255,255,255,.04);
 }
 
-/* ===== Activate Modal — Luna PIN 모달과 같은 톤이지만 코드 입력 빠짐 ===== */
+/* ===== Activate Modal — 한스짐머 PIN 모달과 같은 톤이지만 코드 입력 빠짐 ===== */
 .activate-backdrop{
   position:fixed;inset:0;z-index:9999;
   background:radial-gradient(ellipse at center, rgba(8,10,14,.92), rgba(0,0,0,.97));

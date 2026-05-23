@@ -434,7 +434,7 @@ body.corp-dispatching .ab-svg{opacity:1}
 .sessions-foot{padding:10px 20px;border-top:1px solid rgba(37,99,235,.12);font-family:'SF Mono','Consolas',monospace;font-size:9.5px;color:rgba(255,255,255,.35);letter-spacing:.7px;text-align:center;flex-shrink:0;position:relative;z-index:1}
 
 /* ===== v2.89.107 — 비활성(OPT-IN) 에이전트 카드. 회색 톤. =====
-   잠긴(Luna) 카드와는 다른 색 — locked=보라(채용 인증 필요), inactive=회색(간단 토글). */
+   잠긴(한스짐머) 카드와는 다른 색 — locked=보라(채용 인증 필요), inactive=회색(간단 토글). */
 .ab-card.inactive{opacity:.78;border-color:rgba(255,255,255,.18);background:linear-gradient(180deg,rgba(20,22,26,.82),rgba(10,12,15,.92));cursor:pointer;position:relative}
 .ab-card.inactive::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(135deg,transparent 0,transparent 5px,rgba(255,255,255,.025) 5px,rgba(255,255,255,.025) 7px);pointer-events:none;border-radius:10px}
 .ab-card.inactive .ab-emoji,.ab-card.inactive .ab-portrait{filter:grayscale(.6) brightness(.7) contrast(1.05)}
@@ -2748,7 +2748,7 @@ function _showAgentPanelInner(agent){
      their office. Agents have personality; we lean into it instead of cold
      section labels. */
   const firstSpec = (agent.specialty || '').split(/[·,，]/)[0].trim();
-  /* v2.89.85 — 받침 있으면 '이에요' (영숙이에요), 없으면 '예요' (루나예요·레오예요).
+  /* v2.89.85 — 받침 있으면 '이에요' (카리나이에요), 없으면 '예요' (한스짐머예요·아인슈타인예요).
      마지막 한글 음절의 (charCode - 0xAC00) % 28 이 0이면 받침 없음. */
   const _lastChar = (agent.name || '').slice(-1);
   const _code = _lastChar.charCodeAt(0);
@@ -4271,17 +4271,17 @@ if(abCompanyName){
 let agentMiniDotEls={};
 /* v2.89.106 — 채용 상태 단일 진실 소스 = backend `_company/_shared/hired.json`.
    v2.89.107 — 활성/비활성 토글 시스템 추가 (Option B). 상태 두 가지:
-     - locked (Luna): PIN 0000 통과해야 활성. 미통과면 카드 보라색 + 자물쇠
+     - locked (한스짐머): PIN 0000 통과해야 활성. 미통과면 카드 보라색 + 자물쇠
      - inactive (instagram, business, developer, researcher): 사용자 OPT-IN 필요.
        기본 비활성, 카드 회색. 클릭 시 confirm → 활성화.
      - always-on (CEO, secretary, youtube, writer, designer): 항상 활성.
    두 화면 (사이드바·대쉬보드) 어디서든 같은 정보를 봄. */
-const LOCKED_AGENTS = { editor: true };  /* 사운드 디렉터(editor=루나) — PIN 게이트 */
+const LOCKED_AGENTS = { editor: true };  /* 사운드 디렉터(editor=한스짐머) — PIN 게이트 */
 /* v2.89.110 — 자율성 + 합리적 기본값:
    - ALWAYS_ON (1명): CEO 시스템 필수
    - DEFAULT_ON (4명): 새 사용자 첫 진입 시 자동 활성화 (사용자 OFF 가능)
    - OPTIONAL (4명): 기본 비활성, opt-in
-   - LOCKED (1명): Luna PIN
+   - LOCKED (1명): 한스짐머 PIN
    첫 화면이 "비어 있지 않게" 하면서도 사용자 선택권 유지. */
 const ALWAYS_ON_AGENTS = new Set(['ceo']);
 const DEFAULT_ON_AGENTS = new Set(['secretary','youtube','writer','designer']);
@@ -4906,8 +4906,8 @@ window.addEventListener('message',e=>{const msg=e.data;switch(msg.type){
          보여줘 사용자가 "이제 뭐 할 수 있지?" 즉시 파악. 이전엔 "설정 완료. 명령
          내려보세요" 만으로 무엇이 가능한지 모호했음. */
       const co = companyState.name || '회사';
-      /* v2.89.110 — 기본 5명 ON + 옵션 4명 OFF + 루나 PIN. 사용자가 카드 클릭해서 자유롭게 변경 가능. */
-      addCorpBanner('✅ '+co+' 출범! 9명 팀 — 🟢 기본 ON 5명: 🧭 CEO · 📺 YouTube · 🎨 디자이너 · ✍️ 작가 · 📅 비서 (사용자가 OFF 가능) / ⏸ 옵션 4명 (📷 인스타·💼 비즈·🛠 개발·🔍 리서치): 카드 클릭해서 ON / 🔒 1명 (🎵 루나): 채용 PIN 필요');
+      /* v2.89.110 — 기본 5명 ON + 옵션 4명 OFF + 한스짐머 PIN. 사용자가 카드 클릭해서 자유롭게 변경 가능. */
+      addCorpBanner('✅ '+co+' 출범! 9명 팀 — 🟢 기본 ON 5명: 🧭 CEO · 🔍 리서치 · 🎨 디자이너 · ✍️ 작가 · 📅 비서 (사용자가 OFF 가능) / ⏸ 옵션 4명 (📷 인스타·💼 비즈·🛠 개발·🔍 리서치): 카드 클릭해서 ON / 🔒 1명 (🎵 한스짐머): 채용 PIN 필요');
       addCorpBanner('💡 "다음 영상 컨셉 5개 뽑아줘" 처럼 자연어로 던지시면 CEO가 분배합니다.');
     }
     break;

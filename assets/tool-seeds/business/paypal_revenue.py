@@ -129,9 +129,9 @@ def _parse_project_from_subject(subject: str):
     """v2: PayPal createOrder 의 description 에서 게임/프로젝트 + 아이템 추출.
        규약: "{Project Name} — {Item Name}"  (em-dash 또는 -- 또는 :).
        예시:
-         "Neon Survivor — Premium Pack" → ("neon-survivor", "Premium Pack")
-         "Neon Survivor — Revive"       → ("neon-survivor", "Revive")
-         "Chick Game: Custom Skin"      → ("chick-game", "Custom Skin")
+         "Revenue MVP — Premium Pack" → ("revenue-mvp", "Premium Pack")
+         "Revenue MVP — Revive"       → ("revenue-mvp", "Revive")
+         "Idea Validation MVP: Custom Skin"      → ("idea-validation-mvp", "Custom Skin")
        구분자 못 찾으면 전체를 프로젝트로 취급 + item = "(unspecified)".
     """
     if not subject:
@@ -155,7 +155,7 @@ def _summarize(txs, default_currency: str = ""):
 
     by_currency = {}            # {USD: {"gross": float, "fees": float, "refunds": float, "count": int}}
     by_period = {"today": 0.0, "week": 0.0, "month": 0.0}
-    by_project = {}             # v2: {"neon-survivor": {"gross": float, "count": int, "currency": "USD",
+    by_project = {}             # v2: {"revenue-mvp": {"gross": float, "count": int, "currency": "USD",
                                 #                       "items": {"Premium Pack": {"gross": float, "count": int}}}}
     transactions_clean = []     # 정상 거래 (T0000 = 일반 결제)
     refunds = []

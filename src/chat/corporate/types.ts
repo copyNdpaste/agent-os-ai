@@ -63,7 +63,7 @@ export interface CorporateContext {
     buildRecentFilesContext: (agentId: string) => string;
     /** Project memory section injected into CEO chat prompts. */
     getProjectMemory: () => string;
-    /** Kit shortcut for explicit `코다리야 …` developer call. */
+    /** Kit shortcut for explicit `개발신아 …` developer call. */
     tryKitShortcut: (agentId: string, prompt: string) => string | null;
     /** Revenue shortcut for business agent. */
     tryRevenueShortcut: (prompt: string) => Promise<string | null>;

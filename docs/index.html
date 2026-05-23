@@ -17,7 +17,10 @@
       </span>
     </a>
     <nav class="nav" aria-label="Primary">
+      <a href="#council">AI 경영진</a>
+      <a href="#collaboration">협업 자동화</a>
       <a href="#loop">실험 루프</a>
+      <a href="#example">예시 흐름</a>
       <a href="#architecture">구조</a>
       <a href="#brain">지식폴더</a>
       <a href="#modules">모듈</a>
@@ -28,15 +31,15 @@
   <main>
     <section id="overview" class="hero">
       <div class="hero-copy">
-        <p class="eyebrow">1인 기업을 위한 아이디어 실험·수요검증 OS</p>
-        <h1>아이디어를 기록하고, SNS로 검증하고, 반응 좋은 것만 MVP로 만듭니다.</h1>
+        <p class="eyebrow">일론머스크·제프베조스식 사고를 내 로컬 IDE 안으로</p>
+        <h1>아이디어를 던지면 AI 경영진이 검증하고, 실행팀이 MVP까지 밀어붙입니다.</h1>
         <p class="lead">
-          Agent OS AI는 VS Code 확장 안에서 아이디어, 가설, 실험 문구, 반응 데이터,
-          의사결정 로그를 Markdown으로 저장하고 지식 그래프로 연결합니다.
+          Agent OS AI는 VS Code 확장 안에서 일론머스크, 제프베조스, 조나단아이브,
+          아인슈타인 같은 페르소나 에이전트가 아이디어를 분해하고 수요검증·제품화·실행계획으로 바꿉니다.
         </p>
         <div class="hero-actions">
-          <a class="button primary" href="#architecture">구조 보기</a>
-          <a class="button" href="#brain">지식폴더 이해하기</a>
+          <a class="button primary" href="#council">AI 경영진 보기</a>
+          <a class="button" href="#example">자동화 흐름 보기</a>
         </div>
       </div>
 
@@ -71,6 +74,37 @@
       </div>
     </section>
 
+    <section id="council" class="section">
+      <div class="section-head">
+        <p class="eyebrow">AI Executive Team</p>
+        <h2>혼자 일하지만, 의사결정은 9명의 전문가 팀처럼 굴립니다</h2>
+        <p>
+          각 에이전트는 유명 인물의 사고 프레임워크를 역할에 맞게 적용합니다.
+          사용자는 아이디어만 입력하고, 나머지는 경영진·크리에이티브·실행팀이 나눠 처리합니다.
+        </p>
+      </div>
+      <div class="agent-grid" id="agentGrid"></div>
+    </section>
+
+    <section id="collaboration" class="section split">
+      <div>
+        <p class="eyebrow">Collaboration Engine</p>
+        <h2>목표 하나를 받으면 계획·분업·회의·종합·학습까지 자동으로 이어집니다</h2>
+        <p>
+          Agent OS AI의 핵심은 “에이전트가 여러 명 있다”가 아니라,
+          각 에이전트의 산출물이 다음 에이전트의 컨텍스트가 되고 마지막에 CEO가 하나의 실행안으로 합치는 구조입니다.
+        </p>
+        <ul class="checklist">
+          <li><code>src/agents.ts</code>는 에이전트 이름, 역할, 전문성, 페르소나를 정의</li>
+          <li><code>src/chat/corporate/specialist-loop.ts</code>는 목표를 담당자별 작업으로 실행</li>
+          <li><code>src/chat/corporate/confer-phase.ts</code>는 에이전트 간 짧은 회의 대화를 생성</li>
+          <li><code>src/chat/corporate/report-phase.ts</code>는 CEO 종합 보고서로 산출물을 통합</li>
+          <li><code>src/chat/corporate/decisions-phase.ts</code>는 결정사항을 지식폴더에 누적</li>
+        </ul>
+      </div>
+      <div class="collab-pipeline" id="collabPipeline"></div>
+    </section>
+
     <section id="loop" class="section">
       <div class="section-head">
         <p class="eyebrow">Core Loop</p>
@@ -78,6 +112,50 @@
         <p>Agent OS AI의 모든 폴더와 모듈은 이 루프를 빠르게 돌리기 위해 존재합니다.</p>
       </div>
       <div class="flow-grid" id="flowGrid"></div>
+    </section>
+
+    <section id="example" class="section">
+      <div class="section-head">
+        <p class="eyebrow">Example Project</p>
+        <h2>예시 흐름: 내 아이디어를 AI 경영진에게 던졌을 때</h2>
+        <p>
+          특정 템플릿 프로젝트가 아니라, 사장님이 만들고 싶은 어떤 아이디어든 이 흐름을 탑니다.
+          입력은 짧아도 Agent OS AI가 질문을 쪼개고, 각 에이전트가 자기 프레임워크로 검증합니다.
+        </p>
+      </div>
+
+      <div class="automation-board">
+        <div class="automation-summary">
+          <span class="path">예시 입력</span>
+          <h3>“내가 생각한 아이디어가 진짜 돈이 될지 검증하고, 만들 거면 가장 작은 MVP 범위까지 정해줘.”</h3>
+          <p>
+            처음부터 기능을 많이 만들지 않습니다. 일론머스크가 본질을 줄이고,
+            제프베조스가 고객 관점에서 돈이 되는지 확인한 뒤, 실행팀이 실험과 MVP를 만듭니다.
+          </p>
+          <div class="chips">
+            <span class="chip">First Principles</span>
+            <span class="chip">Working Backwards</span>
+            <span class="chip">고객 검증</span>
+            <span class="chip">MVP 실행</span>
+          </div>
+        </div>
+        <div class="automation-kpis" aria-label="Example automation outputs">
+          <div>
+            <strong>1</strong>
+            <span>입력창</span>
+          </div>
+          <div>
+            <strong>9</strong>
+            <span>역할 에이전트</span>
+          </div>
+          <div>
+            <strong>6</strong>
+            <span>자동화 단계</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="automation-flow" id="automationFlow"></div>
     </section>
 
     <section id="architecture" class="section split">

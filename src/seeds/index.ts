@@ -90,7 +90,7 @@ export function _seedAgentToolsIfMissing(agentId: string) {
       _seedEditorMusicGenerate(toolsDir);
       _seedEditorMusicToVideo(toolsDir);
     } else if (agentId === 'developer') {
-      /* v2.89.112+122 — 코다리 도구. 웹·모바일 셋업 + PWA + dev server + 키트 적용. */
+      /* v2.89.112+122 — 개발신 도구. 웹·모바일 셋업 + PWA + dev server + 키트 적용. */
       const toolsDir = path.join(getCompanyDir(), '_agents', agentId, 'tools');
       fs.mkdirSync(toolsDir, { recursive: true });
       _seedDeveloperWebInit(toolsDir);

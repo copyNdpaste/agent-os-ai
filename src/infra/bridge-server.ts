@@ -374,7 +374,7 @@ export function startBridgeServer(deps: BridgeServerDeps): void {
             else if (req.method === 'POST' && req.url === '/api/template-inject') {
                 /* v2.89.120 — 템플릿 팩 주입. Idea Lab 등 외부 도구가 코드 boilerplate
                    묶음을 주면 두뇌의 40_템플릿/<agentId>/<name>/ 로 폴더 구조로 저장.
-                   코다리 같은 에이전트가 다음 작업에 자동 참조.
+                   개발신 같은 에이전트가 다음 작업에 자동 참조.
                    payload: { agent, name, manifest, readme, files: {filename: content} } */
                 (async () => {
                     console.log('[Agent OS Bridge] /api/template-inject hit @', new Date().toISOString());

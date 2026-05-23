@@ -411,27 +411,27 @@ export function readCompanyName(): string {
     return cmp.readCompanyName(getCompanyDir());
 }
 
-/* v2.89.103 — 채용 잠금 시스템. 일부 에이전트(현재: editor=루나)는 기본 잠금
+/* v2.89.103 — 채용 잠금 시스템. 일부 에이전트(현재: editor=한스짐머)는 기본 잠금
    상태로 시작하고, 사용자가 PIN(0000)을 입력해야 활성화됨. 이력서·게임적 보상감
-   조성 + 출시 단계 분리(루나는 "입사 준비 중" 컨셉). */
+   조성 + 출시 단계 분리(한스짐머는 "입사 준비 중" 컨셉). */
 export const LOCKED_AGENTS_DEFAULT: Record<string, boolean> = { editor: true };
 
 /* v2.89.107 — 활성/비활성 토글 시스템 (Option B).
-   Luna(editor) 외에 매일 안 쓰일 가능성 큰 specialist는 기본 비활성으로 시작.
+   한스짐머(editor) 외에 매일 안 쓰일 가능성 큰 specialist는 기본 비활성으로 시작.
    사용자가 직원 패널에서 카드 클릭 → 활성화 confirm → 사용 가능.
    ALWAYS_ON: 핵심 워크플로우용 — 항상 활성, 토글 불가.
-   OPTIONAL: 기본 비활성, 사용자 opt-in 시 활성화 (PIN 안 받음 — Luna만 PIN).
+   OPTIONAL: 기본 비활성, 사용자 opt-in 시 활성화 (PIN 안 받음 — 한스짐머만 PIN).
    기존 사용자 migration: hired.json에 entry 있으면 모든 OPTIONAL 자동 활성화. */
 /* v2.89.110 — 자율성 + 합리적 기본값 균형. 4-tier:
    1. ALWAYS_ON: 시스템 요구 (off 불가)
    2. DEFAULT_ON: 첫 진입 시 자동 활성화. 사용자가 언제든 OFF 가능.
    3. OPTIONAL (DEFAULT_OFF): 기본 비활성, 사용자 opt-in.
-   4. LOCKED (Luna): PIN 필요.
+   4. LOCKED (한스짐머): PIN 필요.
    v2.89.109가 너무 보수적이어서 (CEO만 ON) 새 사용자가 회사 모드 켜고 "유튜브 분석해줘"
    하면 빈 plan 나오는 사고. 핵심 4명을 기본 ON으로 되돌려 첫 경험 회복. */
 export const ALWAYS_ON_AGENTS: Set<string> = new Set(['ceo']);
 /* v2.89.156 — 데모용·신규 사용자 첫 경험 회복. "유튜브 + 매출 종합 보고서" 같은 합성 명령에서
-   현빈(business) 가 비활성이라 조용히 drop 되던 사고 차단. 옵션 전체를 기본 ON 으로. Luna 만 LOCKED 유지.
+   제프베조스(business) 가 비활성이라 조용히 drop 되던 사고 차단. 옵션 전체를 기본 ON 으로. 한스짐머 만 LOCKED 유지.
    사용자는 언제든 직원 패널에서 개별 OFF 가능. */
 export const OPTIONAL_AGENTS_DEFAULT: Set<string> = new Set(['secretary', 'writer', 'designer', 'instagram', 'business', 'developer', 'researcher']);
 
@@ -467,7 +467,7 @@ export function readActiveAgents(): Record<string, { activatedAt: string }> {
 
 /* 핵심 헬퍼: 에이전트가 현재 사용 가능한지.
    - ALWAYS_ON: 무조건 true
-   - LOCKED (Luna): hired.json 에 entry 있으면 true (PIN 통과)
+   - LOCKED (한스짐머): hired.json 에 entry 있으면 true (PIN 통과)
    - OPTIONAL: active.json 에 entry 있으면 true
    - 그 외 (정의 안 된 에이전트): true (기본값)
    ALWAYS_ON 와 "기본 true" 분기는 모듈에서 알 수 없으므로 wrapper 가 처리. */
@@ -488,7 +488,7 @@ export function isAgentTogglable(id: string): boolean {
   return OPTIONAL_AGENTS_DEFAULT.has(id) || !!LOCKED_AGENTS_DEFAULT[id];
 }
 
-/* Claude CLI 전환 후 코더 전용 모델 추천은 의미 없음 — 코다리는 heavy(Opus) tier 고정.
+/* Claude CLI 전환 후 코더 전용 모델 추천은 의미 없음 — 개발신는 heavy(Opus) tier 고정.
    no-op 으로 남겨서 콜사이트 호환만 유지. */
 export function _maybeRecommendCoderModel(_webview: vscode.Webview) { /* no-op */ }
 
@@ -737,7 +737,7 @@ export async function refreshCalendarCacheViaOAuth(daysAhead: number = 14): Prom
 
 /* ── v2.89.137 — Revenue Watcher (PayPal polling) ──────────────────────────
    5분마다 paypal_revenue.py OUTPUT=json 호출 → 마지막 본 transaction id 와
-   비교 → 새 결제 발견 시 텔레그램 푸시 + 사무실 영숙 책상 펄스. 본문 + timer 는
+   비교 → 새 결제 발견 시 텔레그램 푸시 + 사무실 카리나 책상 펄스. 본문 + timer 는
    src/loops/revenue-watcher.ts. */
 
 

@@ -410,7 +410,7 @@ body.floorplan .conf-room,body.floorplan .location{display:none!important}
   box-shadow:0 0 18px rgba(0,255,65,.18),inset 0 0 0 1px rgba(255,255,255,.04);
   overflow:hidden;
 }
-/* When a custom portrait is loaded (영숙/레오), drop the gradient and let
+/* When a custom portrait is loaded (프로필 이미지 제공 에이전트), drop the gradient and let
    the image cover the avatar tile completely. Adds a subtle inner ring so
    the photo blends with the brand's amber border. */
 .amd-emoji.has-photo{background:transparent;padding:0}
@@ -892,7 +892,7 @@ body.dispatching .beams{opacity:1}
       📊 풀스크린 대시보드
       <span class="fr-btn-arrow">→</span>
     </button>
-    <button class="fr-btn ghost" id="frAskHyunbin" title="제프베조스 에이전트 매출 분석">🧠 제프베조스 분석</button>
+    <button class="fr-btn ghost" id="frAskBezos" title="제프베조스 에이전트 매출 분석">🧠 제프베조스 분석</button>
   </div>
 </div>
 
@@ -2544,7 +2544,7 @@ window.addEventListener('message', e => {
         break;
       }
       /* Swap the avatar emoji square for a real photo when one is provided
-         (영숙/레오). The .has-photo class kills the gradient background and
+         (프로필 이미지 제공 에이전트). The .has-photo class kills the gradient background and
          lets the image cover the avatar tile fully. */
       try {
         const emo = document.getElementById('amdEmoji');
@@ -2663,8 +2663,8 @@ window.addEventListener('message', e => {
   $$('frOpenDashboard')?.addEventListener('click', () => {
     vscode.postMessage({ type: 'openRevenueDashboard' });
   });
-  $$('frAskHyunbin')?.addEventListener('click', () => {
-    vscode.postMessage({ type: 'askHyunbinRevenue' });
+  $$('frAskBezos')?.addEventListener('click', () => {
+    vscode.postMessage({ type: 'askBezosRevenue' });
   });
 
   function _fmt(v) {

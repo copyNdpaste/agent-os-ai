@@ -2,7 +2,7 @@
 # version: lint_test_v1
 """프로젝트 자가 검증 — 타입체크·테스트·린트 자동 실행 + 결과 요약.
 
-코다리가 코드를 만든 직후 이 도구를 호출하면:
+개발신이 코드를 만든 직후 이 도구를 호출하면:
   1. package.json 의 scripts 자동 감지 (test/lint/typecheck/build)
   2. 또는 .ts/.tsx 파일 있으면 npx tsc --noEmit
   3. .py 파일 있으면 python -m py_compile <각 파일>

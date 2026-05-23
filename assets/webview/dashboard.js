@@ -315,7 +315,7 @@ function render(s) {
         + '</div>';
     }).join('');
     /* v2.89.103+107 — 카드 클릭 분기:
-       1. locked (Luna PIN 미통과) → openHirePinModal
+       1. locked (한스짐머 PIN 미통과) → openHirePinModal
        2. inactive (OPTIONAL OFF) → openActivateModal
        3. 그 외 (active) → showAgentDetailModal */
     teamBody.querySelectorAll('.agent-card').forEach(card => {
@@ -863,7 +863,7 @@ function showReportScheduleModal(entries){
   });
 }
 
-/* v2.89.103 — 채용 PIN 모달. 잠긴 에이전트(현재 루나) 카드 클릭 시 등장.
+/* v2.89.103 — 채용 PIN 모달. 잠긴 에이전트(현재 한스짐머) 카드 클릭 시 등장.
    힌트는 절대 노출 X — placeholder는 ••••, label은 "AUTHORIZATION CODE"만.
    4자리 입력 시 자동 검증, 정답이면 글리치 효과 + 환영 시퀀스 → 백엔드 영구 저장. */
 let _hirePinBackdrop = null;
@@ -966,7 +966,7 @@ function openHirePinModal(a){
 }
 
 /* v2.89.107 — 활성화 confirm 모달. PIN 없는 가벼운 토글.
-   Luna PIN 모달과 같은 비주얼 언어, 코드 입력만 빠진 형태.
+   한스짐머 PIN 모달과 같은 비주얼 언어, 코드 입력만 빠진 형태.
    사용자: "활성화" 클릭 → backend setAgentActive 호출 → 카드 색깔 펄스. */
 let _activateBackdrop = null;
 function openActivateModal(a){
@@ -1182,12 +1182,12 @@ vscode.postMessage({ type: 'refresh' });
 /* ───────── v2.89.142 — Revenue Card (회사 대시보드의 매출 위젯) ───────── */
 (function setupRevenueCard() {
   const openBtn = document.getElementById('openRevDashBtn');
-  const askBtn  = document.getElementById('askHyunbinBtn');
+  const askBtn  = document.getElementById('askBezosBtn');
   if (openBtn) openBtn.addEventListener('click', () => {
     vscode.postMessage({ type: 'openRevenueDashboard' });
   });
   if (askBtn) askBtn.addEventListener('click', () => {
-    vscode.postMessage({ type: 'askHyunbinRevenue' });
+    vscode.postMessage({ type: 'askBezosRevenue' });
   });
   /* 데이터 요청 — extension 이 paypal_revenue.py 호출해서 미니 KPI + sparkline 회신 */
   vscode.postMessage({ type: 'requestRevenueMini' });

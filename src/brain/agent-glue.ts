@@ -349,9 +349,9 @@ export async function prefetchAgentRealtimeData(agentId: string): Promise<string
     candidates.push({ tool: 'my_videos_check.py', label: 'YouTube 채널 영상 분석 (실제 API 데이터)' });
     candidates.push({ tool: 'youtube_account.py', label: 'YouTube 설정 확인 (fallback)' });
   }
-  /* v2.89.136 — business prefetch. 현빈에게 매출 질문 들어오면 paypal_revenue.py
+  /* v2.89.136 — business prefetch. 제프베조스에게 매출 질문 들어오면 paypal_revenue.py
      자동 실행 → 거래 + 게임별 분류 + 환불·수수료 마크다운 컨텍스트로 주입 →
-     현빈이 환각 없이 진짜 숫자로 분석. 유튜브(레오) 와 동일 패턴. */
+     제프베조스가 환각 없이 진짜 숫자로 분석. Instagram(박재범) 와 동일 패턴. */
   if (agentId === 'business') {
     candidates.push({ tool: 'paypal_revenue.py', label: 'PayPal 매출 분석 (게임·프로젝트별, 실제 거래 데이터)' });
   }
@@ -476,7 +476,7 @@ export function buildSpecialistPrompt(agentId: string): string {
   const a = AGENTS[agentId];
   const company = readCompanyName() || '1인 기업';
   /* v2.89.45 — 페르소나 블록. 에이전트별 voice 정의가 있으면 주입 → 똑같은 LLM이라도
-     레오는 데이터 중심 솔직한 톤, 영숙은 정중·친근한 톤으로 답함. 인격 있는 동료처럼 보임. */
+     아인슈타인은 근거 중심 리서처 톤, 카리나는 정중·친근한 비서 톤으로 답함. */
   const personaBlock = a.persona
     ? `\n\n[당신의 톤·말투 — 항상 이 페르소나 유지]\n${a.persona}`
     : '';

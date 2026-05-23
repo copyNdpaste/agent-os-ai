@@ -3,7 +3,7 @@
 //   loading: bool, error: string|null,
 //   data: {
 //     totals: { by_currency: {USD: {gross, refunds, fees, count}}, by_period: {today, week, month} },
-//     by_project: { 'neon-survivor': {gross, count, currency, items: {...}} },
+//     by_project: { 'revenue-mvp': {gross, count, currency, items: {...}} },
 //     by_day: { '2026-05-12': {USD: {gross, count}} },
 //     transactions: [{id, ts, ts_epoch, value, currency, subject, event_code, is_refund}]
 //   }

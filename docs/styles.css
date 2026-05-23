@@ -320,6 +320,205 @@ h3 {
   font-size: 13px;
 }
 
+.agent-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+
+.agent-card {
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr);
+  gap: 14px;
+  min-height: 176px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.agent-card img {
+  width: 82px;
+  height: 82px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  object-fit: cover;
+  background: rgba(255,255,255,0.05);
+}
+
+.agent-card span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.agent-card h3 {
+  margin: 4px 0 6px;
+}
+
+.agent-card strong {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--cyan);
+  font-size: 13px;
+}
+
+.agent-card p {
+  margin-bottom: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.collab-pipeline {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.pipeline-step {
+  display: grid;
+  grid-template-columns: 42px minmax(110px, 0.42fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(255,255,255,0.04);
+}
+
+.pipeline-step span {
+  color: var(--cyan);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 800;
+}
+
+.pipeline-step strong {
+  color: var(--text);
+}
+
+.pipeline-step p {
+  margin-bottom: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.automation-board {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(300px, 0.9fr);
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.automation-summary,
+.automation-kpis,
+.automation-step {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.automation-summary {
+  padding: 22px;
+}
+
+.automation-summary .path {
+  display: inline-block;
+  margin-bottom: 12px;
+  color: var(--cyan);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+}
+
+.automation-summary p {
+  color: var(--muted);
+}
+
+.automation-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  padding: 16px;
+}
+
+.automation-kpis div {
+  display: grid;
+  align-content: center;
+  min-height: 138px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(255,255,255,0.04);
+}
+
+.automation-kpis strong {
+  font-size: 42px;
+  line-height: 1;
+}
+
+.automation-kpis span {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.automation-flow {
+  display: grid;
+  gap: 12px;
+}
+
+.automation-step {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 16px;
+  padding: 18px;
+}
+
+.automation-index {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(94,215,223,0.45);
+  border-radius: 7px;
+  color: var(--cyan);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 800;
+}
+
+.automation-columns {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.automation-columns div {
+  min-height: 126px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(255,255,255,0.04);
+}
+
+.automation-columns span {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--cyan);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.automation-columns p {
+  margin-bottom: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
 .architecture-map {
   display: grid;
   gap: 10px;
@@ -581,8 +780,18 @@ h3 {
 
   .flow-grid,
   .module-grid,
+  .agent-grid,
   .legend-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .automation-board,
+  .automation-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .automation-step {
+    grid-template-columns: 1fr;
   }
 
   .flow-step::after { display: none; }
@@ -612,7 +821,19 @@ h3 {
   .signal-board,
   .flow-grid,
   .module-grid,
+  .agent-grid,
+  .automation-board,
+  .automation-kpis,
   .legend-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .automation-step {
+    grid-template-columns: 1fr;
+  }
+
+  .agent-card,
+  .pipeline-step {
     grid-template-columns: 1fr;
   }
 

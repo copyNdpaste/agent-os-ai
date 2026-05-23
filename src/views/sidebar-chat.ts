@@ -257,7 +257,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
     private _abortController?: AbortController;
     private _lastPrompt?: string;
     private _lastModel?: string;
-    /** v2.89.131 — 최근 파일 액션 추적. 코다리(또는 다른 specialist) 가 직전 turn 에
+    /** v2.89.131 — 최근 파일 액션 추적. 개발신(또는 다른 specialist) 가 직전 turn 에
      *  만든·편집한 파일의 절대 경로를 기억해서, 다음 turn 의 system prompt 에 명시
      *  주입한다. 이전엔 chat history 안 깊은 곳에 묻혀서 LLM 이 잊고 경로 추측 → 못
      *  찾는 사고 자주 났음. 가장 최근 10개만 보관, 30분 묵은 건 자동 폐기. */
@@ -315,7 +315,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
     }
 
     /* v2.89.45 — 에이전트 프로필 사진을 markdown으로 반환. 채팅창에 메시지 위에 prepend
-       해서 "진짜 사람이 말하는 느낌" 연출. profileImage가 정의된 에이전트(레오/영숙)만
+       해서 "진짜 사람이 말하는 느낌" 연출. profileImage가 정의된 에이전트(아인슈타인/카리나)만
        사진 나오고, 나머지는 빈 문자열 → 그냥 emoji + 이름. */
     private _agentAvatarMd(agentId: string): string {
         const a = AGENTS[agentId];
@@ -330,7 +330,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
 
     /* v2.89.47 — 마크다운 이미지 버전. webview markdown sanitizer가 inline <img> HTML
        문자 그대로 표시하던 문제 해결. ![alt](url) 형식은 표준 마크다운이라 항상 렌더됨.
-       헤딩 라인 뒤에 같이 붙여서 ## ![](url) 📺 레오 형태로 한 줄 헤더 만듦. */
+       헤딩 라인 뒤에 같이 붙여서 ## ![](url) 📺 아인슈타인 형태로 한 줄 헤더 만듦. */
     private _agentAvatarUriMd(agentId: string): string {
         const a = AGENTS[agentId];
         if (!a?.profileImage || !this._view) return '';
@@ -1298,7 +1298,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
                     break;
                 }
                 case 'prompt': {
-                    /* v2.89.146 — 명시적 호출 감지("현빈아", "코다리야" 등) 시 corporate
+                    /* v2.89.146 — 명시적 호출 감지("베조스야", "개발신아" 등) 시 corporate
                        모드 force. 사용자가 사이드바 toggle 안 해도 명시적 호출은 항상
                        specialist dispatch 흐름으로 → 매출/키트 shortcut 발동. */
                     const txt = String(msg.value || '');
@@ -2002,7 +2002,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
                         const verb = want ? '활성화됨 ✅' : '비활성화됨 ⏸';
                         try { this._view?.webview.postMessage({ type: 'systemNote', value: `${AGENTS[aid]?.emoji || ''} ${AGENTS[aid]?.name || aid} ${verb}` }); } catch { /* ignore */ }
                         try { this._view?.webview.postMessage({ type: 'activeAgents', value: readActiveAgents() }); } catch { /* ignore */ }
-                        /* v2.89.112 — 코다리 첫 활성화 시 시니어 코더 모델 추천 카드 */
+                        /* v2.89.112 — 개발신 첫 활성화 시 시니어 코더 모델 추천 카드 */
                         if (want && aid === 'developer') {
                             try { if (this._view) _maybeRecommendCoderModel(this._view.webview); } catch { /* ignore */ }
                         }
@@ -3117,7 +3117,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
 
         /* v2.89.156 — 다중 도메인 종합 명령은 multi-agent 로 보냄.
            "유튜브 + 매출 + 종합 보고서" 같이 두 영역 동시 요청이면 단일 도구 shortcut 이
-           무시하고 multi-agent dispatch (현빈 + 레오 둘 다) 가 잡도록 여기서 바로 false. */
+           무시하고 multi-agent dispatch (제프베조스 + 아인슈타인 둘 다) 가 잡도록 여기서 바로 false. */
         const lpEarly = p.toLowerCase();
         const hasYoutube = /유튜브|youtube|채널|구독|조회/.test(lpEarly);
         const hasRevenue = /매출|페이팔|paypal|수익|결제|매상/.test(lpEarly);
@@ -3501,7 +3501,7 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
             // 1) CEO에게 작업 분해 요청 (silent — UI에는 카드 펄스만)
             // Phase 2: inject recent conversation history into CEO context so
             // planning is aware of what the company has been doing.
-            /* v2.89.132 — 명시적 호출 감지. "코다리야 …" 처럼 사용자가 직접 이름 부르면
+            /* v2.89.132 — 명시적 호출 감지. "개발신아 …" 처럼 사용자가 직접 이름 부르면
                CEO LLM 호출 건너뛰고 그 에이전트만 단독 dispatch. 30초 vs 11분 차이. */
             const explicit = this._detectExplicitMention(prompt);
             if (explicit) {
@@ -3520,7 +3520,7 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
                 ceoStage = '_personalizePrompt';
                 let base = _personalizePrompt(CEO_PLANNER_PROMPT);
                 /* v2.89.103+107 — 채용·활성 게이트. 다음 에이전트는 CEO 팀 명단에서 제외:
-                   - LOCKED 미채용 (Luna PIN 안 풀림)
+                   - LOCKED 미채용 (한스짐머 PIN 안 풀림)
                    - OPTIONAL 비활성 (사용자가 토글 OFF)
                    각각 다른 안내 문구로 CEO에게 알림. */
                 try {
@@ -3756,7 +3756,7 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
                 })
                 .filter((t): t is { agent: string; task: string } => !!t);
             /* v2.89.103+107 — 채용·활성 게이트 backend 보호. CEO가 프롬프트 무시하고
-               비활성 에이전트(Luna 미채용 또는 OPTIONAL 비활성)에 task 배정해도 여기서 제거. */
+               비활성 에이전트(한스짐머 미채용 또는 OPTIONAL 비활성)에 task 배정해도 여기서 제거. */
             const droppedTasks: { agent: string; task: string; reason: string }[] = [];
             plan.tasks = plan.tasks.filter(t => {
                 if (!isAgentActive(t.agent)) {
@@ -4042,12 +4042,12 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
     // --------------------------------------------------------
     /** v2.89.131 — 직전 파일 액션 추적. agentId 가 주어졌을 때만 _recentFileActions
      *  에 기록. 다음 turn 의 system prompt 에 "최근 작업한 파일" 블록으로 주입돼서
-     *  코다리가 파일 위치 잊고 추측 경로 만드는 사고 차단. */
+     *  개발신가 파일 위치 잊고 추측 경로 만드는 사고 차단. */
     private _trackFileAction(agentId: string | undefined, absPath: string, action: 'create' | 'edit' | 'delete') {
         this._recentFileActions = _hTrackFileAction(this._recentFileActions, agentId, absPath, action);
     }
 
-    /** v2.89.132 — 명시적 에이전트 호출 감지. "코다리야 …"·"@developer …"·"개발자야 …"
+    /** v2.89.132 — 명시적 에이전트 호출 감지. "개발신아 …"·"@developer …"·"개발자야 …"
      *  처럼 사용자가 직접 이름 부른 경우 CEO 단계를 건너뛰고 그 에이전트에게만 dispatch.
      *  사용자 의도 존중 + 단순 작업의 처리 시간 5배 단축 (CEO LLM 호출 1회 + 다른
      *  specialist 4명 호출 제거). 자연어로만 명령한 경우는 None 반환 → 기존 CEO 분배. */
@@ -4055,7 +4055,7 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
         return _hDetectExplicitMention(prompt);
     }
 
-    /** v2.89.145 — 매출 shortcut. 명시적 현빈 호출 + 매출 키워드면 LLM 우회하고
+    /** v2.89.145 — 매출 shortcut. 명시적 제프베조스 호출 + 매출 키워드면 LLM 우회하고
      *  paypal_revenue.py 의 마크다운 리포트 + 한 줄 코멘트 직접 표시. 작은 LLM이
      *  prefetch 무시하고 README 읽으려 하는 버릇 차단.
      *
@@ -4066,7 +4066,7 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
         return _hTryRevenueShortcut(userPrompt);
     }
 
-    /** v2.89.133 — 키트 shortcut. 명시적 코다리 호출 + 두뇌 키트와 강하게 매칭되는
+    /** v2.89.133 — 키트 shortcut. 명시적 개발신 호출 + 두뇌 키트와 강하게 매칭되는
      *  명령이면 LLM 호출 자체를 건너뛰고 pack_apply 직접 실행하는 가짜 LLM 응답을
      *  생성한다. LM Studio 가 죽어있거나 context 모자라도 시연이 깨지지 않음.
      *
@@ -4084,13 +4084,13 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
 
     /** v2.89.131 — fuzzy path hint. list_files/read_file 이 디렉토리 못 찾을 때
      *  비슷한 이름의 디렉토리를 _recentFileActions + 회사 폴더 하위에서 탐색해 제안.
-     *  코다리가 "_agents/developer/test/" 추측 → 실제 "_company/test/" 매핑 자동 회복. */
+     *  개발신가 "_agents/developer/test/" 추측 → 실제 "_company/test/" 매핑 자동 회복. */
     private _fuzzyPathHint(missingPath: string): string {
         return _hFuzzyPathHint(missingPath, this._recentFileActions);
     }
 
     /** v2.89.131 — system prompt 주입용 블록. 해당 에이전트가 최근 만진 파일들의
-     *  절대 경로 리스트. 코다리가 "방금 만든 파일 어디?"라고 물을 일 자체 차단. */
+     *  절대 경로 리스트. 개발신가 "방금 만든 파일 어디?"라고 물을 일 자체 차단. */
     private _buildRecentFilesContext(agentId: string): string {
         return _hBuildRecentFilesContext(agentId, this._recentFileActions);
     }

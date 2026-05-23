@@ -46,7 +46,7 @@
 ```
 
 - **CEO**: 작업 분배 (orchestrator)
-- **9명 specialist**: YouTube, Designer, Writer, Coder(코다리), Business(현빈), Researcher, Editor, Instagram, Secretary
+- **9명 specialist**: YouTube, Designer, Writer, Coder(개발신), Business(제프베조스), Researcher, Editor, Instagram, Secretary
 - **LLM 엔진**: Ollama / LM Studio (로컬)
 - **두뇌**: 마크다운 폴더 (Git sync)
 
@@ -65,7 +65,7 @@
          │ task decomposition
    ┌─────┴──────────────────────┐
    ↓        ↓        ↓         ↓
- 코다리   현빈     레오    영숙   ...
+ 개발신   제프베조스     아인슈타인    카리나   ...
  (Spec)  (Spec)  (Spec)  (Spec)
          peer context sharing
 ```
@@ -115,7 +115,7 @@
 | **README 우회** | `shortcut` — LLM 무시하고 도구 결과 직접 표시 |
 
 ```python
-# 예시: 현빈이 매출 분석 시
+# 예시: 제프베조스가 매출 분석 시
 prefetch_data = run("paypal_revenue.py")  # 진짜 API 호출
 system_prompt = base + f"[실시간 데이터]\n{prefetch_data}\n위 숫자 외에 추측 금지"
 answer = llm(system_prompt, user_question)
@@ -143,7 +143,7 @@ answer = llm(system_prompt, user_question)
 │      │      CEO (Orchestrator)     │                  │
 │      └──┬─────────┬─────────┬──────┘                  │
 │         ↓         ↓         ↓                         │
-│      코다리     현빈      레오   ... (9 agents)        │
+│      개발신     제프베조스      아인슈타인   ... (9 agents)        │
 │         │         │         │                         │
 │         ↓         ↓         ↓                         │
 │    [tools]   [tools]   [tools]                       │
@@ -182,13 +182,13 @@ ACT 1: 와이파이 끊기
 ## 🎴 SLIDE 9 — 🎬 ACT 2 / 30초에 게임이 만들어진다
 
 ```
-사용자: "코다리야, 병아리 키우는 게임 만들어줘"
+사용자: "개발신아, 아이디어 검증 MVP 만들어줘"
 
   0초 → CEO 우회 (명시적 호출 감지)
-  5초 → 코다리 단독 dispatch + 키트 매칭 (점수 30)
+  5초 → 개발신 단독 dispatch + 키트 매칭 (점수 30)
  10초 → pack_apply 실행 → 파일 복사
  20초 → 브라우저 자동 오픈
- 30초 → 🐤 다마고치 등장!
+ 30초 → 🐤 MVP 등장!
 ```
 
 **시청자**: *"비코더도 이게 가능?"*
@@ -224,7 +224,7 @@ ACT 1: 와이파이 끊기
         ↓
   CEO 책상 폭발 펄스 + 화이트보드
         ↓
-  📺 레오·💼 현빈이 책상에서 walk → CEO 회의실
+  📺 아인슈타인·💼 제프베조스가 책상에서 walk → CEO 회의실
         ↓
   cyan/violet 광선 + 황금 점 꼬리 발사
         ↓
@@ -287,7 +287,7 @@ $0 → $1,190  (count-up 1.1s)
    ↓
 사무실 시네마틱 (5명 walk)
    ↓
-코다리 → 결제형 서비스 키트 매칭 + 적용
+개발신 → 결제형 서비스 키트 매칭 + 적용
    ↓
 🔐 운영자 자격증명 자동 inline (Gemini + PayPal)
    ↓
@@ -337,7 +337,7 @@ AI 생성 결과 × 즉시 결제 × 공유 가능한 결과물
      "회사 목표 검토 → 다음 액션 결정"
 
 새벽 03:00 — UK 사용자 결제 $4.99 →
-   💰 영숙 텔레그램 푸시: "새 결제 도착!"
+   💰 카리나 텔레그램 푸시: "새 결제 도착!"
 
 매일 09:00 → 데일리 브리핑:
    - 어제 매출
@@ -440,19 +440,19 @@ External APIs
 
 **2️⃣ 1인 SaaS 개발자**
 - "코드 작성·테스트·배포 다 혼자"
-- 코다리가 24시간 코드 일
+- 개발신가 24시간 코드 일
 
 **3️⃣ Content Creator**
 - "유튜브·인스타·블로그 다 운영"
-- 레오·인스타·작가가 콘텐츠 분담
+- 아인슈타인·인스타·작가가 콘텐츠 분담
 
 ---
 
 ## 🎴 SLIDE 22 — 📦 4개 검증된 키트 (지금 사용 가능)
 
 ```
-🐤 병아리게임 샘플팩       — 첫 결과물 (vanilla HTML)
-🌌 네온서바이버 샘플팩     — 게임 + PayPal 결제
+🐤 아이디어 검증 프로젝트팩       — 첫 결과물 (vanilla HTML)
+🌌 수익화 MVP 프로젝트팩     — 게임 + PayPal 결제
 🏠 Landing Kit              — SaaS 랜딩 (React 6 섹션)
 ```
 

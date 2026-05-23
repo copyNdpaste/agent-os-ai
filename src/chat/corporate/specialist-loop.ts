@@ -110,7 +110,7 @@ export async function runSpecialistLoop(args: SpecialistLoopArgs): Promise<Speci
            lean 모드 = decisions·memory·brain RAG 생략 → 토큰 ~9000자 감소 →
            추론 30~50% 빨라짐 + 환각 더 줄어듦 (메모리에서 끌어올 거리 없음). */
         const useLeanContext = (realtimeData.length > 200) || (peerCtx.length > 500);
-        /* v2.89.131 — 최근 파일 액션 컨텍스트. 코다리가 직전에 만든 파일의 절대
+        /* v2.89.131 — 최근 파일 액션 컨텍스트. 개발신가 직전에 만든 파일의 절대
            경로를 잊고 "_agents/developer/test/" 같은 추측 경로로 list_files
            호출해 실패하던 사고 차단. */
         const recentFilesCtx = ctx.buildRecentFilesContext(t.agent);
@@ -118,7 +118,7 @@ export async function runSpecialistLoop(args: SpecialistLoopArgs): Promise<Speci
         const userMsg = `[CEO의 지시]\n${t.task}\n\n[원 사용자 명령 참고]\n${prompt}`;
 
         let out = '';
-        /* v2.89.133 — 키트 shortcut. 명시적 호출(`코다리야 ...`) + 두뇌 키트
+        /* v2.89.133 — 키트 shortcut. 명시적 호출(`개발신아 ...`) + 두뇌 키트
            강하게 매칭되는 명령이면 LLM 호출 자체 건너뛰고 pack_apply 직접 실행.
            LM Studio 죽어있거나 context 모자라도 시연 깨지지 않음.
            조건: explicit 호출 + t.agent === developer + 매칭 점수 ≥ 10. */
@@ -138,7 +138,7 @@ export async function runSpecialistLoop(args: SpecialistLoopArgs): Promise<Speci
         }
         if (shortcut) {
             out = shortcut;
-            /* 사무실에 작업 시작 신호 한 번 → 사용자가 코다리 카드 펄스 봄 */
+            /* 사무실에 작업 시작 신호 한 번 → 사용자가 개발신 카드 펄스 봄 */
             try {
                 ctx.broadcastCorporate({ type: 'agentBusy', agent: t.agent, elapsedSec: 0 });
             } catch { /* ignore */ }
