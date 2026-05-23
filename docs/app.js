@@ -129,6 +129,69 @@ const automationSteps = [
   }
 ];
 
+const exampleFlowStages = [
+  {
+    id: 'idea',
+    label: '아이디어',
+    title: '사장님 입력',
+    agent: 'User → 일론머스크',
+    node: '문제·고객·해결책이 아직 섞여 있는 원석 상태',
+    data: ['원문 아이디어', '목표', '제약 조건'],
+    reaction: '아직 외부 반응 없음',
+    outcome: 'CEO가 검증 가능한 질문으로 쪼갬'
+  },
+  {
+    id: 'strategy',
+    label: '전략 분해',
+    title: '본질과 고객 가치 정리',
+    agent: '일론머스크 · 제프베조스',
+    node: 'First Principles로 줄이고 Working Backwards로 고객 관점 재작성',
+    data: ['핵심 문제', '삭제할 기능', '가격 가설', '고객 FAQ'],
+    reaction: '내부 기준: 1주 안에 검증 가능한가',
+    outcome: '실험해야 할 단일 가설과 성공 기준 생성'
+  },
+  {
+    id: 'research',
+    label: '근거 확인',
+    title: '시장·경쟁·리스크 검사',
+    agent: '아인슈타인',
+    node: '추정과 사실을 분리하고, 약한 가설을 먼저 찾음',
+    data: ['경쟁 제품', '커뮤니티 불만', '검색 수요', '리스크'],
+    reaction: '신뢰도 A/B/C/D로 근거 등급화',
+    outcome: '버릴 가설과 더 세게 테스트할 가설 분리'
+  },
+  {
+    id: 'experiment',
+    label: '실험 발사',
+    title: 'SNS·랜딩으로 외부 반응 받기',
+    agent: '박재범 · 셰익스피어',
+    node: '같은 아이디어를 채널별 후크와 CTA로 변환',
+    data: ['X 문구', 'Threads 질문', 'Instagram 릴스 훅', '랜딩 CTA'],
+    reaction: '댓글, DM, 저장, 클릭, 대기자 신청이 들어옴',
+    outcome: '좋아요보다 강한 행동 신호를 수집'
+  },
+  {
+    id: 'signals',
+    label: '반응 분석',
+    title: '유저 반응을 점수화',
+    agent: '제프베조스 · 카리나',
+    node: '반응을 기록하고 구매 의향에 가까운 신호에 가중치 부여',
+    data: ['댓글 18', 'DM 4', '대기자 23', '저장 41'],
+    reaction: '강한 신호: 대기자·DM·결제 의향 / 약한 신호: 조회·좋아요',
+    outcome: 'Idea Score와 다음 액션이 결정됨'
+  },
+  {
+    id: 'mvp',
+    label: 'MVP 결정',
+    title: '만들 것만 남기고 실행',
+    agent: '조나단아이브 · 개발신',
+    node: '최소 화면, BDD 시나리오, 파일 구조, 테스트 계획으로 전환',
+    data: ['MVP 스펙', '화면 구조', '개발 체크리스트', '테스트 기준'],
+    reaction: '사용자 피드백을 다음 실험 루프로 다시 투입',
+    outcome: '작은 제품 또는 랜딩이 실제 산출물로 생성'
+  }
+];
+
 const treeItems = [
   {
     level: 0,
@@ -297,6 +360,79 @@ function renderAutomationFlow() {
   `).join('');
 }
 
+function renderExampleGraph() {
+  const root = document.getElementById('exampleGraph');
+  const nodeMarkup = exampleFlowStages.map((stage, index) => `
+    <button class="graph-node ${index === 0 ? 'active' : ''}" type="button" data-stage="${index}" style="--i:${index};--row:${index % 2}">
+      <span>${String(index + 1).padStart(2, '0')}</span>
+      <strong>${stage.label}</strong>
+    </button>
+  `).join('');
+
+  root.innerHTML = `
+    <div class="graph-canvas">
+      <svg class="graph-lines" viewBox="0 0 1000 360" preserveAspectRatio="none" aria-hidden="true">
+        <path class="graph-backbone" d="M80 180 C220 70, 330 292, 470 180 S720 70, 900 180" />
+        <path class="graph-flow-line" d="M80 180 C220 70, 330 292, 470 180 S720 70, 900 180" />
+      </svg>
+      <div class="graph-packets" aria-hidden="true">
+        <span></span><span></span><span></span>
+      </div>
+      <div class="graph-nodes">${nodeMarkup}</div>
+    </div>
+    <div class="graph-detail" id="graphDetail"></div>
+  `;
+
+  const detail = document.getElementById('graphDetail');
+  const buttons = Array.from(root.querySelectorAll('.graph-node'));
+  let activeIndex = 0;
+  let timer = null;
+
+  const draw = (index) => {
+    activeIndex = index;
+    const stage = exampleFlowStages[index];
+    root.style.setProperty('--active-index', index);
+    buttons.forEach((button, buttonIndex) => {
+      button.classList.toggle('active', buttonIndex === index);
+      button.classList.toggle('complete', buttonIndex < index);
+    });
+    detail.innerHTML = `
+      <span class="path">${stage.agent}</span>
+      <h3>${stage.title}</h3>
+      <p>${stage.node}</p>
+      <div class="graph-detail-grid">
+        <div>
+          <strong>흐르는 데이터</strong>
+          <ul>${stage.data.map(item => `<li>${item}</li>`).join('')}</ul>
+        </div>
+        <div>
+          <strong>유저 반응</strong>
+          <p>${stage.reaction}</p>
+        </div>
+        <div>
+          <strong>다음 산출물</strong>
+          <p>${stage.outcome}</p>
+        </div>
+      </div>
+    `;
+  };
+
+  const restart = () => {
+    if (timer) clearInterval(timer);
+    timer = setInterval(() => draw((activeIndex + 1) % exampleFlowStages.length), 3200);
+  };
+
+  root.addEventListener('click', (event) => {
+    const button = event.target.closest('.graph-node');
+    if (!button) return;
+    draw(Number(button.dataset.stage));
+    restart();
+  });
+
+  draw(0);
+  restart();
+}
+
 function renderTree() {
   const root = document.getElementById('fileTree');
   const card = document.getElementById('brainCard');
@@ -375,6 +511,7 @@ function renderTimeline() {
 renderAgents();
 renderCollaboration();
 renderFlow();
+renderExampleGraph();
 renderAutomationFlow();
 renderTree();
 renderLegend();

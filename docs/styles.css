@@ -467,9 +467,194 @@ h3 {
   font-size: 13px;
 }
 
+.example-graph {
+  --active-index: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(340px, 0.9fr);
+  gap: 16px;
+  margin: 18px 0;
+  align-items: stretch;
+}
+
+.graph-canvas,
+.graph-detail {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.graph-canvas {
+  position: relative;
+  min-height: 360px;
+  overflow: hidden;
+  background:
+    linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px) 0 0 / 64px 64px,
+    linear-gradient(180deg, rgba(255,255,255,0.035) 1px, transparent 1px) 0 0 / 64px 64px,
+    radial-gradient(circle at 50% 50%, rgba(94,215,223,0.12), transparent 58%),
+    var(--panel);
+}
+
+.graph-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.graph-backbone,
+.graph-flow-line {
+  fill: none;
+  stroke-linecap: round;
+  stroke-width: 5;
+}
+
+.graph-backbone {
+  stroke: rgba(255,255,255,0.12);
+}
+
+.graph-flow-line {
+  stroke: var(--cyan);
+  stroke-dasharray: 120 760;
+  filter: drop-shadow(0 0 10px rgba(94,215,223,0.45));
+  animation: graphTravel 6.4s linear infinite;
+}
+
+.graph-packets span {
+  position: absolute;
+  left: 9%;
+  top: 48%;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--amber);
+  box-shadow: 0 0 18px rgba(242,196,109,0.8);
+  animation: packetMove 6.4s linear infinite;
+}
+
+.graph-packets span:nth-child(2) {
+  animation-delay: 1.6s;
+  background: var(--cyan);
+}
+
+.graph-packets span:nth-child(3) {
+  animation-delay: 3.2s;
+  background: var(--green);
+}
+
+.graph-nodes {
+  position: absolute;
+  inset: 0;
+}
+
+.graph-node {
+  position: absolute;
+  left: calc(7% + (var(--i) * 16.8%));
+  top: calc(50% + (var(--row) * 88px) - 68px);
+  display: grid;
+  gap: 4px;
+  min-width: 116px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--soft);
+  background: rgba(10,16,24,0.9);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  transform: translateX(-50%);
+  transition: transform .18s ease, border-color .18s ease, background .18s ease;
+}
+
+.graph-node:hover,
+.graph-node.active {
+  border-color: rgba(94,215,223,0.65);
+  background: rgba(20,32,44,0.98);
+  transform: translateX(-50%) translateY(-4px);
+}
+
+.graph-node.complete {
+  border-color: rgba(96,211,148,0.45);
+}
+
+.graph-node span {
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+.graph-node strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.graph-detail {
+  padding: 20px;
+}
+
+.graph-detail .path {
+  display: inline-block;
+  margin-bottom: 12px;
+  color: var(--cyan);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+}
+
+.graph-detail p {
+  color: var(--muted);
+}
+
+.graph-detail-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.graph-detail-grid div {
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(255,255,255,0.04);
+}
+
+.graph-detail-grid strong {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.graph-detail-grid ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+}
+
+.graph-detail-grid li {
+  margin: 4px 0;
+}
+
+.graph-detail-grid p {
+  margin-bottom: 0;
+}
+
 .automation-flow {
   display: grid;
   gap: 12px;
+}
+
+@keyframes graphTravel {
+  from { stroke-dashoffset: 880; }
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes packetMove {
+  0% { left: 8%; top: 49%; opacity: 0; transform: scale(.8); }
+  10% { opacity: 1; }
+  25% { left: 25%; top: 30%; }
+  48% { left: 47%; top: 50%; }
+  72% { left: 70%; top: 29%; }
+  94% { opacity: 1; }
+  100% { left: 91%; top: 49%; opacity: 0; transform: scale(1.1); }
 }
 
 .automation-step {
@@ -786,12 +971,17 @@ h3 {
   }
 
   .automation-board,
+  .example-graph,
   .automation-columns {
     grid-template-columns: 1fr;
   }
 
   .automation-step {
     grid-template-columns: 1fr;
+  }
+
+  .graph-canvas {
+    min-height: 420px;
   }
 
   .flow-step::after { display: none; }
@@ -823,6 +1013,7 @@ h3 {
   .module-grid,
   .agent-grid,
   .automation-board,
+  .example-graph,
   .automation-kpis,
   .legend-grid {
     grid-template-columns: 1fr;
@@ -835,6 +1026,33 @@ h3 {
   .agent-card,
   .pipeline-step {
     grid-template-columns: 1fr;
+  }
+
+  .graph-canvas {
+    min-height: 620px;
+  }
+
+  .graph-lines,
+  .graph-packets {
+    display: none;
+  }
+
+  .graph-nodes {
+    position: static;
+    display: grid;
+    gap: 10px;
+    padding: 14px;
+  }
+
+  .graph-node {
+    position: static;
+    min-width: 0;
+    transform: none;
+  }
+
+  .graph-node:hover,
+  .graph-node.active {
+    transform: none;
   }
 
   .timeline-item {
