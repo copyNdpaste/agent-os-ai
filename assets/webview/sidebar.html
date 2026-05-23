@@ -498,14 +498,17 @@ body.corp-dispatching .ab-svg{opacity:1}
    이전: 검은 알약(pill) + 좌측 컬러 보더 → "버튼 같다, 보기 안 좋다" 사용자 피드백.
    이후: 터미널 로그 라인 스타일. 모노스페이스 + 화살표 prefix + 에이전트 컬러 글로우.
    매트릭스 ml-loader / report-card 와 같은 비주얼 언어로 통일. */
-.brief-card{background:linear-gradient(180deg,#ffffff,#f8fafc);border:1px solid rgba(37,99,235,.30);border-radius:12px;padding:14px 16px 12px;margin-left:29px;animation:msgIn .5s cubic-bezier(.16,1,.3,1);position:relative;overflow:hidden;box-shadow:0 4px 16px rgba(37,99,235,.08),0 0 0 1px rgba(37,99,235,.04);max-width:520px}
+.brief-card{background:linear-gradient(180deg,#ffffff,#f8fafc);border:1px solid rgba(37,99,235,.28);border-radius:14px;padding:16px 18px 14px;margin-left:29px;animation:msgIn .5s cubic-bezier(.16,1,.3,1);position:relative;overflow:hidden;box-shadow:0 6px 20px rgba(37,99,235,.06),0 0 0 1px rgba(37,99,235,.03);max-width:560px;min-height:60px}
 .brief-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent 5%,var(--accent) 50%,transparent 95%);opacity:.7;animation:briefTopGlow 3s ease-in-out infinite alternate}
 @keyframes briefTopGlow{0%{opacity:.25}100%{opacity:.7}}
-.brief-card::after{content:'';position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent 0,transparent 3px,rgba(37,99,235,.03) 3px,rgba(37,99,235,.03) 4px);pointer-events:none;border-radius:12px;opacity:.5}
-.brief-head{font-family:'SF Mono','Consolas',monospace;font-size:10px;letter-spacing:2.4px;color:var(--accent);margin-bottom:10px;text-transform:uppercase;text-shadow:0 0 8px var(--accent-glow);display:flex;align-items:center;gap:8px;position:relative;z-index:1}
-.brief-head::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px var(--accent);animation:mlHeadDot 1.2s ease-in-out infinite}
-.brief-text{font-size:13px;line-height:1.65;color:var(--text-bright);margin-bottom:12px;font-weight:500;position:relative;z-index:1;padding-left:2px;border-left:2px solid rgba(37,99,235,.25);padding-left:10px}
-.brief-tasks{display:flex;flex-direction:column;gap:4px;margin-top:10px;position:relative;z-index:1;border-top:1px dashed rgba(37,99,235,.15);padding-top:10px}
+/* 흐릿한 가로 줄무늬 ::after 제거 — 헤더만 있을 때 카드가 더러워 보임 */
+.brief-head{font-family:'Inter','SF Pro Display',-apple-system,system-ui,sans-serif;font-size:13px;font-weight:700;letter-spacing:-.1px;color:var(--text-bright);margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid rgba(37,99,235,.12);text-transform:none;display:flex;align-items:center;gap:9px;position:relative;z-index:1}
+.brief-head::before{content:'';width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px var(--accent),0 0 0 3px rgba(37,99,235,.12);animation:mlHeadDot 1.2s ease-in-out infinite;flex-shrink:0}
+.brief-head .bh-tag{margin-left:auto;flex-shrink:0;padding:3px 9px;border:1px solid rgba(37,99,235,.4);border-radius:6px;background:rgba(37,99,235,.08);font-family:'SF Mono','JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:1.5px;color:var(--accent);text-transform:uppercase}
+.brief-text{font-size:13.5px;line-height:1.7;color:var(--text-bright);margin-bottom:12px;font-weight:400;position:relative;z-index:1;padding-left:12px;border-left:2px solid rgba(37,99,235,.32)}
+.brief-text:empty{display:none}
+.brief-tasks{display:flex;flex-direction:column;gap:5px;margin-top:10px;position:relative;z-index:1;border-top:1px dashed rgba(37,99,235,.18);padding-top:10px}
+.brief-tasks:empty{display:none;border-top:none;margin-top:0;padding-top:0}
 .brief-task{display:flex;align-items:flex-start;gap:8px;font-size:12px;line-height:1.55;color:var(--text-bright);padding:4px 0 4px 4px;background:transparent;border:none;border-radius:0;font-family:'SF Mono','Consolas',monospace;animation:briefTaskIn .4s ease-out backwards;position:relative}
 .brief-task::before{content:'›';color:var(--ag-color,var(--accent));font-weight:700;font-size:14px;line-height:1.4;flex-shrink:0;text-shadow:0 0 6px var(--ag-color,var(--accent));opacity:.85}
 .brief-task .bt-emoji{font-size:14px;line-height:1.4;flex-shrink:0;filter:drop-shadow(0 0 4px var(--ag-color,transparent))}
@@ -4638,7 +4641,7 @@ function showBriefCard(brief,tasks){
     const a=agentMap[t.agent];if(!a)return;
     tasksHtml+='<div class="brief-task" style="--ag-color:'+a.color+';animation-delay:'+(0.1+i*0.08)+'s"><span class="bt-emoji">'+a.emoji+'</span><span class="bt-name">'+a.name+'</span><span class="bt-text">'+esc(t.task)+'</span></div>';
   });
-  el.innerHTML='<div class="brief-head">CEO · DISPATCH PROTOCOL</div><div class="brief-text">'+esc(brief)+'</div><div class="brief-tasks">'+tasksHtml+'</div>';
+  el.innerHTML='<div class="brief-head"><span>📋 CEO 작업 분배</span><span class="bh-tag">DISPATCH</span></div><div class="brief-text">'+esc(brief)+'</div><div class="brief-tasks">'+tasksHtml+'</div>';
   chat.appendChild(el);scrollChatToBottomIfNear();
 }
 
