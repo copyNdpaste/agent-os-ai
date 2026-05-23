@@ -534,6 +534,7 @@ h3 {
 
 .graph-canvas {
   position: relative;
+  height: 360px;
   min-height: 360px;
   overflow: hidden;
   background:
@@ -638,6 +639,9 @@ h3 {
 
 .graph-detail {
   padding: 20px;
+  height: 360px;
+  min-height: 360px;
+  overflow: auto;
 }
 
 .graph-detail .path {
@@ -655,9 +659,11 @@ h3 {
 .graph-detail-grid {
   display: grid;
   gap: 10px;
+  grid-template-rows: minmax(112px, auto) minmax(82px, auto) minmax(82px, auto);
 }
 
 .graph-detail-grid div {
+  min-height: 82px;
   padding: 13px;
   border: 1px solid var(--line);
   border-radius: 7px;
@@ -1029,7 +1035,12 @@ h3 {
   }
 
   .graph-canvas {
+    height: 420px;
     min-height: 420px;
+  }
+
+  .graph-detail {
+    height: 360px;
   }
 
   .flow-step::after { display: none; }
@@ -1077,7 +1088,12 @@ h3 {
   }
 
   .graph-canvas {
+    height: auto;
     min-height: 620px;
+  }
+
+  .graph-detail {
+    height: 420px;
   }
 
   .graph-lines,
