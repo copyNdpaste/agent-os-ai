@@ -60,6 +60,10 @@ export interface MessageContext {
     discardSession(sessionDir: string): void;
     /** Open a session folder in OS file manager. */
     openSessionFolder(sessionDir: string): void;
+    /** Discard the chat inflight file (chat recovery 폐기). */
+    discardChatInflight(): void;
+    /** Retry the chat inflight prompt (chat recovery 재시도). */
+    retryChatInflight(): void;
     sendModels(): Promise<void>;
     sendCompanyState(noteToUser?: string): void;
     sendStatusUpdate(): void;

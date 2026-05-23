@@ -111,6 +111,8 @@ export async function handlePrompt(
             if (abortController.signal.aborted) return;
             aiMessage += token;
             ctx.view!.webview.postMessage({ type: 'streamChunk', value: token });
+            /* Inflight checkpoint — 1초 throttle disk write 로 crash 시 복구 가능. */
+            try { ctx.inflightAppendChunk?.(token); } catch { /* never break stream */ }
             detectBrainReadsLive();
             if (ctx.shouldEmitThinking()) {
                 fireAnswerStart();
@@ -180,6 +182,7 @@ export async function handlePrompt(
                 if (abortController.signal.aborted) return;
                 aiMessage += token;
                 ctx.view!.webview.postMessage({ type: 'streamChunk', value: token });
+                try { ctx.inflightAppendChunk?.(token); } catch { /* never break stream */ }
                 if (ctx.shouldEmitThinking()) {
                     ctx.postThinking({ type: 'answer_chunk', text: token });
                 }

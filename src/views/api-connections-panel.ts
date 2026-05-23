@@ -51,6 +51,7 @@ export class ApiConnectionsPanel {
             { enableScripts: true, retainContextWhenHidden: true }
         );
         ApiConnectionsPanel.current = new ApiConnectionsPanel(panel);
+        try { require('./panel-registry').markOpen('api-connections'); } catch { /* ignore */ }
     }
 
     private constructor(panel: vscode.WebviewPanel) {
@@ -144,6 +145,7 @@ export class ApiConnectionsPanel {
 
     private _dispose() {
         ApiConnectionsPanel.current = null;
+        try { require('./panel-registry').markClosed('api-connections'); } catch { /* ignore */ }
         while (this._disposables.length) {
             const d = this._disposables.pop();
             try { d?.dispose(); } catch {}

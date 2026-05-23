@@ -74,6 +74,8 @@ export class OfficePanel {
             }
         );
         OfficePanel.current = new OfficePanel(panel, ctx, provider);
+        /* Snapshot: 다음 reload 에서 자동 복원되도록 등록. dispose 에서 unmark. */
+        try { require('./panel-registry').markOpen('office'); } catch { /* ignore */ }
     }
 
     private constructor(panel: vscode.WebviewPanel, ctx: vscode.ExtensionContext, provider: SidebarChatProvider) {
@@ -291,6 +293,7 @@ export class OfficePanel {
     public dispose() {
         try { this._provider.unregisterCorporateBroadcastTarget(this._panel.webview); } catch { /* ignore */ }
         OfficePanel.current = undefined;
+        try { require('./panel-registry').markClosed('office'); } catch { /* ignore */ }
         try { this._provider.broadcastOfficeState(false); } catch { /* ignore */ }
         this._panel.dispose();
         while (this._disposables.length) {

@@ -53,6 +53,12 @@ export async function handleChatMessage(ctx: MessageContext, msg: any): Promise<
         case 'openSessionFolder':
             if (typeof msg.sessionDir === 'string') ctx.openSessionFolder(msg.sessionDir);
             return true;
+        case 'discardChatInflight':
+            ctx.discardChatInflight();
+            return true;
+        case 'retryChatInflight':
+            ctx.retryChatInflight();
+            return true;
         case 'toggleThinking':
             await ctx.toggleThinkingMode();
             return true;

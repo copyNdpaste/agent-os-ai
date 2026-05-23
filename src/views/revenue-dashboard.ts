@@ -47,6 +47,7 @@ export class RevenueDashboardPanel {
             { enableScripts: true, retainContextWhenHidden: true }
         );
         RevenueDashboardPanel.current = new RevenueDashboardPanel(panel);
+        try { require('./panel-registry').markOpen('revenue-dashboard'); } catch { /* ignore */ }
     }
 
     private constructor(panel: vscode.WebviewPanel) {
@@ -118,6 +119,7 @@ export class RevenueDashboardPanel {
 
     private _dispose() {
         RevenueDashboardPanel.current = null;
+        try { require('./panel-registry').markClosed('revenue-dashboard'); } catch { /* ignore */ }
         if (this._autoRefreshTimer) clearInterval(this._autoRefreshTimer);
         this._disposables.forEach(d => { try { d.dispose(); } catch {} });
     }

@@ -94,7 +94,11 @@ export async function runShortcutTool(
         const hint = pyMissing
             ? _pythonMissingHint()
             : '💡 흔한 원인: API 키 미설정, Python·필수 패키지 미설치';
-        const body = `${a.emoji} **${a.name}** — \`${entry.tool}\` 실행 실패\n\n\`\`\`\n${toolOut || '(출력 없음)'}\n\`\`\`\n\n_${toolStatus}_\n\n${hint}`;
+        /* tool 출력은 이미 의도된 markdown (헤딩·blockquote·list 포함). 코드블록
+           으로 감싸면 raw syntax 가 그대로 보이고 가독성 깨짐. 그대로 렌더링되게
+           둠. 출력이 진짜 plain text/log 면 스크립트 측에서 fenced block 으로
+           감싸 출력하면 됨. */
+        const body = `${a.emoji} **${a.name}** — \`${entry.tool}\` 실행 실패\n\n${toolOut || '_(출력 없음)_'}\n\n_${toolStatus}_\n\n${hint}`;
         host.displayMessages.push({ text: body, role: 'ai' });
         post({ type: 'response', value: body });
         appendConversationLog({ speaker: a.name, emoji: a.emoji, section: `도구 실행 (${source})`, body: `${entry.tool} 실패: ${toolOut.slice(0, 500)}` });
@@ -105,7 +109,8 @@ export async function runShortcutTool(
        원본 데이터만. 의도 단어 있으면 (분석/어때/평가/검토 등) 2단계 LLM chain 발동. */
     const wantsAnalysis = /(분석|어때|어떻게|평가|검토|좋|안\s*좋|개선|문제|왜|뭐\s*해야|추천|제안|전략|review|analyze|assess|evaluate)/i.test(prompt);
     if (!wantsAnalysis) {
-        const body = `${a.emoji} **${a.name}** — \`${entry.tool}\` 결과\n\n\`\`\`\n${toolOut.slice(0, 6000)}\n\`\`\`\n\n_${toolStatus} · 데이터만 출력했습니다. 분석이 필요하면 "분석해줘"·"어때"·"평가해줘" 같이 분석 동사를 붙여주세요._`;
+        /* 도구 출력은 이미 markdown 형식 — ``` wrap 없이 그대로 렌더링. */
+        const body = `${a.emoji} **${a.name}** — \`${entry.tool}\` 결과\n\n${toolOut.slice(0, 6000)}\n\n_${toolStatus} · 데이터만 출력했습니다. 분석이 필요하면 "분석해줘"·"어때"·"평가해줘" 같이 분석 동사를 붙여주세요._`;
         host.displayMessages.push({ text: body, role: 'ai' });
         post({ type: 'response', value: body });
         appendConversationLog({ speaker: a.name, emoji: a.emoji, section: `도구 실행 (${source}, 데이터만)`, body: `${entry.tool} 완료\n\n${toolOut.slice(0, 2000)}` });

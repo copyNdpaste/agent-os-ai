@@ -75,9 +75,11 @@ select:hover,select:focus{border-color:var(--accent);box-shadow:0 0 12px var(--a
 .av-ai{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;box-shadow:0 0 10px rgba(124,106,255,.3)}
 .msg-body{padding-left:29px;line-height:1.75;color:var(--text-bright);white-space:pre-wrap;word-break:break-word;font-size:13px}
 .msg-user .msg-body{background:linear-gradient(135deg,rgba(37,99,235,.10),rgba(56,189,248,.06));border:1px solid rgba(37,99,235,.32);border-radius:14px 14px 4px 14px;padding:10px 14px;margin-left:29px;color:var(--text-bright);box-shadow:0 1px 3px rgba(37,99,235,.08)}
-/* CEO 종합 보고서 메시지 강조 — 'ai' role 메시지 (`.msg:not(.msg-user):not(.msg-agent):not(.msg-error):not(.msg-note)`)
-   는 1인 기업 모드에서 CEO 종합 보고서. 골드 톤 border 로 강조해서 specialist 답변과 구분. */
-body.corp-on .msg:not(.msg-user):not(.msg-agent):not(.msg-error):not(.msg-note):not(.inject-card) .msg-body{border-left:3px solid #f59e0b;background:linear-gradient(90deg,rgba(245,158,11,.06),transparent 60%);padding-left:14px;margin-left:23px;border-radius:0 10px 10px 0}
+/* CEO 종합 보고서 / 시스템성 메시지 강조 — 'ai' role 중 user/agent/error/note/
+   inject 가 아닌 것들. 이전엔 amber 배경 그라데이션을 깔았는데 PayPal 도구
+   실행 실패 같이 amber 가 의미 없는 케이스에서도 음영이 떠서 가독성 깸.
+   배경 제거하고 좌측 border 만 유지 (CEO 종합 시각 구분은 살림). */
+body.corp-on .msg:not(.msg-user):not(.msg-agent):not(.msg-error):not(.msg-note):not(.inject-card) .msg-body{border-left:3px solid #f59e0b;padding-left:14px;margin-left:23px}
 body.corp-on .msg:not(.msg-user):not(.msg-agent):not(.msg-error):not(.msg-note):not(.inject-card) .msg-head{color:#b45309}
 /* Brain injection card — fired on /api/brain-inject */
 .inject-card{padding:0}
@@ -96,10 +98,10 @@ body.corp-on .msg:not(.msg-user):not(.msg-agent):not(.msg-error):not(.msg-note):
 .inject-card .inject-path{font-family:'SF Mono',monospace;font-size:11px;color:#7c7f8a;margin-bottom:12px;position:relative;z-index:1;word-break:break-all}
 .inject-card .inject-quote{font-size:13px;color:#5DE0E6;font-weight:600;letter-spacing:.3px;position:relative;z-index:1;display:flex;align-items:center;gap:6px}
 .inject-card .inject-quote::before{content:'';width:14px;height:1px;background:linear-gradient(90deg,#5DE0E6,transparent);flex-shrink:0}
-.msg-body pre{background:var(--code-bg);border:1px solid var(--border2);border-radius:10px;padding:14px 16px;overflow-x:auto;margin:8px 0;font-size:12px;line-height:1.6;color:#0f172a;position:relative}
-/* v2.89.92 — 코드블록 매트릭스 스캔라인. 매우 미세한 가로줄(rgba .025)이
-   터미널 CRT 느낌을 줌. opacity 절제 — 가독성 안 해침. */
-.msg-body pre::before{content:'';position:absolute;inset:0;border-radius:10px;background:repeating-linear-gradient(0deg,transparent 0,transparent 3px,rgba(37,99,235,.025) 3px,rgba(37,99,235,.025) 4px);pointer-events:none;mix-blend-mode:overlay}
+/* 코드블록 — 회색 배경 제거, 미세한 blue border + 거의 투명한 fill 로 정리.
+   라이트 테마에서 #f1f5f9 fill 이 너무 무거워보였던 문제. CRT 가로줄도 같이 제거. */
+.msg-body pre{background:transparent;border:1px solid rgba(37,99,235,.18);border-radius:10px;padding:14px 16px;overflow-x:auto;margin:8px 0;font-size:12px;line-height:1.6;color:#0f172a;position:relative}
+.msg-body pre code{background:transparent;color:inherit;padding:0;border:none;font-weight:400}
 .msg-body pre::-webkit-scrollbar{height:6px}
 .msg-body pre::-webkit-scrollbar-track{background:rgba(0,0,0,.2);border-radius:4px}
 .msg-body pre::-webkit-scrollbar-thumb{background:rgba(37,99,235,.25);border-radius:4px}
@@ -516,20 +518,29 @@ body.corp-dispatching .ab-svg{opacity:1}
 .brief-task .bt-text{flex:1;color:var(--text);font-size:12px;font-family:'Inter','SF Pro Display',-apple-system,system-ui,sans-serif;font-weight:400}
 @keyframes briefTaskIn{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:translateX(0)}}
 
-/* ===== CEO Final Report Card ===== */
-.report-card{background:linear-gradient(135deg,rgba(37,99,235,.04),rgba(37,99,235,.02));border:1px solid rgba(37,99,235,.3);border-radius:16px;padding:18px 20px;margin-left:29px;animation:msgIn .55s cubic-bezier(.16,1,.3,1);position:relative;overflow:hidden;backdrop-filter:blur(8px);box-shadow:0 8px 32px rgba(0,0,0,.4),0 0 24px rgba(37,99,235,.12)}
+/* ===== CEO Final Report Card =====
+   가독성 우선: 헤더 14px (이전 10px → 확실히 읽힘), body 14px line-height 1.8,
+   본문 여백 충분히, 빈 답 case 안 보이게 min-height. */
+.report-card{background:linear-gradient(135deg,rgba(37,99,235,.06),rgba(37,99,235,.02));border:1px solid rgba(37,99,235,.32);border-radius:16px;padding:18px 22px 16px;margin-left:29px;animation:msgIn .55s cubic-bezier(.16,1,.3,1);position:relative;overflow:hidden;backdrop-filter:blur(8px);box-shadow:0 8px 32px rgba(0,0,0,.08),0 0 24px rgba(37,99,235,.10)}
 .report-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--accent),var(--accent2),var(--accent),transparent);animation:reportLine 3s ease-in-out infinite}
 @keyframes reportLine{0%,100%{opacity:.4}50%{opacity:1}}
-.report-head{display:flex;align-items:center;justify-content:space-between;font-family:'SF Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--accent);margin-bottom:12px;text-transform:uppercase;text-shadow:0 0 8px var(--accent-glow)}
-.report-head .rh-tag{padding:2px 8px;border:1px solid rgba(37,99,235,.4);border-radius:5px;background:rgba(37,99,235,.06)}
-.report-body{font-size:13px;line-height:1.75;color:var(--text-bright)}
-.report-body h2{font-size:13px;color:var(--accent);margin:10px 0 6px;letter-spacing:.5px}
-.report-body ul,.report-body ol{padding-left:20px;margin:4px 0}
-.report-body li{margin:3px 0;color:var(--text)}
-.report-body strong{color:var(--text-bright)}
-.report-foot{margin-top:14px;padding-top:10px;border-top:1px solid rgba(37,99,235,.15);display:flex;align-items:center;justify-content:space-between;font-size:10px;font-family:'SF Mono',monospace;color:var(--text-dim)}
-.report-foot .rf-link{color:var(--accent);cursor:pointer;text-decoration:none}
-.report-foot .rf-link:hover{text-decoration:underline}
+.report-head{display:flex;align-items:center;justify-content:space-between;gap:12px;font-family:'Inter','SF Pro Display',-apple-system,system-ui,sans-serif;font-size:14px;font-weight:700;letter-spacing:-.2px;color:var(--text-bright);margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid rgba(37,99,235,.12)}
+.report-head .rh-tag{flex-shrink:0;padding:3px 9px;border:1px solid rgba(37,99,235,.4);border-radius:6px;background:rgba(37,99,235,.08);font-family:'SF Mono','JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:1.5px;color:var(--accent);text-transform:uppercase}
+.report-body{font-size:13.5px;line-height:1.8;color:var(--text-bright);min-height:48px;word-break:break-word}
+.report-body h1{font-size:16px;color:var(--accent);margin:16px 0 8px;letter-spacing:-.2px;font-weight:800}
+.report-body h2{font-size:14.5px;color:var(--accent);margin:14px 0 7px;letter-spacing:-.1px;font-weight:700;padding-bottom:4px;border-bottom:1px solid rgba(37,99,235,.16)}
+.report-body h3{font-size:13.5px;color:var(--text-bright);margin:12px 0 5px;font-weight:700}
+.report-body ul,.report-body ol{padding-left:22px;margin:6px 0}
+.report-body li{margin:4px 0;color:var(--text)}
+.report-body strong{color:var(--text-bright);font-weight:700}
+.report-body em{color:var(--accent2);font-style:italic}
+.report-body blockquote.chat-bq{margin:8px 0;padding:8px 12px;border-left:3px solid var(--accent);background:rgba(37,99,235,.04);border-radius:0 6px 6px 0;color:var(--text)}
+.report-body hr.chat-hr{border:none;height:1px;background:linear-gradient(90deg,transparent,rgba(37,99,235,.4),transparent);margin:14px 0}
+.report-body code{background:rgba(15,23,42,.06);color:var(--accent3);padding:1px 6px;border-radius:4px;font-family:'SF Mono','JetBrains Mono',monospace;font-size:12px;border:1px solid rgba(37,99,235,.12)}
+.report-body p{margin:6px 0}
+.report-foot{margin-top:16px;padding-top:12px;border-top:1px solid rgba(37,99,235,.15);display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:11px;font-family:'SF Mono','JetBrains Mono',monospace;color:var(--text-dim)}
+.report-foot .rf-link{color:var(--accent);cursor:pointer;text-decoration:none;font-weight:600;padding:3px 8px;border:1px solid rgba(37,99,235,.3);border-radius:6px;transition:all .15s}
+.report-foot .rf-link:hover{background:rgba(37,99,235,.08);text-decoration:none;border-color:var(--accent)}
 
 /* ===== Recovery card (incomplete sessions detected on startup) =====
    상단에 sticky-ish 로 한 번 노출. 톤은 amber (주의 — 데이터 잃을 수 있음). */
@@ -554,6 +565,23 @@ body.corp-dispatching .ab-svg{opacity:1}
 .recovery-card .rc-btn:hover{background:#fff;border-color:rgba(15,23,42,.3)}
 .recovery-card .rc-btn-folder:hover{border-color:var(--accent);color:var(--accent)}
 .recovery-card .rc-btn-discard:hover{border-color:#dc2626;color:#dc2626;background:rgba(220,38,38,.05)}
+
+/* ===== Chat inflight recovery card ===== */
+.chat-recovery-card{background:linear-gradient(135deg,rgba(37,99,235,.06),rgba(37,99,235,.02));border:1px solid rgba(37,99,235,.32);border-radius:14px;padding:14px 16px;margin:0 0 14px 0;animation:msgIn .4s cubic-bezier(.16,1,.3,1);box-shadow:0 4px 16px rgba(37,99,235,.08)}
+.chat-recovery-card .crc-header{display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:700;letter-spacing:-.1px;color:var(--accent);margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid rgba(37,99,235,.18);font-family:'Inter','SF Pro Display',sans-serif}
+.chat-recovery-card .crc-stale{font-size:11px;color:var(--text-dim);font-family:'SF Mono','JetBrains Mono',monospace;font-weight:600}
+.chat-recovery-card .crc-prompt{font-size:13px;color:var(--text-bright);font-style:italic;margin-bottom:8px;line-height:1.55;background:rgba(15,23,42,.04);padding:8px 12px;border-radius:6px;border-left:2px solid var(--accent)}
+.chat-recovery-card .crc-meta{font-size:11.5px;color:var(--text-dim);margin-bottom:10px;line-height:1.5}
+.chat-recovery-card .crc-err{font-size:11.5px;color:#b45309;background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.35);border-radius:6px;padding:6px 10px;margin-bottom:10px;line-height:1.5}
+.chat-recovery-card .crc-partial{margin-bottom:10px;background:transparent;border:1px solid rgba(37,99,235,.18);border-radius:8px;overflow:hidden}
+.chat-recovery-card .crc-partial summary{padding:7px 12px;font-size:11.5px;font-weight:600;color:var(--accent);cursor:pointer;background:rgba(37,99,235,.04);user-select:none}
+.chat-recovery-card .crc-partial summary:hover{background:rgba(37,99,235,.08)}
+.chat-recovery-card .crc-partial pre{margin:0;padding:10px 12px;font-size:11.5px;line-height:1.6;color:var(--text-bright);background:transparent;border:none;font-family:'SF Mono','JetBrains Mono',monospace;white-space:pre-wrap;word-break:break-word;max-height:260px;overflow-y:auto}
+.chat-recovery-card .crc-actions{display:flex;gap:8px}
+.chat-recovery-card .crc-btn{cursor:pointer;border:1px solid rgba(15,23,42,.15);background:rgba(255,255,255,.6);color:var(--text-bright);padding:6px 12px;border-radius:6px;font-size:11.5px;font-weight:600;font-family:inherit;transition:all .15s}
+.chat-recovery-card .crc-btn:hover{background:#fff;border-color:rgba(15,23,42,.3)}
+.chat-recovery-card .crc-btn-retry:hover{border-color:var(--accent);color:var(--accent);background:rgba(37,99,235,.04)}
+.chat-recovery-card .crc-btn-discard:hover{border-color:#dc2626;color:#dc2626;background:rgba(220,38,38,.05)}
 
 /* ===== Onboarding & Interview Cards ===== */
 .onboard-card,.interview-card{background:linear-gradient(135deg,rgba(37,99,235,.05),rgba(37,99,235,.02));border:1px solid rgba(37,99,235,.28);border-radius:16px;padding:18px 20px;margin-left:29px;animation:msgIn .5s cubic-bezier(.16,1,.3,1);position:relative;overflow:hidden;backdrop-filter:blur(8px);box-shadow:0 8px 32px rgba(0,0,0,.4),0 0 18px rgba(37,99,235,.08)}
@@ -1622,7 +1650,47 @@ vscode.postMessage({type:'corporateInit'});
 setTimeout(()=>vscode.postMessage({type:'ready'}),300);
 // Initial welcome render
 const _wr=document.getElementById('welcomeRoot'); if(_wr) _wr.outerHTML=welcomeHtml();
-input.addEventListener('input',()=>{input.style.height='auto';input.style.height=Math.min(input.scrollHeight,150)+'px'});
+
+/* === 입력창 draft 자동 저장 + 복원 ===
+   매 keystroke 마다 300ms throttle 로 vscode.setState 에 텍스트 저장. 패널
+   닫혔다 열려도 / VS Code 재시작해도 입력 중이던 글 살아있음. 전송 시점에
+   삭제. 또한 attached files 메타도 같이 저장 (이름·타입만 — base64 데이터는
+   너무 커서 제외). */
+let _draftSaveTimer = null;
+function _saveInputDraft(){
+  if(_draftSaveTimer) clearTimeout(_draftSaveTimer);
+  _draftSaveTimer = setTimeout(() => {
+    try {
+      const cur = vscode.getState() || {};
+      const txt = input.value || '';
+      if (txt) cur.inputDraft = txt;
+      else delete cur.inputDraft;
+      vscode.setState(cur);
+    } catch { /* ignore quota etc */ }
+  }, 300);
+}
+function _clearInputDraft(){
+  try {
+    const cur = vscode.getState() || {};
+    delete cur.inputDraft;
+    vscode.setState(cur);
+  } catch { /* ignore */ }
+}
+function _restoreInputDraft(){
+  try {
+    const cur = vscode.getState() || {};
+    if (typeof cur.inputDraft === 'string' && cur.inputDraft) {
+      input.value = cur.inputDraft;
+      input.style.height = 'auto';
+      input.style.height = Math.min(input.scrollHeight, 150) + 'px';
+    }
+  } catch { /* ignore */ }
+}
+_restoreInputDraft();
+input.addEventListener('input',()=>{
+  input.style.height='auto';input.style.height=Math.min(input.scrollHeight,150)+'px';
+  _saveInputDraft();
+});
 function getTime(){return new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'})}
 function esc(s){const d=document.createElement('div');d.innerText=s;return d.innerHTML}
 /* v2.89.53 — full markdown 렌더링. 이전엔 코드·볼드·링크만 다뤘고 ###/>/리스트/표는
@@ -1854,6 +1922,48 @@ function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;',
  *  near the top of the chat with one row per session, each with [폐기] /
  *  [세션 폴더 열기] actions. Dismissed when user discards all. */
 let _recoveryCardEl = null;
+/** 채팅 inflight 복구 카드 — 단일 답변 중단된 경우. 사용자에게 prompt + 받은
+ *  답변 일부 + [같은 프롬프트로 재시도] / [폐기]. partial response 는 보존된
+ *  텍스트 그대로 보여줘서 사용자가 필요하면 복사 가능. */
+let _chatRecoveryEl = null;
+function showChatRecoveryCard(rec){
+  if(!rec){
+    if(_chatRecoveryEl){ try{_chatRecoveryEl.remove()}catch{} _chatRecoveryEl=null; }
+    return;
+  }
+  if(_chatRecoveryEl){ try{_chatRecoveryEl.remove()}catch{} _chatRecoveryEl=null; }
+  const el = document.createElement('div');
+  el.className = 'chat-recovery-card';
+  const promptShort = escapeHtml((rec.prompt||'').slice(0, 200));
+  const errBlock = rec.errorMessage
+    ? '<div class="crc-err">⚠️ ' + escapeHtml(rec.errorMessage) + '</div>'
+    : '';
+  const partialBlock = rec.partialResponsePreview
+    ? '<details class="crc-partial"><summary>📄 받은 답변 일부 (' + rec.partialResponseLen + '자) — 펼쳐서 확인</summary><pre>' + escapeHtml(rec.partialResponsePreview) + (rec.partialResponseLen > 600 ? '\n\n…(이후 생략)' : '') + '</pre></details>'
+    : '<div class="crc-meta">답변이 한 글자도 도착하기 전 중단됐어요.</div>';
+  el.innerHTML = '<div class="crc-header">'
+    + '<span>⏸ 이전 답변 중단됨</span>'
+    + '<span class="crc-stale">' + rec.staleMinutes + '분 전</span>'
+    + '</div>'
+    + '<div class="crc-prompt">"' + promptShort + '"</div>'
+    + errBlock
+    + partialBlock
+    + '<div class="crc-actions">'
+    + '<button class="crc-btn crc-btn-retry">↻ 같은 프롬프트로 재시도</button>'
+    + '<button class="crc-btn crc-btn-discard">🗑 폐기</button>'
+    + '</div>';
+  el.querySelector('.crc-btn-retry').addEventListener('click', () => {
+    vscode.postMessage({ type: 'retryChatInflight' });
+    try{el.remove()}catch{}; _chatRecoveryEl=null;
+  });
+  el.querySelector('.crc-btn-discard').addEventListener('click', () => {
+    vscode.postMessage({ type: 'discardChatInflight' });
+    try{el.remove()}catch{}; _chatRecoveryEl=null;
+  });
+  chat.insertBefore(el, chat.firstChild);
+  _chatRecoveryEl = el;
+}
+
 function showIncompleteSessionsCard(sessions){
   if(!sessions || sessions.length === 0){
     if(_recoveryCardEl){ try{_recoveryCardEl.remove()}catch{} _recoveryCardEl=null; }
@@ -2052,6 +2162,8 @@ function send(opts){
   }
   addMsg(displayText,'user');
   input.value='';input.style.height='auto';setSending(true);
+  /* 메시지 전송됐으니 입력창 draft 도 제거 (다시 reload 했을 때 옛 글 안 뜨게). */
+  _clearInputDraft();
   /* v2.89.100 — corp 모드에서도 로더 띄움. 카드 보드가 펄스로 시각화하긴 하지만
      CEO 단계에서 시간이 길어지면 사용자에게 "뭐 일어나고 있는지" 단일 정보 채널이
      필요. 매트릭스 4단계 로더가 그 역할 — 카드 보드와 병행해도 시각적으로 안 부딪힘. */
@@ -4725,7 +4837,17 @@ function showBriefCard(brief,tasks){
 function showReportCard(brief,report,sessionPath,sessionRel){
   leaveInitState();
   const el=document.createElement('div');el.className='report-card';
-  el.innerHTML='<div class="report-head"><span>📝 CEO · 종합 보고서</span><span class="rh-tag">SESSION COMPLETE</span></div><div class="report-body">'+fmt(report)+'</div><div class="report-foot"><span>📁 '+esc(sessionPath||'')+'</span><span class="rf-link" data-sub="'+esc(sessionRel||'')+'">업무 일지 열람 →</span></div>';
+  /* 빈 report 가 와도 카드가 헤더만 떠서 "비어 있는 박스" 처럼 보이지 않게
+     의미 있는 fallback. 보통 빈 경우는 단일 에이전트 dispatch + LLM 호출 실패. */
+  const trimmed = String(report||'').trim();
+  const bodyHtml = trimmed
+    ? fmt(report)
+    : '<div style="font-size:12.5px;color:var(--text-dim);line-height:1.7;padding:8px 0">'
+      + '⚠️ 이번 세션은 종합 보고서로 정리할 내용이 비어있어요 '
+      + '(에이전트 LLM 호출이 실패했거나, 단일 에이전트 dispatch 라 산출물이 위 메시지로 이미 표시됐을 수 있어요).<br>'
+      + '<span style="font-size:11px">아래 \"업무 일지 열람 →\" 버튼으로 세션 폴더를 열면 각 에이전트의 raw 산출물(.md) 을 직접 확인 가능합니다.</span>'
+      + '</div>';
+  el.innerHTML='<div class="report-head"><span>📝 CEO · 종합 보고서</span><span class="rh-tag">SESSION COMPLETE</span></div><div class="report-body">'+bodyHtml+'</div><div class="report-foot"><span>📁 '+esc(sessionPath||'')+'</span><span class="rf-link" data-sub="'+esc(sessionRel||'')+'">업무 일지 열람 →</span></div>';
   const link=el.querySelector('.rf-link');
   if(link)link.addEventListener('click',()=>vscode.postMessage({type:'openCompanyFolder',sub:link.dataset.sub.replace(/^Company\//,'')}));
   chat.appendChild(el);scrollChatToBottomIfNear();
@@ -4739,9 +4861,10 @@ window.addEventListener('message',e=>{const msg=e.data;switch(msg.type){
   case 'skillInject':showSkillCard(msg);break;
   case 'incompleteSessions':{
     /* extension 시작 시 sessions/* 에 status='running' 인 state.json 이 있으면
-       사이드바 상단에 복구 카드를 띄움. 사용자는 [폐기] 로 정리하거나
-       [세션 폴더 열기] 로 sessions/{ts}/state.json·산출물 직접 확인. */
+       사이드바 상단에 복구 카드를 띄움. chatRecovery 는 _chat/inflight.json
+       기반의 단일 채팅 중단 복구 (별도 카드). */
     showIncompleteSessionsCard(msg.sessions || []);
+    showChatRecoveryCard(msg.chatRecovery || null);
     break;
   }
   case 'allSkillsLoaded':
@@ -4840,10 +4963,12 @@ window.addEventListener('message',e=>{const msg=e.data;switch(msg.type){
     scrollChatToBottomIfNear();
     break;}
   case 'streamChunk':{
-    /* v2.89.55 — 스트리밍 중엔 fmt() 호출하지 않음. 부분 markdown ('## ti'까지만 도착하면)
-       fmt이 평문으로 처리하고, 다음 청크에서 ('## title' 완성) 다시 호출시 헤딩 변환 →
-       사용자는 평문 → 헤딩 점프 봄. 더 심각한 건 코드블록·표 placeholder가 청크별 인덱스
-       어긋나서 깨짐. 해법: 스트리밍 중엔 plain text만 누적·표시, streamEnd에서 한 번에 fmt(). */
+    /* v2.89.55 — 스트리밍 중 즉시 fmt() 매번 부르면 부분 markdown ('## ti'까지만
+       도착 → 평문 → 다음 청크에서 헤딩) 점프가 보이고 코드블록·표 placeholder 가
+       청크별로 깨짐. 그래서 1차로는 평문 (escape + <br>) 만 빠르게 깔고,
+       청크 사이 300ms 정지 (= LLM 이 잠시 호흡 / inter-stream 대기 / brain
+       read 같은 phase 전환)에 도달하면 fmt() 적용해서 markdown 렌더. 새 청크가
+       다시 오면 timer reset → 또 300ms 기다림. streamEnd 에서 최종 fmt 보장. */
     if(streamBody){
       /* v2.89.101 — 첫 청크 도착 시 로더 정리 + 메시지 박스 노출 */
       if(!streamBody._raw){
@@ -4853,6 +4978,14 @@ window.addEventListener('message',e=>{const msg=e.data;switch(msg.type){
       streamBody._raw=(streamBody._raw||'')+msg.value;
       const safe = streamBody._raw.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
       streamBody.innerHTML = safe.replace(/\n/g, '<br/>');
+      /* Debounced markdown render — 300ms 무청크 시 한 번 fmt. */
+      if(streamBody._fmtTimer) clearTimeout(streamBody._fmtTimer);
+      const targetBody = streamBody;
+      streamBody._fmtTimer = setTimeout(() => {
+        if(targetBody && targetBody._raw){
+          try { targetBody.innerHTML = fmt(targetBody._raw); } catch { /* render-only failure, raw stays */ }
+        }
+      }, 300);
       scrollChatToBottomIfNear();
     }
     break;}
@@ -4861,6 +4994,8 @@ window.addEventListener('message',e=>{const msg=e.data;switch(msg.type){
     hideLoader();
     if(streamEl && streamEl.style.display==='none') streamEl.style.display='';
     if(streamBody){
+      /* 디바운스 타이머 취소 — 곧 fmt 를 직접 호출하니까 중복 방지. */
+      if(streamBody._fmtTimer){ clearTimeout(streamBody._fmtTimer); streamBody._fmtTimer = null; }
       /* 스트리밍 끝났으니 전체 누적 raw에 한 번에 fmt() 적용 → 헤딩·표·인용·리스트 정상 렌더 */
       streamBody.innerHTML = fmt(streamBody._raw||'');
       streamBody.classList.remove('stream-active');
@@ -4945,6 +5080,14 @@ window.addEventListener('message',e=>{const msg=e.data;switch(msg.type){
     if(msg.value&&msg.value.length>0){
       document.body.classList.remove('init');
       msg.value.forEach(m=>addMsg(m.text,m.role));
+      /* reload 직후 사용자가 가장 보고 싶어하는 건 최신 메시지. addMsg 의
+         scrollChatToBottomIfNear() 은 "이미 하단 근처일 때만" 스크롤하므로
+         새로 mount 된 상태에서는 가장 위에 머무름. 두 번 누적해서 강제로
+         하단으로 보냄 (innerHTML 갱신 후 layout 안정화에 한 frame 필요). */
+      requestAnimationFrame(() => {
+        chat.scrollTop = chat.scrollHeight;
+        requestAnimationFrame(() => { chat.scrollTop = chat.scrollHeight; });
+      });
     } else {
       document.body.classList.add('init');
       chat.innerHTML=welcomeHtml();
