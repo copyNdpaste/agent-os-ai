@@ -561,11 +561,33 @@ body.dispatching .beams{opacity:1}
   background:linear-gradient(180deg,rgba(14,11,7,.92),rgba(8,7,4,.85));
   border-left:1px solid var(--border);
   display:flex;flex-direction:column;min-height:0;
-  transition:width .3s cubic-bezier(.16,1,.3,1),border-left-width .3s ease;
   font-family:'Inter','SF Pro Display',sans-serif;
   backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
 }
+/* width transition 은 collapse 토글 때만 켠다. drag 중엔 따라가지 못해서 끊긴다. */
+.side.animated{transition:width .3s cubic-bezier(.16,1,.3,1),border-left-width .3s ease}
 .side.collapsed{width:0;border-left-width:0;overflow:hidden}
+/* Drag-resize handle — office floor 와 side 패널 사이 세로 막대.
+   collapse 시 side 와 같이 사라진다. */
+.side-resizer{
+  width:6px;flex-shrink:0;cursor:col-resize;
+  background:rgba(255,255,255,.02);
+  border-left:1px solid var(--border);border-right:1px solid var(--border);
+  position:relative;z-index:5;user-select:none;
+  transition:background .15s,box-shadow .15s;
+}
+.side-resizer:hover,.side-resizer.dragging{
+  background:var(--accent-glow);
+  box-shadow:0 0 12px var(--accent-glow),inset 0 0 4px var(--accent-glow);
+}
+.side-resizer::before{
+  content:'⋮';position:absolute;left:50%;top:50%;
+  transform:translate(-50%,-50%);color:var(--text-dim);
+  font-size:14px;font-weight:900;pointer-events:none;
+  text-shadow:0 0 6px rgba(0,0,0,.6);line-height:1;
+}
+.side-resizer:hover::before,.side-resizer.dragging::before{color:var(--accent)}
+.side-resizer.hidden{display:none}
 .side-tabs{
   display:flex;border-bottom:1px solid var(--border);flex-shrink:0;
   background:rgba(0,0,0,.25);
@@ -863,12 +885,19 @@ body.dispatching .beams{opacity:1}
 
   <!-- Action zone — primary CTA prominent, secondary toggles ghost. -->
   <div class="actions">
-    <button class="topbtn" id="workdayBtn" title="24시간 자동 운영 — 설정 로딩 중...">24h ⋯</button>
-    <button class="topbtn primary" id="dashboardBtn" title="👥 직원 에이전트 보기 — 팀 전체 한눈에">👥 직원 에이전트 보기</button>
-    <button class="topbtn ghost" id="revenueBtn" title="💰 매출 컨트롤 센터 — 클릭해서 펼치기">💰</button>
-    <button class="topbtn ghost" id="apiBtn" title="🔌 외부 연결 — Telegram · YouTube · Google Calendar 등 API 키 한 곳에서">🔌</button>
-    <button class="topbtn ghost" id="toggleSideBtn" title="활동 로그 패널 토글">📋</button>
-    <button class="topbtn ghost" id="folderBtn" title="회사 폴더 열기">📁</button>
+    <button class="topbtn" id="workdayBtn" title="24시간 자동 운영 토글
+ON 이면 에이전트들이 15분마다 미션을 향해 자동으로 한 스텝씩 실행합니다.
+OFF 면 사용자가 명령할 때만 동작.">24h ⋯</button>
+    <button class="topbtn primary" id="dashboardBtn" title="👥 직원 에이전트 보기
+각 에이전트의 목표·메모리·도구·자가검증 기준을 한 화면에서 관리하는 풀스크린 대시보드.">👥 직원 에이전트 보기</button>
+    <button class="topbtn ghost" id="revenueBtn" title="💰 매출 컨트롤 센터
+이번 달 PayPal 매출, 14일 차트, 베조스 분석을 미니 카드로 우상단에 띄움.">💰</button>
+    <button class="topbtn ghost" id="apiBtn" title="🔌 외부 연결 (API 키 관리)
+Telegram, YouTube, Google Calendar, PayPal 등 외부 서비스 자격증명을 한 곳에서 등록·테스트.">🔌</button>
+    <button class="topbtn ghost" id="toggleSideBtn" title="📋 오른쪽 사이드 패널 열기/닫기
+활동 로그·산출물·오늘 대화록 3개 탭. 드래그로 너비 조절 가능.">📋</button>
+    <button class="topbtn ghost" id="folderBtn" title="📁 회사 데이터 폴더를 Finder/탐색기에서 열기
+에이전트 메모리(_agents/*/memory.md), 세션 산출물(sessions/*), 대화록(conversations/*) 등 원본 파일을 직접 확인·수정.">📁</button>
   </div>
 </div>
 
@@ -1007,11 +1036,15 @@ body.dispatching .beams{opacity:1}
       </div>
     </div>
   </div>
+  <div class="side-resizer hidden" id="sideResizer" title="드래그해서 사이드 패널 너비 조절"></div>
   <div class="side">
     <div class="side-tabs">
-      <button class="side-tab active" data-pane="logPane">📡 활동</button>
-      <button class="side-tab" data-pane="outPane">📦 산출물</button>
-      <button class="side-tab" data-pane="convPane">📜 대화록</button>
+      <button class="side-tab active" data-pane="logPane" title="📡 활동 로그
+지금 어떤 에이전트가 무엇을 하고 있는지 실시간 흐름. 디스패치·도구 실행·완료가 시간순으로 쌓입니다.">📡 활동</button>
+      <button class="side-tab" data-pane="outPane" title="📦 산출물
+에이전트가 만들어낸 파일·보고서·코드 등 결과물 목록.">📦 산출물</button>
+      <button class="side-tab" data-pane="convPane" title="📜 오늘 대화록
+오늘 날짜로 저장된 대화 기록 (conversations/YYYY-MM-DD.md). 새로고침으로 다시 읽음.">📜 대화록</button>
     </div>
     <div class="side-pane active" id="logPane">
       <div class="side-empty" id="logEmpty">
@@ -2053,16 +2086,85 @@ const apiBtn = document.getElementById('apiBtn');
 if (apiBtn) apiBtn.addEventListener('click', () => {
   vscode.postMessage({ type: 'openApiConnections' });
 });
-/* Side panel toggle — start collapsed so the map gets all the room */
+/* Side panel toggle + drag-resize.
+   - 시작은 collapsed (지도가 화면을 다 차지하도록).
+   - 📋 클릭 → collapse 토글 (열 때는 저장된 너비 복원).
+   - .side-resizer 드래그 → 너비 실시간 변경 + vscode.setState 로 영구 저장.
+   - 너비 범위: 220px ~ 윈도우 너비의 80%. */
 const sideEl = document.querySelector('.side');
 const toggleSideBtn = document.getElementById('toggleSideBtn');
-if (sideEl) sideEl.classList.add('collapsed');
+const sideResizer = document.getElementById('sideResizer');
+const SIDE_MIN_W = 220;
+const sideMaxW = () => Math.max(SIDE_MIN_W, Math.floor(window.innerWidth * 0.8));
+function getSavedSideWidth(){
+  try { const s = vscode.getState() || {}; return Number(s.sideWidth) || 0; } catch { return 0; }
+}
+function saveSideWidth(w){
+  try { const s = vscode.getState() || {}; vscode.setState({ ...s, sideWidth: w }); } catch {}
+}
+function applySideWidth(w){
+  if (!sideEl) return;
+  const clamped = Math.max(SIDE_MIN_W, Math.min(sideMaxW(), w));
+  sideEl.style.width = clamped + 'px';
+  return clamped;
+}
+function showResizer(show){
+  if (sideResizer) sideResizer.classList.toggle('hidden', !show);
+}
+if (sideEl) {
+  sideEl.classList.add('collapsed');
+  const saved = getSavedSideWidth();
+  if (saved >= SIDE_MIN_W) sideEl.style.width = saved + 'px';
+}
 if (toggleSideBtn && sideEl) {
   toggleSideBtn.addEventListener('click', () => {
-    sideEl.classList.toggle('collapsed');
-    toggleSideBtn.style.color = sideEl.classList.contains('collapsed') ? '' : 'var(--accent)';
-    /* Re-fit world canvas after panel width change */
-    setTimeout(() => { try { fitAndScale(); } catch {} window.dispatchEvent(new Event('resize')); }, 280);
+    sideEl.classList.add('animated');
+    const collapsing = !sideEl.classList.contains('collapsed');
+    sideEl.classList.toggle('collapsed', collapsing);
+    toggleSideBtn.style.color = collapsing ? '' : 'var(--accent)';
+    showResizer(!collapsing);
+    setTimeout(() => {
+      sideEl.classList.remove('animated');
+      try { fitAndScale(); } catch {}
+      window.dispatchEvent(new Event('resize'));
+    }, 320);
+  });
+}
+if (sideResizer && sideEl) {
+  let dragging = false, startX = 0, startW = 0;
+  sideResizer.addEventListener('mousedown', (e) => {
+    if (sideEl.classList.contains('collapsed')) return;
+    dragging = true;
+    startX = e.clientX;
+    startW = sideEl.offsetWidth;
+    sideResizer.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    /* resizer 가 side 의 LEFT 에 붙어있으니, 왼쪽으로 끌면 side 가 커지고
+       오른쪽으로 끌면 작아진다. */
+    const delta = startX - e.clientX;
+    const newW = applySideWidth(startW + delta);
+    if (newW) saveSideWidth(newW);
+    try { fitAndScale(); } catch {}
+  });
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    sideResizer.classList.remove('dragging');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    window.dispatchEvent(new Event('resize'));
+  });
+  /* Double-click resizer to reset to default 300px */
+  sideResizer.addEventListener('dblclick', () => {
+    if (sideEl.classList.contains('collapsed')) return;
+    const w = applySideWidth(300);
+    if (w) saveSideWidth(w);
+    try { fitAndScale(); } catch {}
   });
 }
 /* === Connected campus world — Office + Cafe + Garden in one coord space === */
