@@ -75,9 +75,11 @@ select:hover,select:focus{border-color:var(--accent);box-shadow:0 0 12px var(--a
 .av-ai{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;box-shadow:0 0 10px rgba(124,106,255,.3)}
 .msg-body{padding-left:29px;line-height:1.75;color:var(--text-bright);white-space:pre-wrap;word-break:break-word;font-size:13px}
 .msg-user .msg-body{background:linear-gradient(135deg,rgba(37,99,235,.10),rgba(56,189,248,.06));border:1px solid rgba(37,99,235,.32);border-radius:14px 14px 4px 14px;padding:10px 14px;margin-left:29px;color:var(--text-bright);box-shadow:0 1px 3px rgba(37,99,235,.08)}
-/* CEO 종합 보고서 메시지 강조 — 'ai' role 메시지 (`.msg:not(.msg-user):not(.msg-agent):not(.msg-error):not(.msg-note)`)
-   는 1인 기업 모드에서 CEO 종합 보고서. 골드 톤 border 로 강조해서 specialist 답변과 구분. */
-body.corp-on .msg:not(.msg-user):not(.msg-agent):not(.msg-error):not(.msg-note):not(.inject-card) .msg-body{border-left:3px solid #f59e0b;background:linear-gradient(90deg,rgba(245,158,11,.06),transparent 60%);padding-left:14px;margin-left:23px;border-radius:0 10px 10px 0}
+/* CEO 종합 보고서 / 시스템성 메시지 강조 — 'ai' role 중 user/agent/error/note/
+   inject 가 아닌 것들. 이전엔 amber 배경 그라데이션을 깔았는데 PayPal 도구
+   실행 실패 같이 amber 가 의미 없는 케이스에서도 음영이 떠서 가독성 깸.
+   배경 제거하고 좌측 border 만 유지 (CEO 종합 시각 구분은 살림). */
+body.corp-on .msg:not(.msg-user):not(.msg-agent):not(.msg-error):not(.msg-note):not(.inject-card) .msg-body{border-left:3px solid #f59e0b;padding-left:14px;margin-left:23px}
 body.corp-on .msg:not(.msg-user):not(.msg-agent):not(.msg-error):not(.msg-note):not(.inject-card) .msg-head{color:#b45309}
 /* Brain injection card — fired on /api/brain-inject */
 .inject-card{padding:0}
@@ -4849,10 +4851,12 @@ window.addEventListener('message',e=>{const msg=e.data;switch(msg.type){
     scrollChatToBottomIfNear();
     break;}
   case 'streamChunk':{
-    /* v2.89.55 — 스트리밍 중엔 fmt() 호출하지 않음. 부분 markdown ('## ti'까지만 도착하면)
-       fmt이 평문으로 처리하고, 다음 청크에서 ('## title' 완성) 다시 호출시 헤딩 변환 →
-       사용자는 평문 → 헤딩 점프 봄. 더 심각한 건 코드블록·표 placeholder가 청크별 인덱스
-       어긋나서 깨짐. 해법: 스트리밍 중엔 plain text만 누적·표시, streamEnd에서 한 번에 fmt(). */
+    /* v2.89.55 — 스트리밍 중 즉시 fmt() 매번 부르면 부분 markdown ('## ti'까지만
+       도착 → 평문 → 다음 청크에서 헤딩) 점프가 보이고 코드블록·표 placeholder 가
+       청크별로 깨짐. 그래서 1차로는 평문 (escape + <br>) 만 빠르게 깔고,
+       청크 사이 300ms 정지 (= LLM 이 잠시 호흡 / inter-stream 대기 / brain
+       read 같은 phase 전환)에 도달하면 fmt() 적용해서 markdown 렌더. 새 청크가
+       다시 오면 timer reset → 또 300ms 기다림. streamEnd 에서 최종 fmt 보장. */
     if(streamBody){
       /* v2.89.101 — 첫 청크 도착 시 로더 정리 + 메시지 박스 노출 */
       if(!streamBody._raw){
@@ -4862,6 +4866,14 @@ window.addEventListener('message',e=>{const msg=e.data;switch(msg.type){
       streamBody._raw=(streamBody._raw||'')+msg.value;
       const safe = streamBody._raw.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
       streamBody.innerHTML = safe.replace(/\n/g, '<br/>');
+      /* Debounced markdown render — 300ms 무청크 시 한 번 fmt. */
+      if(streamBody._fmtTimer) clearTimeout(streamBody._fmtTimer);
+      const targetBody = streamBody;
+      streamBody._fmtTimer = setTimeout(() => {
+        if(targetBody && targetBody._raw){
+          try { targetBody.innerHTML = fmt(targetBody._raw); } catch { /* render-only failure, raw stays */ }
+        }
+      }, 300);
       scrollChatToBottomIfNear();
     }
     break;}
@@ -4870,6 +4882,8 @@ window.addEventListener('message',e=>{const msg=e.data;switch(msg.type){
     hideLoader();
     if(streamEl && streamEl.style.display==='none') streamEl.style.display='';
     if(streamBody){
+      /* 디바운스 타이머 취소 — 곧 fmt 를 직접 호출하니까 중복 방지. */
+      if(streamBody._fmtTimer){ clearTimeout(streamBody._fmtTimer); streamBody._fmtTimer = null; }
       /* 스트리밍 끝났으니 전체 누적 raw에 한 번에 fmt() 적용 → 헤딩·표·인용·리스트 정상 렌더 */
       streamBody.innerHTML = fmt(streamBody._raw||'');
       streamBody.classList.remove('stream-active');
