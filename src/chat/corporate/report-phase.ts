@@ -112,5 +112,9 @@ export async function runReportPhase(args: RunReportPhaseArgs): Promise<string> 
         }
     }
 
+    /* Checkpoint: report finalized. Writer flushes immediately on phase boundary
+       so a crash after this point still has the report on disk for the recovery
+       card to surface. */
+    ctx.sessionWriter?.setReport(finalReport);
     return finalReport;
 }

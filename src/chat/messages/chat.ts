@@ -43,6 +43,15 @@ export async function handleChatMessage(ctx: MessageContext, msg: any): Promise<
             // 응답 없이 차단됐음. ready 시점에 한 번 더 동기화.
             ctx.restoreDisplayMessages();
             ctx.sendCompanyState();
+            /* Scan for incomplete sessions (last run crashed or was interrupted).
+               Sidebar shows a recovery card if any found. */
+            try { ctx.postIncompleteSessions(); } catch { /* never block ready */ }
+            return true;
+        case 'discardSession':
+            if (typeof msg.sessionDir === 'string') ctx.discardSession(msg.sessionDir);
+            return true;
+        case 'openSessionFolder':
+            if (typeof msg.sessionDir === 'string') ctx.openSessionFolder(msg.sessionDir);
             return true;
         case 'toggleThinking':
             await ctx.toggleThinkingMode();

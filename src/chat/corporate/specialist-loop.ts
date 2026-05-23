@@ -68,6 +68,9 @@ export async function runSpecialistLoop(args: SpecialistLoopArgs): Promise<Speci
 
     for (const t of plan.tasks) {
         if (isAborted()) {
+            /* User pressed stop. Mark this agent as failed so resume can know
+               where we left off. */
+            ctx.sessionWriter?.endAgent(t.agent, 'failed', undefined, 'user aborted');
             post({ type: 'agentEnd', agent: t.agent });
             break;
         }
@@ -198,6 +201,9 @@ export async function runSpecialistLoop(args: SpecialistLoopArgs): Promise<Speci
                 });
             }
         }, 2500); /* v2.89.157 — 2.5초로 단축. 사무실 시각 효과 (sparkle·thought·status) 더 자주 갱신 → 정지처럼 안 보임. */
+        /* Session-state checkpoint: start agent slot so partial output
+           is persisted even if the LLM call dies mid-stream. */
+        ctx.sessionWriter?.startAgent(t.agent, t.task);
         try {
             out = await ctx.callAgentLLM(sysPrompt, userMsg, modelName, t.agent, true, {
                 onFirstToken: () => {
@@ -213,7 +219,13 @@ export async function runSpecialistLoop(args: SpecialistLoopArgs): Promise<Speci
                         });
                     } catch { /* ignore */ }
                     try { vscode.window.setStatusBarMessage(`✍️ ${a.emoji} ${a.name} 응답 생성 중`, 8000); } catch { /* ignore */ }
-                }
+                },
+                onChunk: (chunk) => {
+                    /* Throttled to ~1s inside the writer. Streams agent text
+                       to sessionDir/state.json so crash mid-LLM keeps everything
+                       already received. */
+                    ctx.sessionWriter?.appendAgentChunk(t.agent, chunk);
+                },
             });
         } catch (e: any) {
             clearInterval(heartbeatInterval);
@@ -401,6 +413,10 @@ export async function runSpecialistLoop(args: SpecialistLoopArgs): Promise<Speci
                 outputSummary,
                 outputLength: (out || '').length,
             };
+            /* Checkpoint: agent slot now reflects the final post-processed text
+               (includes tool exec results / file action results). Writer flushes
+               immediately on phase boundary. */
+            ctx.sessionWriter?.setAgentText(t.agent, out);
         }
         /* v2.89.8 — 자동 트리거 토큰. 에이전트가 `<TRIGGER:youtube_oauth>`
            를 출력하면 시스템이 OAuth 명령을 직접 실행해서 브라우저를 띄움.
@@ -454,6 +470,8 @@ export async function runSpecialistLoop(args: SpecialistLoopArgs): Promise<Speci
                 );
             } catch { /* ignore */ }
             appendAgentMemory(t.agent, `${t.task} → OAuth 자동 트리거 발동`);
+            ctx.sessionWriter?.setAgentText(t.agent, out);
+            ctx.sessionWriter?.endAgent(t.agent, 'blocked', undefined, 'OAuth trigger');
             post({ type: 'agentEnd', agent: t.agent, blocked: true });
             ctx.setTelegramMirrorPending(false);
             return { outputs, agentMeta, earlyReturn: false, blocked: true };
@@ -501,6 +519,8 @@ export async function runSpecialistLoop(args: SpecialistLoopArgs): Promise<Speci
                 );
             } catch { /* ignore */ }
             appendAgentMemory(t.agent, `${t.task} → 자격증명 부족으로 차단됨`);
+            ctx.sessionWriter?.setAgentText(t.agent, out);
+            ctx.sessionWriter?.endAgent(t.agent, 'blocked', undefined, 'credentials missing');
             post({ type: 'agentEnd', agent: t.agent, blocked: true });
             /* 이 에이전트가 다른 에이전트의 입력 데이터 공급원이면 후속 작업도
                의미 없음. 전체 dispatch 중단. */
@@ -554,6 +574,9 @@ export async function runSpecialistLoop(args: SpecialistLoopArgs): Promise<Speci
                 });
             }
         } catch { /* never let harvesting break the dispatch */ }
+        /* Checkpoint: agent finished cleanly — mark phase complete in state.json
+           so on resume we'd skip re-running it. */
+        ctx.sessionWriter?.endAgent(t.agent, 'done', agentMeta[t.agent]);
         post({ type: 'agentEnd', agent: t.agent });
 
         const metrics = getCompanyMetrics();

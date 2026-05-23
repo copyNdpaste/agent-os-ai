@@ -531,6 +531,30 @@ body.corp-dispatching .ab-svg{opacity:1}
 .report-foot .rf-link{color:var(--accent);cursor:pointer;text-decoration:none}
 .report-foot .rf-link:hover{text-decoration:underline}
 
+/* ===== Recovery card (incomplete sessions detected on startup) =====
+   상단에 sticky-ish 로 한 번 노출. 톤은 amber (주의 — 데이터 잃을 수 있음). */
+.recovery-card{background:linear-gradient(135deg,rgba(245,158,11,.06),rgba(245,158,11,.02));border:1px solid rgba(245,158,11,.35);border-radius:14px;padding:14px 16px;margin:0 0 14px 0;animation:msgIn .4s cubic-bezier(.16,1,.3,1);box-shadow:0 4px 16px rgba(245,158,11,.08)}
+.recovery-card .rc-header{display:flex;flex-direction:column;gap:4px;padding-bottom:10px;margin-bottom:10px;border-bottom:1px solid rgba(245,158,11,.18);font-family:'Inter','SF Pro Display',sans-serif}
+.recovery-card .rc-header > span:first-child{font-size:13px;font-weight:700;color:#b45309;letter-spacing:-.1px}
+.recovery-card .rc-hint{font-size:11px;color:var(--text-dim);line-height:1.5}
+.recovery-card .rc-row{padding:10px 0;border-bottom:1px solid rgba(245,158,11,.10)}
+.recovery-card .rc-row:last-of-type{border-bottom:none;padding-bottom:0}
+.recovery-card .rc-row:first-of-type{padding-top:0}
+.recovery-card .rc-head{display:flex;justify-content:space-between;align-items:center;font-size:11px;font-family:'SF Mono','JetBrains Mono',monospace;color:var(--text-dim);margin-bottom:5px}
+.recovery-card .rc-id{color:var(--text-bright);font-weight:600}
+.recovery-card .rc-stale{color:#b45309;font-weight:600}
+.recovery-card .rc-prompt{font-size:13px;color:var(--text-bright);font-style:italic;margin-bottom:6px;line-height:1.5;background:rgba(15,23,42,.04);padding:6px 10px;border-radius:6px;border-left:2px solid rgba(245,158,11,.5)}
+.recovery-card .rc-meta{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;font-size:10.5px;color:var(--text-dim);align-items:center}
+.recovery-card .rc-step{color:#b45309;font-weight:600}
+.recovery-card .rc-phases{font-family:'SF Mono',monospace;font-size:10px;color:var(--text-dim)}
+.recovery-card .rc-tag{padding:1px 7px;border-radius:5px;background:rgba(15,23,42,.05);border:1px solid rgba(15,23,42,.10);color:var(--text-dim);font-size:10px}
+.recovery-card .rc-tag-done{background:rgba(34,211,238,.08);border-color:rgba(34,211,238,.3);color:#0e7490}
+.recovery-card .rc-actions{display:flex;gap:8px;flex-wrap:wrap}
+.recovery-card .rc-btn{cursor:pointer;border:1px solid rgba(15,23,42,.15);background:rgba(255,255,255,.6);color:var(--text-bright);padding:5px 10px;border-radius:6px;font-size:11px;font-weight:600;font-family:inherit;transition:all .15s}
+.recovery-card .rc-btn:hover{background:#fff;border-color:rgba(15,23,42,.3)}
+.recovery-card .rc-btn-folder:hover{border-color:var(--accent);color:var(--accent)}
+.recovery-card .rc-btn-discard:hover{border-color:#dc2626;color:#dc2626;background:rgba(220,38,38,.05)}
+
 /* ===== Onboarding & Interview Cards ===== */
 .onboard-card,.interview-card{background:linear-gradient(135deg,rgba(37,99,235,.05),rgba(37,99,235,.02));border:1px solid rgba(37,99,235,.28);border-radius:16px;padding:18px 20px;margin-left:29px;animation:msgIn .5s cubic-bezier(.16,1,.3,1);position:relative;overflow:hidden;backdrop-filter:blur(8px);box-shadow:0 8px 32px rgba(0,0,0,.4),0 0 18px rgba(37,99,235,.08)}
 .onboard-card::before,.interview-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);animation:reportLine 3s ease-in-out infinite}
@@ -1825,6 +1849,59 @@ function addMsg(text,role){
   el.appendChild(head);el.appendChild(body);chat.appendChild(el);scrollChatToBottomIfNear();
 }
 function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+
+/** Recovery card for incomplete sessions detected on startup. Renders once
+ *  near the top of the chat with one row per session, each with [폐기] /
+ *  [세션 폴더 열기] actions. Dismissed when user discards all. */
+let _recoveryCardEl = null;
+function showIncompleteSessionsCard(sessions){
+  if(!sessions || sessions.length === 0){
+    if(_recoveryCardEl){ try{_recoveryCardEl.remove()}catch{} _recoveryCardEl=null; }
+    return;
+  }
+  /* Replace existing card so re-scan after a discard refreshes. */
+  if(_recoveryCardEl){ try{_recoveryCardEl.remove()}catch{} _recoveryCardEl=null; }
+  const el = document.createElement('div');
+  el.className = 'recovery-card';
+  const rows = sessions.map(s => {
+    const phaseList = (s.completedPhases||[]).join(' → ') || '(아직 계획 단계)';
+    const promptShort = escapeHtml((s.prompt||'').slice(0, 120));
+    return '<div class="rc-row">'+
+      '<div class="rc-head">'+
+        '<span class="rc-id">📋 '+escapeHtml(s.id)+'</span>'+
+        '<span class="rc-stale">'+s.staleMinutes+'분 전 멈춤</span>'+
+      '</div>'+
+      '<div class="rc-prompt">"'+promptShort+'"</div>'+
+      '<div class="rc-meta">'+
+        '<span class="rc-step">⏸ '+escapeHtml(s.currentStep||'')+'</span>'+
+        '<span class="rc-phases">'+phaseList+'</span>'+
+        (s.hasReport ? '<span class="rc-tag rc-tag-done">📝 보고서 있음</span>' : '')+
+        '<span class="rc-tag">에이전트 '+(s.agentCount||0)+'명 산출</span>'+
+      '</div>'+
+      '<div class="rc-actions">'+
+        '<button class="rc-btn rc-btn-folder" data-dir="'+escapeHtml(s.sessionDir)+'">📁 세션 폴더 열기</button>'+
+        '<button class="rc-btn rc-btn-discard" data-dir="'+escapeHtml(s.sessionDir)+'">🗑 폐기</button>'+
+      '</div>'+
+    '</div>';
+  }).join('');
+  el.innerHTML = '<div class="rc-header">'+
+    '<span>⏸ 이전 작업 미완료 ('+sessions.length+'건)</span>'+
+    '<span class="rc-hint">VS Code 종료·크래시·중단 시 남은 세션입니다. 폴더에서 산출물 확인 후 폐기하세요.</span>'+
+  '</div>'+ rows;
+  el.querySelectorAll('.rc-btn-folder').forEach(b => b.addEventListener('click', () => {
+    vscode.postMessage({ type: 'openSessionFolder', sessionDir: b.dataset.dir });
+  }));
+  el.querySelectorAll('.rc-btn-discard').forEach(b => b.addEventListener('click', () => {
+    vscode.postMessage({ type: 'discardSession', sessionDir: b.dataset.dir });
+    /* Optimistic UI: remove this row immediately; backend re-scan will confirm. */
+    const row = b.closest('.rc-row'); if(row) row.remove();
+    if(el.querySelectorAll('.rc-row').length === 0){ try{el.remove()}catch{}; _recoveryCardEl=null; }
+  }));
+  /* Insert at the top of chat so user sees it immediately. */
+  chat.insertBefore(el, chat.firstChild);
+  _recoveryCardEl = el;
+}
+
 function showInjectCard(title,relPath){
   const safeT=escapeHtml(title||'');const safeP=escapeHtml(relPath||'');
   const el=document.createElement('div');el.className='msg inject-card';
@@ -4660,6 +4737,13 @@ window.addEventListener('message',e=>{const msg=e.data;switch(msg.type){
 
   case 'brainInject':showInjectCard(msg.title,msg.relPath);break;
   case 'skillInject':showSkillCard(msg);break;
+  case 'incompleteSessions':{
+    /* extension 시작 시 sessions/* 에 status='running' 인 state.json 이 있으면
+       사이드바 상단에 복구 카드를 띄움. 사용자는 [폐기] 로 정리하거나
+       [세션 폴더 열기] 로 sessions/{ts}/state.json·산출물 직접 확인. */
+    showIncompleteSessionsCard(msg.sessions || []);
+    break;
+  }
   case 'allSkillsLoaded':
     if(typeof window._slLoadHandler === 'function') window._slLoadHandler(msg);
     break;
