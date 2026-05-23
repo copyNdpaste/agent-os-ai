@@ -141,6 +141,10 @@ import { handleBrainMenu } from '../chat/menu/brain-menu';
 import { handlePrompt } from '../chat/prompt/handle-prompt';
 import { handlePromptWithFile } from '../chat/prompt/handle-prompt-with-file';
 import type { PromptContext } from '../chat/prompt/types';
+import { handleChatMessage } from '../chat/messages/chat';
+import { handleAgentConfigMessage } from '../chat/messages/agent-config';
+import { handleModelsMessage } from '../chat/messages/models';
+import type { MessageContext } from '../chat/messages/types';
 import {
     runSpecialistLoop,
     runConferPhase,
@@ -1210,165 +1214,14 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
                비활성 상태가 되는 사고. 'Maximum call stack' 같은 RangeError도
                여기서 잡혀서 사용자에게 재시작 안내까지 보냄. */
             try {
+            /* Extracted handler dispatch chain — handlers return true if they
+               consume the message. Inline cases below are kept for non-extracted
+               message types; the extracted cases are dead code until cleanup. */
+            const mctx = this._buildMessageContext(webviewView);
+            if (await handleChatMessage(mctx, msg)) return;
+            if (await handleAgentConfigMessage(mctx, msg)) return;
+            if (await handleModelsMessage(mctx, msg)) return;
             switch (msg.type) {
-                case 'getModels':
-                    await this._sendModels();
-                    break;
-                /* v2.89.116 — 1인 기업 모드 specialist dock. 사이드바 헤더의 단일
-                   모델 셀렉터 자리에서 9명 specialist의 모델 매핑을 한눈에 보고
-                   인라인 변경. dashboard의 "모델 오케스트레이션" 모달과 동일
-                   백엔드 함수(_autoOrchestrateModelMap, writeAgentModelMap)를
-                   재사용해서 양쪽이 항상 같은 진실을 본다. */
-                case 'loadAgentDock': {
-                    try {
-                        const installed = await listInstalledModels();
-                        const specs = getSystemSpecs();
-                        const installedWithMem = installed.map(m => ({
-                            id: m.id,
-                            tier: (m as any).tier || '',
-                            estMemGB: estimateModelMemoryGB(m.id),
-                            safe: estimateModelMemoryGB(m.id) <= specs.safeModelBudgetGB,
-                        }));
-                        const map = readAgentModelMap();
-                        const defaultModel = 'claude-sonnet-4-6';
-                        const agents = SPECIALIST_IDS.map(id => ({
-                            id,
-                            name: AGENTS[id]?.name || id,
-                            emoji: AGENTS[id]?.emoji || '🤖',
-                            role: AGENTS[id]?.role || '',
-                            color: AGENTS[id]?.color || '#c9a961',
-                            currentModel: map[id] || defaultModel,
-                            usingDefault: !map[id],
-                        }));
-                        webviewView.webview.postMessage({
-                            type: 'agentDockData',
-                            installed: installedWithMem,
-                            defaultModel,
-                            agents,
-                            specs,
-                        });
-                    } catch (e: any) {
-                        webviewView.webview.postMessage({ type: 'agentDockData', installed: [], defaultModel: '', agents: [], specs: null, error: String(e?.message || e) });
-                    }
-                    break;
-                }
-                case 'setAgentModel': {
-                    try {
-                        const agentId = String(msg.agent || '').trim();
-                        const model = String(msg.model || '').trim();
-                        if (!agentId || !AGENTS[agentId]) {
-                            webviewView.webview.postMessage({ type: 'agentDockSaved', ok: false, error: `알 수 없는 에이전트: ${agentId}` });
-                            break;
-                        }
-                        const map = readAgentModelMap();
-                        if (model && model !== 'claude-sonnet-4-6') {
-                            map[agentId] = model;
-                        } else {
-                            delete map[agentId];
-                        }
-                        writeAgentModelMap(map);
-                        webviewView.webview.postMessage({ type: 'agentDockSaved', ok: true, agent: agentId, model });
-                    } catch (e: any) {
-                        webviewView.webview.postMessage({ type: 'agentDockSaved', ok: false, error: String(e?.message || e) });
-                    }
-                    break;
-                }
-                case 'autoMapAgents': {
-                    try {
-                        const installed = await listInstalledModels();
-                        const auto = _autoOrchestrateModelMap(installed);
-                        writeAgentModelMap(auto);
-                        webviewView.webview.postMessage({ type: 'agentDockAutoMapped', ok: true, map: auto });
-                    } catch (e: any) {
-                        webviewView.webview.postMessage({ type: 'agentDockAutoMapped', ok: false, error: String(e?.message || e) });
-                    }
-                    break;
-                }
-                case 'setAllAgents': {
-                    try {
-                        const model = String(msg.model || '').trim();
-                        if (!model) {
-                            webviewView.webview.postMessage({ type: 'agentDockSaved', ok: false, error: '모델이 비어있어요' });
-                            break;
-                        }
-                        const isDefault = model === 'claude-sonnet-4-6';
-                        const map: Record<string, string> = {};
-                        if (!isDefault) {
-                            for (const id of SPECIALIST_IDS) map[id] = model;
-                        }
-                        writeAgentModelMap(map);
-                        webviewView.webview.postMessage({ type: 'agentDockSaved', ok: true, all: true, model });
-                    } catch (e: any) {
-                        webviewView.webview.postMessage({ type: 'agentDockSaved', ok: false, error: String(e?.message || e) });
-                    }
-                    break;
-                }
-                case 'prompt': {
-                    /* v2.89.146 — 명시적 호출 감지("베조스야", "개발신아" 등) 시 corporate
-                       모드 force. 사용자가 사이드바 toggle 안 해도 명시적 호출은 항상
-                       specialist dispatch 흐름으로 → 매출/키트 shortcut 발동. */
-                    const txt = String(msg.value || '');
-                    const hasExplicit = !!this._detectExplicitMention(txt);
-                    if (msg.corporate || hasExplicit) {
-                        this._sidebarCorpModeOn = true;
-                        await this._handleCorporatePrompt(txt, msg.model);
-                    } else {
-                        await this._handlePrompt(txt, msg.model, msg.internet);
-                    }
-                    break;
-                }
-                case 'corpModeToggle':
-                    this._sidebarCorpModeOn = !!msg.on;
-                    break;
-                case 'loadAgentConfig': {
-                    try {
-                        ensureCompanyStructure();
-                        const goal = readAgentGoal(msg.agent);
-                        const ragMode = readAgentRagMode(msg.agent);
-                        const selfRagCriteria = readAgentSelfRagCriteria(msg.agent);
-                        const verifiedCount = countAgentVerifiedClaims(msg.agent);
-                        const tg = readTelegramConfig();
-                        const telegramConnected = !!(tg.token && tg.chatId);
-                        const autoOn = vscode.workspace.getConfiguration('agentOs').get<boolean>('autoCycleEnabled', true);
-                        const tools = listAgentTools(msg.agent).map(t => ({
-                            name: t.name,
-                            displayName: t.displayName,
-                            description: t.description,
-                            configSchema: t.configSchema,
-                            injectedAt: t.injectedAt || null,
-                            injectedFrom: t.injectedFrom || null,
-                            enabled: t.enabled,
-                        }));
-                        webviewView.webview.postMessage({ type: 'agentConfigLoaded', agent: msg.agent, goal, ragMode, selfRagCriteria, verifiedCount, telegramConnected, autoOn, tools });
-                    } catch (e: any) {
-                        webviewView.webview.postMessage({ type: 'agentConfigLoaded', agent: msg.agent, goal: '', ragMode: 'standard', selfRagCriteria: '', verifiedCount: 0, telegramConnected: false, autoOn: false, tools: [], error: String(e?.message || e) });
-                    }
-                    break;
-                }
-                case 'loadAllSkills': {
-                    /* 글로벌 "내 스킬 라이브러리" 데이터 — 모든 에이전트의 tools를
-                       한 번에 묶어서 webview로 전달. 에이전트별로 그룹핑 + Mine 표시. */
-                    try {
-                        const groups = AGENT_ORDER.map(id => ({
-                            agentId: id,
-                            agentName: AGENTS[id]?.name || id,
-                            agentEmoji: AGENTS[id]?.emoji || '🛠',
-                            agentColor: AGENTS[id]?.color || '#5DE0E6',
-                            agentRole: AGENTS[id]?.role || '',
-                            tools: listAgentTools(id).map(t => ({
-                                name: t.name,
-                                displayName: t.displayName,
-                                description: t.description,
-                                injectedAt: t.injectedAt || null,
-                                injectedFrom: t.injectedFrom || null,
-                            })),
-                        }));
-                        webviewView.webview.postMessage({ type: 'allSkillsLoaded', groups });
-                    } catch (e: any) {
-                        webviewView.webview.postMessage({ type: 'allSkillsLoaded', groups: [], error: String(e?.message || e) });
-                    }
-                    break;
-                }
                 case 'loadToolConfig': {
                     try {
                         const tools = listAgentTools(msg.agent);
@@ -1456,33 +1309,6 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
                             webviewView.webview.postMessage({ type: 'toolRunCompleted', agent: msg.agent, tool: msg.tool, ok: false, reason: 'exec_error', message: String(err?.message || err) });
                         })
                         .finally(() => { this._sidebarCorpModeOn = prevSidebarBroadcast; });
-                    break;
-                }
-                case 'saveAgentGoal': {
-                    try {
-                        ensureCompanyStructure();
-                        writeAgentGoal(msg.agent, msg.goal || '');
-                    } catch (e: any) {
-                        vscode.window.showWarningMessage(`목표 저장 실패: ${e?.message || e}`);
-                    }
-                    break;
-                }
-                case 'saveAgentRagMode': {
-                    try {
-                        ensureCompanyStructure();
-                        writeAgentRagMode(msg.agent, msg.mode || 'standard');
-                    } catch (e: any) {
-                        vscode.window.showWarningMessage(`RAG 모드 저장 실패: ${e?.message || e}`);
-                    }
-                    break;
-                }
-                case 'saveAgentSelfRagCriteria': {
-                    try {
-                        ensureCompanyStructure();
-                        writeAgentSelfRagCriteria(msg.agent, msg.criteria || '');
-                    } catch (e: any) {
-                        vscode.window.showWarningMessage(`자가검증 기준 저장 실패: ${e?.message || e}`);
-                    }
                     break;
                 }
                 /* ── Telegram setup wizard handlers ──────────────────────────
@@ -1602,64 +1428,6 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
                             this.stopAutoCycle();
                         }
                     } catch { /* ignore */ }
-                    break;
-                }
-                case 'runAgentStep': {
-                    // Manual single-step kick from the agent panel. Goes through
-                    // the existing CEO dispatch path so artifacts land in the
-                    // same sessions/ folder and the cinematic UI fires.
-                    // We TEMPORARILY enable sidebar broadcast for this run so
-                    // the user sees their explicit action play out, then
-                    // restore the previous state so autonomous activity stays
-                    // gated by the user's actual corp toggle.
-                    const a = AGENTS[msg.agent];
-                    const name = a?.name || msg.agent;
-                    const model = this.getDefaultModel();
-                    if (!model) {
-                        webviewView.webview.postMessage({ type: 'error', value: '⚠️ 기본 모델이 설정되지 않았어요.' });
-                        break;
-                    }
-                    const prevSidebarBroadcast = this._sidebarCorpModeOn;
-                    this._sidebarCorpModeOn = true;
-                    this._handleCorporatePrompt(
-                        `[수동 한 스텝 — ${name}] ${name} 에이전트의 개인 목표(_agents/${msg.agent}/goal.md)를 향해 다음 한 스텝을 실행하세요. 반드시 ${msg.agent} 에이전트에게 작업을 분배하세요.`,
-                        model,
-                    )
-                        .catch(() => { /* error already broadcast */ })
-                        .finally(() => { this._sidebarCorpModeOn = prevSidebarBroadcast; });
-                    break;
-                }
-                case 'promptWithFile':
-                    await this._handlePromptWithFile(msg.value, msg.model, msg.files, msg.internet);
-                    break;
-                case 'probeIDEModels': {
-                    /* Try to discover models the host IDE (Antigravity, Cursor,
-                     * VS Code w/ Copilot, etc.) exposes via the vscode.lm API.
-                     * Returns list to webview so user can see what's available
-                     * without committing to integration yet. */
-                    let models: Array<{ id: string; vendor: string; family: string; name: string }> = [];
-                    let error = '';
-                    try {
-                        const lm: any = (vscode as any).lm;
-                        if (lm && typeof lm.selectChatModels === 'function') {
-                            const result = await lm.selectChatModels({});
-                            if (Array.isArray(result)) {
-                                models = result.map((m: any) => ({
-                                    id: m.id || '',
-                                    vendor: m.vendor || '',
-                                    family: m.family || '',
-                                    name: m.name || m.id || '',
-                                }));
-                            }
-                        } else {
-                            error = 'vscode.lm API 미지원 — 이 호스트(Antigravity?)는 익스텐션에 모델을 노출하지 않음';
-                        }
-                    } catch (e: any) {
-                        error = e?.message || String(e);
-                    }
-                    if (this._view) {
-                        this._view.webview.postMessage({ type: 'ideModelsProbed', models, error });
-                    }
                     break;
                 }
                 case 'onboardingState': {
@@ -1911,9 +1679,6 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
                     }
                     break;
                 }
-                case 'newChat':
-                    this.resetChat();
-                    break;
                 /* v2.89.106 — 대화 세션 아카이브 명령 */
                 case 'listSessions': {
                     const cur = this._currentWorkspaceMeta();
@@ -1990,74 +1755,6 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
                     try { this._view?.webview.postMessage({ type: 'sessionsList', value: sessions, currentWorkspace: cur.workspace, currentWorkspaceName: cur.workspaceName, activeSessionId: this._activeSessionId }); } catch { /* ignore */ }
                     break;
                 }
-                /* v2.89.107 — 활성/비활성 토글 (사이드바). PIN 안 받음. */
-                case 'setAgentActive': {
-                    const aid = String((msg as any).agent || '').trim();
-                    const want = !!(msg as any).active;
-                    if (!aid) break;
-                    if (ALWAYS_ON_AGENTS.has(aid)) {
-                        try { this._view?.webview.postMessage({ type: 'systemNote', value: `⚠️ ${AGENTS[aid]?.name || aid}는 핵심 에이전트라 비활성화할 수 없어요.` }); } catch { /* ignore */ }
-                        break;
-                    }
-                    if (LOCKED_AGENTS_DEFAULT[aid] && want) {
-                        try { this._view?.webview.postMessage({ type: 'systemNote', value: `🔒 ${AGENTS[aid]?.name || aid}는 PIN 인증이 필요해요. 카드를 클릭해 PIN을 입력하세요.` }); } catch { /* ignore */ }
-                        break;
-                    }
-                    const ok = setAgentActive(aid, want);
-                    if (ok) {
-                        const verb = want ? '활성화됨 ✅' : '비활성화됨 ⏸';
-                        try { this._view?.webview.postMessage({ type: 'systemNote', value: `${AGENTS[aid]?.emoji || ''} ${AGENTS[aid]?.name || aid} ${verb}` }); } catch { /* ignore */ }
-                        try { this._view?.webview.postMessage({ type: 'activeAgents', value: readActiveAgents() }); } catch { /* ignore */ }
-                        /* v2.89.112 — 개발신 첫 활성화 시 시니어 코더 모델 추천 카드 */
-                        if (want && aid === 'developer') {
-                            try { if (this._view) _maybeRecommendCoderModel(this._view.webview); } catch { /* ignore */ }
-                        }
-                        try {
-                            if (CompanyDashboardPanel.current) CompanyDashboardPanel.current.refresh();
-                        } catch { /* ignore */ }
-                    } else {
-                        try { this._view?.webview.postMessage({ type: 'systemNote', value: `⚠️ 변경 실패: 회사 폴더 쓰기 권한 확인.` }); } catch { /* ignore */ }
-                    }
-                    break;
-                }
-                /* v2.89.95 — 채용 PIN 통과 후 webview가 알림. 회사 폴더에 영구 저장.
-                   v2.89.106 — PIN backend 재검증 + 두 화면 동기화. 사이드바·대쉬보드
-                   어디서 채용해도 backend가 단일 진실 소스. */
-                case 'agentHired':
-                    try {
-                        const aid = String((msg as any).agent || '').trim();
-                        const pin = String((msg as any).pin || '');
-                        if (!aid || !LOCKED_AGENTS_DEFAULT[aid]) break;
-                        /* 잠긴 에이전트만 PIN 게이트 통과 가능. PIN 없거나 다르면 거부. */
-                        if (pin !== '0000') {
-                            try { this._view?.webview.postMessage({ type: 'systemNote', value: '❌ 인증 실패: 잘못된 코드입니다.' }); } catch { /* ignore */ }
-                            break;
-                        }
-                        const ok = markAgentHired(aid);
-                        if (!ok) {
-                            try { this._view?.webview.postMessage({ type: 'systemNote', value: '⚠️ 채용 실패: 회사 폴더에 쓰기 권한이 없습니다.' }); } catch { /* ignore */ }
-                            break;
-                        }
-                        try { vscode.window.showInformationMessage(`🎉 ${aid} 에이전트 채용 완료! 이제 활용 가능합니다.`); } catch { /* ignore */ }
-                        /* 사이드바에 즉시 동기화 + 대쉬보드 패널 열려있으면 거기도 refresh */
-                        try {
-                            this._view?.webview.postMessage({ type: 'hiredAgents', value: readHiredAgents() });
-                        } catch { /* ignore */ }
-                        try {
-                            if (CompanyDashboardPanel.current) CompanyDashboardPanel.current.refresh();
-                        } catch { /* ignore */ }
-                    } catch { /* ignore — UI 이미 잠금 해제됨 */ }
-                    break;
-                case 'ready':
-                    // 웹뷰가 준비되면 저장된 대화 기록 복원 + 회사 상태 동기화.
-                    // v2.89.86 — 이전엔 _sendCompanyState() 가 사용자 셋업 액션 후에만
-                    // 호출돼서, 사이드바 재로드 시 companyState.configured 가 false로
-                    // 시작했음. 그 결과 셋업 완료된 사용자가 👔 모드에서 메시지 보내도
-                    // send() 의 가드 (`corp && !companyState.configured`) 에 막혀서
-                    // 응답 없이 차단됐음. ready 시점에 한 번 더 동기화.
-                    this._restoreDisplayMessages();
-                    this._sendCompanyState();
-                    break;
                 case 'openSettings':
                     await this._handleSettingsMenu();
                     break;
@@ -2080,52 +1777,11 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
                 case 'closeOffice':
                     if (OfficePanel.current) OfficePanel.current.dispose();
                     break;
-                case 'toggleThinking':
-                    await this._toggleThinkingMode();
-                    break;
-                case 'requestStatus':
-                    this._sendStatusUpdate();
-                    break;
                 case 'statusFolderClick':
                     await this._handleStatusFolderClick();
                     break;
                 case 'statusGitClick':
                     await this._handleStatusGitClick();
-                    break;
-                case 'highlightBrainNote':
-                    if (typeof msg.note === 'string') {
-                        if (!this._thinkingPanel) this._openThinkingPanel();
-                        // Allow the panel a moment to load before sending the highlight
-                        setTimeout(() => this._postThinking({ type: 'highlight_node', note: msg.note }), 350);
-                    }
-                    break;
-                case 'injectLocalBrain':
-                    await this._handleInjectLocalBrain(msg.files);
-                    break;
-                case 'stopGeneration':
-                    if (this._abortController) {
-                        this._abortController.abort();
-                        this._abortController = undefined;
-                    }
-                    /* Force-clear any agent cards stuck in 'thinking' state — abort
-                       can race past the corporate flow's per-stage agentEnd posts. */
-                    try {
-                        for (const id of AGENT_ORDER) {
-                            this._broadcastCorporate({ type: 'agentEnd', agent: id });
-                        }
-                    } catch { /* ignore */ }
-                    break;
-                case 'regenerate':
-                    if (this._lastPrompt) {
-                        // Remove last AI response from history
-                        if (this._chatHistory.length > 0 && this._chatHistory[this._chatHistory.length - 1].role === 'assistant') {
-                            this._chatHistory.pop();
-                        }
-                        if (this._displayMessages.length > 0 && this._displayMessages[this._displayMessages.length - 1].role === 'ai') {
-                            this._displayMessages.pop();
-                        }
-                        await this._handlePrompt(this._lastPrompt, this._lastModel || '');
-                    }
                     break;
             }
             } catch (msgErr: any) {
@@ -2529,6 +2185,73 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
     // --------------------------------------------------------
     private _getWorkspaceContext(): string {
         return _hGetWorkspaceContext();
+    }
+
+    /** Builds a MessageContext bag for the extracted webview message handlers.
+        Refs are tiny accessor objects so writes inside handlers propagate back
+        to the underlying class field. */
+    private _buildMessageContext(webviewView: vscode.WebviewView): MessageContext {
+        const self = this;
+        return {
+            webviewView,
+            ctx: this._ctx,
+            view: this._view,
+            extensionUri: this._extensionUri,
+            chatHistory: this._chatHistory,
+            displayMessages: this._displayMessages,
+            abortControllerRef: {
+                get value() { return self._abortController; },
+                set value(v) { self._abortController = v; },
+            },
+            lastPromptRef: {
+                get value() { return self._lastPrompt; },
+                set value(v) { self._lastPrompt = v; },
+            },
+            lastModelRef: {
+                get value() { return self._lastModel; },
+                set value(v) { self._lastModel = v; },
+            },
+            sidebarCorpModeRef: {
+                get value() { return self._sidebarCorpModeOn; },
+                set value(v) { self._sidebarCorpModeOn = v; },
+            },
+            activeSessionIdRef: {
+                get value() { return self._activeSessionId ?? undefined; },
+                set value(v) { self._activeSessionId = v ?? null; },
+            },
+            thinkingPanelRef: {
+                get value() { return self._thinkingPanel; },
+                set value(v) { self._thinkingPanel = v; },
+            },
+            handlePrompt: (p, m, i) => this._handlePrompt(p, m, i),
+            handleCorporatePrompt: (p, m) => this._handleCorporatePrompt(p, m),
+            handlePromptWithFile: (p, m, f, i) => this._handlePromptWithFile(p, m, f, i),
+            handleInjectLocalBrain: (f) => this._handleInjectLocalBrain(f),
+            handleSettingsMenu: () => this._handleSettingsMenu(),
+            handleBrainMenu: () => this._handleBrainMenu(),
+            handleStatusFolderClick: () => this._handleStatusFolderClick(),
+            handleStatusGitClick: () => this._handleStatusGitClick(),
+            sendModels: () => this._sendModels(),
+            sendCompanyState: (note) => this._sendCompanyState(note),
+            sendStatusUpdate: () => this._sendStatusUpdate(),
+            toggleThinkingMode: () => this._toggleThinkingMode(),
+            openThinkingPanel: () => this._openThinkingPanel(),
+            postThinking: (m) => this._postThinking(m),
+            restoreSession: (id) => this._restoreSession(id),
+            readSessions: () => _hReadSessions(this._ctx),
+            writeSessions: (sessions) => _hWriteSessions(this._ctx, sessions),
+            deleteSession: (id) => _hDeleteSession(this._ctx, id),
+            currentWorkspaceMeta: () => _hCurrentWorkspaceMeta(),
+            detectExplicitMention: (p) => this._detectExplicitMention(p),
+            restoreDisplayMessages: () => this._restoreDisplayMessages(),
+            resetChat: () => this.resetChat(),
+            injectSystemMessage: (m) => this.injectSystemMessage(m),
+            getDefaultModel: () => this.getDefaultModel(),
+            startAutoCycle: (i, idle) => this.startAutoCycle(i, idle),
+            stopAutoCycle: () => this.stopAutoCycle(),
+            maybeMorningBriefing: (c) => this.maybeMorningBriefing(c),
+            broadcastCorporate: (m) => this._broadcastCorporate(m),
+        };
     }
 
     /** Builds a PromptContext bag for the extracted prompt handlers.
