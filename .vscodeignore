@@ -3,8 +3,26 @@
 .secondbrain/**
 .git/**
 .github/**
+# Secrets — defense-in-depth (top-level + 모든 nested)
 .env
 .env.*
+**/.env
+**/.env.*
+**/tokens.json
+**/credentials/**
+**/*secret*
+**/*token*
+**/.aws/**
+**/.ssh/**
+**/id_rsa*
+# 런타임 회사 폴더 — 사용자별 로컬 데이터 (시크릿·드래프트·세션 다 포함)
+_company/**
+.pytest_cache/**
+pyproject.toml
+tests/**
+# v2.91.0 — VSIX 빌드시 vsce 가 _company/_agents/instagram/.env 에서
+# 슬랙 토큰 노출 발견. 위 _company/** + **/.env 차단이 그 방어선.
+# 토큰이 leak 된 적 있으면 즉시 회전 (Slack API → Reissue).
 ARCHITECTURE.md
 src/**
 # v2.89.84 — extension_download_site/ 와 releases/ 디렉토리 삭제됨.
