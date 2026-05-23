@@ -588,6 +588,33 @@ body.dispatching .beams{opacity:1}
 }
 .side-resizer:hover::before,.side-resizer.dragging::before{color:var(--accent)}
 .side-resizer.hidden{display:none}
+
+/* === Custom tooltip (1s delay) ===
+   브라우저 기본 title tooltip 은 2-3초 후에 떠서 발견이 늦다. 1초 후
+   네온 톤으로 띄우고, 줄바꿈도 지원. data-tip 속성을 읽는다. */
+.custom-tooltip{
+  position:fixed;z-index:9999;pointer-events:none;
+  background:linear-gradient(180deg,rgba(8,12,20,.98),rgba(4,8,14,.98));
+  color:var(--text-bright,#fff);font-size:11.5px;line-height:1.5;
+  font-family:'Inter','SF Pro Display',-apple-system,system-ui,sans-serif;
+  padding:8px 12px;border-radius:8px;max-width:320px;
+  border:1px solid var(--accent-glow);
+  box-shadow:0 8px 28px rgba(0,0,0,.55),0 0 16px var(--accent-glow),inset 0 1px 0 rgba(255,255,255,.04);
+  white-space:pre-wrap;word-break:keep-all;
+  opacity:0;transform:translateY(-4px);
+  transition:opacity .15s ease,transform .15s ease;
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+}
+.custom-tooltip.show{opacity:1;transform:translateY(0)}
+.custom-tooltip::before{
+  content:'';position:absolute;width:8px;height:8px;
+  background:inherit;border-left:1px solid var(--accent-glow);
+  border-top:1px solid var(--accent-glow);
+  transform:rotate(45deg);
+}
+.custom-tooltip.below::before{top:-5px;left:14px}
+.custom-tooltip.above::before{bottom:-5px;left:14px;border-left:none;border-top:none;
+  border-right:1px solid var(--accent-glow);border-bottom:1px solid var(--accent-glow)}
 .side-tabs{
   display:flex;border-bottom:1px solid var(--border);flex-shrink:0;
   background:rgba(0,0,0,.25);
@@ -1080,6 +1107,94 @@ Telegram, YouTube, Google Calendar, PayPal 등 외부 서비스 자격증명을 
 
 <script>
 const vscode = acquireVsCodeApi();
+
+/* === Custom tooltip system (1s delay, neon style) ===
+   브라우저 기본 title 은 너무 느리고(2-3초) hover 위치도 마우스 따라 깜빡임.
+   대신 모든 [title] 을 data-tip 으로 옮겨서 native tooltip 끄고, 우리가
+   1초 후에 정확히 element 아래에 띄운다. dynamic 으로 추가되는 element 도
+   event delegation 으로 자동 캐치. */
+(function setupTooltips(){
+  const tipEl = document.createElement('div');
+  tipEl.className = 'custom-tooltip';
+  document.body.appendChild(tipEl);
+  let showTimer = null;
+  let activeEl = null;
+
+  function migrateTitle(el){
+    if (!el || !el.getAttribute) return;
+    const t = el.getAttribute('title');
+    if (t && !el.hasAttribute('data-tip')) {
+      el.setAttribute('data-tip', t);
+      el.removeAttribute('title');
+    }
+  }
+  /* 초기 sweep — 페이지의 모든 [title] 을 data-tip 으로 변환. */
+  document.querySelectorAll('[title]').forEach(migrateTitle);
+  /* MutationObserver — 동적으로 추가되는 [title] 도 잡아냄. */
+  const mo = new MutationObserver((records) => {
+    for (const r of records) {
+      r.addedNodes.forEach((n) => {
+        if (n.nodeType !== 1) return;
+        migrateTitle(n);
+        n.querySelectorAll && n.querySelectorAll('[title]').forEach(migrateTitle);
+      });
+      if (r.type === 'attributes' && r.attributeName === 'title') {
+        migrateTitle(r.target);
+      }
+    }
+  });
+  mo.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['title'] });
+
+  function hideTip(){
+    if (showTimer) { clearTimeout(showTimer); showTimer = null; }
+    tipEl.classList.remove('show');
+    activeEl = null;
+  }
+  function showTipFor(el){
+    const text = el.getAttribute('data-tip');
+    if (!text) return;
+    tipEl.textContent = text;
+    /* 위치: element 아래쪽 기본, 화면 하단 가까우면 위쪽으로 flip */
+    const r = el.getBoundingClientRect();
+    const margin = 8;
+    /* 임시로 표시해서 실제 크기 측정 */
+    tipEl.style.left = '-9999px';
+    tipEl.style.top = '0';
+    tipEl.classList.add('show');
+    const tw = tipEl.offsetWidth, th = tipEl.offsetHeight;
+    const winW = window.innerWidth, winH = window.innerHeight;
+    let left = r.left;
+    let top = r.bottom + margin;
+    let placement = 'below';
+    if (top + th > winH - 8) { top = r.top - th - margin; placement = 'above'; }
+    if (left + tw > winW - 8) left = winW - tw - 8;
+    if (left < 8) left = 8;
+    tipEl.classList.toggle('below', placement === 'below');
+    tipEl.classList.toggle('above', placement === 'above');
+    tipEl.style.left = left + 'px';
+    tipEl.style.top = top + 'px';
+  }
+  document.addEventListener('mouseover', (e) => {
+    const el = e.target && e.target.closest && e.target.closest('[data-tip]');
+    if (!el || el === activeEl) return;
+    if (showTimer) clearTimeout(showTimer);
+    activeEl = el;
+    tipEl.classList.remove('show');
+    showTimer = setTimeout(() => showTipFor(el), 1000);
+  });
+  document.addEventListener('mouseout', (e) => {
+    const leaving = e.target && e.target.closest && e.target.closest('[data-tip]');
+    if (!leaving) return;
+    /* mouseout 은 자식으로 옮겨갈 때도 발사되므로 relatedTarget 확인 */
+    const to = e.relatedTarget;
+    if (to && leaving.contains(to)) return;
+    hideTip();
+  });
+  document.addEventListener('mousedown', hideTip, true);
+  window.addEventListener('blur', hideTip);
+  window.addEventListener('scroll', hideTip, true);
+})();
+
 const floor = document.getElementById('floor');
 const beams = document.getElementById('beams');
 const whiteboard = document.getElementById('whiteboard');
