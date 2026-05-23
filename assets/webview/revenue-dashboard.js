@@ -18,25 +18,11 @@ const fmtInt = (n) => Number(n||0).toLocaleString();
 let lastData = null;
 let firstRender = true;
 
-// ───────── Glyph rain (background) ─────────
-function spawnGlyphRain() {
-  const wrap = $('glyphRain');
-  if (!wrap) return;
-  const W = window.innerWidth;
-  const cols = Math.min(40, Math.floor(W / 28));
-  const glyphs = 'ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿ$01_-アエ◆◇⬢⬡';
-  for (let i = 0; i < cols; i++) {
-    const col = document.createElement('div');
-    col.className = 'col';
-    col.style.left = (i / cols * 100) + '%';
-    col.style.animationDuration = (10 + Math.random() * 25) + 's';
-    col.style.animationDelay = (-Math.random() * 20) + 's';
-    let txt = '';
-    for (let r = 0; r < 30; r++) txt += glyphs[Math.floor(Math.random()*glyphs.length)] + '\n';
-    col.textContent = txt;
-    wrap.appendChild(col);
-  }
-}
+// ───────── Glyph rain (background) — DISABLED ─────────
+// 사용자 요청으로 카타카나/특수문자 매트릭스 비 효과 비활성. 시각 노이즈만
+// 더하고 정보 가치는 0. 컨테이너가 비어있어도 .glyph-rain CSS opacity 0.08
+// 라 화면에 안 보임. 함수 보존(콜 사이트 호환) 후 no-op.
+function spawnGlyphRain() { /* intentionally empty */ }
 
 // ───────── Count-up animation ─────────
 function countUp(el, target, opts = {}) {
