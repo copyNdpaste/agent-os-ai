@@ -1314,6 +1314,16 @@ export function activate(context: vscode.ExtensionContext) {
         setDashboardExtensionUri: (uri: vscode.Uri) => { _dashboardExtensionUri = uri; },
     };
     _registerAllCommands(context, commandProviders);
+    /* Panel snapshot — ctx 주입 후 이전에 열려있던 panel(office/dashboard/api/
+       revenue) 들을 자동 복원. globalState 에 저장돼있어 VS Code reload 해도
+       유지. 각 panel 의 createOrShow / dispose 에서 자동으로 mark. */
+    try {
+        const reg = require('./views/panel-registry');
+        reg.setRegistryContext(context);
+        reg.restoreOpenPanels({ chatProvider: provider, extensionContext: context });
+    } catch (e) {
+        console.warn('[activation] panel snapshot restore failed:', e);
+    }
 }
 
 

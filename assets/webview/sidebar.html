@@ -5080,6 +5080,14 @@ window.addEventListener('message',e=>{const msg=e.data;switch(msg.type){
     if(msg.value&&msg.value.length>0){
       document.body.classList.remove('init');
       msg.value.forEach(m=>addMsg(m.text,m.role));
+      /* reload 직후 사용자가 가장 보고 싶어하는 건 최신 메시지. addMsg 의
+         scrollChatToBottomIfNear() 은 "이미 하단 근처일 때만" 스크롤하므로
+         새로 mount 된 상태에서는 가장 위에 머무름. 두 번 누적해서 강제로
+         하단으로 보냄 (innerHTML 갱신 후 layout 안정화에 한 frame 필요). */
+      requestAnimationFrame(() => {
+        chat.scrollTop = chat.scrollHeight;
+        requestAnimationFrame(() => { chat.scrollTop = chat.scrollHeight; });
+      });
     } else {
       document.body.classList.add('init');
       chat.innerHTML=welcomeHtml();

@@ -131,6 +131,7 @@ export class CompanyDashboardPanel {
             { enableScripts: true, retainContextWhenHidden: true }
         );
         CompanyDashboardPanel.current = new CompanyDashboardPanel(panel, extensionUri);
+        try { require('./panel-registry').markOpen('company-dashboard'); } catch { /* ignore */ }
     }
 
     private constructor(panel: vscode.WebviewPanel, _extUri: vscode.Uri) {
@@ -820,6 +821,7 @@ export class CompanyDashboardPanel {
 
     private _dispose() {
         CompanyDashboardPanel.current = null;
+        try { require('./panel-registry').markClosed('company-dashboard'); } catch { /* ignore */ }
         if (this._refreshTimer) { clearInterval(this._refreshTimer); this._refreshTimer = null; }
         while (this._disposables.length) {
             const d = this._disposables.pop();
