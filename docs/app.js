@@ -7,6 +7,27 @@ const flowSteps = [
   ['06', 'MVP 실행', '조나단아이브와 개발신이 최소 제품 경험과 구현 범위를 정하고 실제 산출물로 만듭니다.']
 ];
 
+const signalMetrics = {
+  ideaScore: {
+    value: 82,
+    min: 64,
+    max: 96,
+    captions: ['댓글·DM 증가', '대기자 신청 반영', '클릭률 상승', '구매 의향 신호']
+  },
+  experiments: {
+    value: 30,
+    min: 12,
+    max: 48,
+    captions: ['X·Threads 테스트', '릴스 후크 A/B', '랜딩 CTA 실험', '2주 검증 루프']
+  },
+  mvpCandidates: {
+    value: 3,
+    min: 1,
+    max: 7,
+    captions: ['수요 신호 상위권', 'MVP 후보 압축', '개발 우선순위 갱신', '강한 신호만 남김']
+  }
+};
+
 const agentCards = [
   {
     name: '일론머스크',
@@ -370,6 +391,13 @@ function renderExampleGraph() {
   `).join('');
 
   root.innerHTML = `
+    <div class="graph-toolbar">
+      <div>
+        <span class="path">Live Flow</span>
+        <strong>아이디어와 반응 데이터가 흐르는 경로</strong>
+      </div>
+      <button class="graph-toggle" type="button" aria-pressed="false">일시정지</button>
+    </div>
     <div class="graph-canvas">
       <svg class="graph-lines" viewBox="0 0 1000 360" preserveAspectRatio="none" aria-hidden="true">
         <path class="graph-backbone" d="M80 180 C220 70, 330 292, 470 180 S720 70, 900 180" />
@@ -385,8 +413,11 @@ function renderExampleGraph() {
 
   const detail = document.getElementById('graphDetail');
   const buttons = Array.from(root.querySelectorAll('.graph-node'));
+  const canvas = root.querySelector('.graph-canvas');
+  const toggle = root.querySelector('.graph-toggle');
   let activeIndex = 0;
   let timer = null;
+  let paused = false;
 
   const draw = (index) => {
     activeIndex = index;
@@ -417,9 +448,36 @@ function renderExampleGraph() {
     `;
   };
 
-  const restart = () => {
+  const stop = () => {
     if (timer) clearInterval(timer);
-    timer = setInterval(() => draw((activeIndex + 1) % exampleFlowStages.length), 3200);
+    timer = null;
+  };
+
+  const updateToggle = () => {
+    toggle.textContent = paused ? '재생' : '일시정지';
+    toggle.setAttribute('aria-pressed', String(paused));
+  };
+
+  const restart = () => {
+    stop();
+    if (paused) return;
+    timer = setInterval(() => draw((activeIndex + 1) % exampleFlowStages.length), 4200);
+  };
+
+  const hold = () => {
+    stop();
+  };
+
+  const pause = () => {
+    paused = true;
+    stop();
+    updateToggle();
+  };
+
+  const play = () => {
+    paused = false;
+    updateToggle();
+    restart();
   };
 
   root.addEventListener('click', (event) => {
@@ -429,7 +487,23 @@ function renderExampleGraph() {
     restart();
   });
 
+  canvas.addEventListener('mouseenter', hold);
+  canvas.addEventListener('mouseleave', restart);
+  canvas.addEventListener('focusin', hold);
+  canvas.addEventListener('focusout', restart);
+  detail.addEventListener('mouseenter', hold);
+  detail.addEventListener('mouseleave', restart);
+
+  toggle.addEventListener('click', () => {
+    if (paused) {
+      play();
+    } else {
+      pause();
+    }
+  });
+
   draw(0);
+  updateToggle();
   restart();
 }
 
@@ -508,6 +582,33 @@ function renderTimeline() {
   `).join('');
 }
 
+function renderSignalMetrics() {
+  const metricEntries = Object.entries(signalMetrics);
+  const update = () => {
+    metricEntries.forEach(([key, metric]) => {
+      const valueEl = document.querySelector(`[data-metric="${key}"]`);
+      const captionEl = document.querySelector(`[data-metric-caption="${key}"]`);
+      if (!valueEl || !captionEl) return;
+
+      const direction = Math.random() > 0.42 ? 1 : -1;
+      const step = key === 'mvpCandidates'
+        ? 1
+        : Math.max(1, Math.round(Math.random() * (key === 'experiments' ? 4 : 6)));
+      metric.value = Math.min(metric.max, Math.max(metric.min, metric.value + direction * step));
+
+      valueEl.textContent = String(metric.value);
+      valueEl.classList.remove('metric-pulse');
+      void valueEl.offsetWidth;
+      valueEl.classList.add('metric-pulse');
+      captionEl.textContent = metric.captions[Math.floor(Math.random() * metric.captions.length)];
+    });
+  };
+
+  update();
+  setInterval(update, 2600);
+}
+
+renderSignalMetrics();
 renderAgents();
 renderCollaboration();
 renderFlow();

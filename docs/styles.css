@@ -206,10 +206,16 @@ h3 {
   margin: 9px 0 4px;
   font-size: 38px;
   line-height: 1;
+  transition: color .18s ease, transform .18s ease;
 }
 
 .metric-card.hot {
   border-color: rgba(94, 215, 223, 0.55);
+}
+
+.metric-pulse {
+  color: var(--cyan);
+  transform: translateY(-2px);
 }
 
 .mini-graph {
@@ -476,6 +482,48 @@ h3 {
   align-items: stretch;
 }
 
+.graph-toolbar {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.graph-toolbar .path {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--cyan);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+.graph-toolbar strong {
+  display: block;
+  font-size: 15px;
+}
+
+.graph-toggle {
+  min-width: 92px;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid rgba(94,215,223,0.5);
+  border-radius: 7px;
+  color: var(--text);
+  background: rgba(94,215,223,0.1);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.graph-toggle[aria-pressed="true"] {
+  border-color: rgba(96,211,148,0.55);
+  background: rgba(96,211,148,0.1);
+}
+
 .graph-canvas,
 .graph-detail {
   border: 1px solid var(--line);
@@ -549,11 +597,11 @@ h3 {
 
 .graph-node {
   position: absolute;
-  left: calc(7% + (var(--i) * 16.8%));
+  left: calc(12% + (var(--i) * 15.2%));
   top: calc(50% + (var(--row) * 88px) - 68px);
   display: grid;
   gap: 4px;
-  min-width: 116px;
+  width: clamp(104px, 13vw, 128px);
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -648,13 +696,13 @@ h3 {
 }
 
 @keyframes packetMove {
-  0% { left: 8%; top: 49%; opacity: 0; transform: scale(.8); }
+  0% { left: 10%; top: 49%; opacity: 0; transform: scale(.8); }
   10% { opacity: 1; }
   25% { left: 25%; top: 30%; }
   48% { left: 47%; top: 50%; }
   72% { left: 70%; top: 29%; }
   94% { opacity: 1; }
-  100% { left: 91%; top: 49%; opacity: 0; transform: scale(1.1); }
+  100% { left: 89%; top: 49%; opacity: 0; transform: scale(1.1); }
 }
 
 .automation-step {
