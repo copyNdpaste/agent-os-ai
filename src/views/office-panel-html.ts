@@ -1915,12 +1915,17 @@ function endOutCard(agentId){ delete outCardEls[agentId]; }
 function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 /* 대화록·산출물용 미니 markdown 렌더러. heading(#·##·###), bold(**), italic(_·*),
    inline code(\`\`), blockquote(>), hr(---), list (-·*·1.), 줄바꿈 처리.
-   외부 라이브러리 없이 webview 안에서 동작. XSS 방어 위해 escape 먼저. */
+   외부 라이브러리 없이 webview 안에서 동작. XSS 방어 위해 escape 먼저.
+   ⚠️ 이 함수는 office-panel-html.ts 의 template literal 안에 들어가므로,
+   regex/string 안의 backslash escape (\\n, \\s, \\*, \\d, \\.) 는 반드시 이중
+   backslash 로 써야 한다. TS 가 template literal 을 처리할 때 단일 \\ 가
+   사라져서 regex literal 이 두 줄로 깨지거나 \\s 가 그냥 s 로 바뀌어 정규식
+   자체가 잘못된다 (Uncaught SyntaxError: missing /). */
 function renderMarkdown(text){
   if (!text) return '';
   let html = escapeHtml(text);
-  // code fences (triple backtick blocks) — backtick via \x60 to avoid template-string clash
-  html = html.replace(new RegExp('\\x60\\x60\\x60([\\s\\S]*?)\\x60\\x60\\x60', 'g'), function(_, code){ return '<pre class="md-pre"><code>'+code.replace(/^\n/,'')+'</code></pre>'; });
+  // code fences (triple backtick blocks) — backtick via \\x60 to avoid template-string clash
+  html = html.replace(new RegExp('\\x60\\x60\\x60([\\s\\S]*?)\\x60\\x60\\x60', 'g'), function(_, code){ return '<pre class="md-pre"><code>'+code.replace(/^\\n/,'')+'</code></pre>'; });
   // inline code (single backtick spans)
   html = html.replace(new RegExp('\\x60([^\\x60\\n]+)\\x60', 'g'), '<code class="md-code">$1</code>');
   // headings
@@ -1928,25 +1933,25 @@ function renderMarkdown(text){
   html = html.replace(/^## (.+)$/gm, '<h2 class="md-h2">$1</h2>');
   html = html.replace(/^# (.+)$/gm, '<h1 class="md-h1">$1</h1>');
   // hr
-  html = html.replace(/^[-_*]{3,}\s*$/gm, '<hr class="md-hr">');
+  html = html.replace(/^[-_*]{3,}\\s*$/gm, '<hr class="md-hr">');
   // blockquote — 연속 > 라인을 하나로 묶지 않고 한 줄씩 (간단하게)
   html = html.replace(/^&gt; (.+)$/gm, '<div class="md-quote">$1</div>');
   // bold + italic
-  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-  html = html.replace(/(^|[\s(])_([^_\n]+)_(?=[\s).,!?:;]|$)/g, '$1<em>$2</em>');
+  html = html.replace(/\\*\\*([^*]+)\\*\\*/g, '<strong>$1</strong>');
+  html = html.replace(/(^|[\\s(])_([^_\\n]+)_(?=[\\s).,!?:;]|$)/g, '$1<em>$2</em>');
   // unordered list — - or * 시작 줄들을 <li> 로
-  html = html.replace(/(?:^|\n)([-*] .+(?:\n[-*] .+)*)/g, (m, block) => {
-    const items = block.split(/\n/).map(l => l.replace(/^[-*] /, '').trim()).filter(Boolean);
-    return '\n<ul class="md-ul">'+items.map(i => '<li>'+i+'</li>').join('')+'</ul>';
+  html = html.replace(/(?:^|\\n)([-*] .+(?:\\n[-*] .+)*)/g, (m, block) => {
+    const items = block.split(/\\n/).map(l => l.replace(/^[-*] /, '').trim()).filter(Boolean);
+    return '\\n<ul class="md-ul">'+items.map(i => '<li>'+i+'</li>').join('')+'</ul>';
   });
   // ordered list
-  html = html.replace(/(?:^|\n)(\d+\. .+(?:\n\d+\. .+)*)/g, (m, block) => {
-    const items = block.split(/\n/).map(l => l.replace(/^\d+\. /, '').trim()).filter(Boolean);
-    return '\n<ol class="md-ol">'+items.map(i => '<li>'+i+'</li>').join('')+'</ol>';
+  html = html.replace(/(?:^|\\n)(\\d+\\. .+(?:\\n\\d+\\. .+)*)/g, (m, block) => {
+    const items = block.split(/\\n/).map(l => l.replace(/^\\d+\\. /, '').trim()).filter(Boolean);
+    return '\\n<ol class="md-ol">'+items.map(i => '<li>'+i+'</li>').join('')+'</ol>';
   });
   // line breaks (남은 일반 줄은 <br>)
-  html = html.replace(/\n{2,}/g, '<div class="md-gap"></div>');
-  html = html.replace(/\n/g, '<br>');
+  html = html.replace(/\\n{2,}/g, '<div class="md-gap"></div>');
+  html = html.replace(/\\n/g, '<br>');
   return html;
 }
 
