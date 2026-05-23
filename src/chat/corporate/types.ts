@@ -39,15 +39,23 @@ export interface CorporateContext {
     /** Backing field — phases need to mutate the pending mirror flag. */
     setTelegramMirrorPending: (v: boolean) => void;
     getTelegramMirrorPending: () => boolean;
-    /** LLM call (already bound to the active AbortController). */
+    /** LLM call (already bound to the active AbortController).
+     *  `onChunk` fires for every streamed token — used by SessionStateWriter
+     *  to persist agent output incrementally so a crash mid-stream still
+     *  keeps everything written so far. */
     callAgentLLM: (
         systemPrompt: string,
         userMsg: string,
         modelName: string,
         agentId: string,
         broadcast: boolean,
-        opts?: { jsonMode?: boolean; onFirstToken?: () => void }
+        opts?: { jsonMode?: boolean; onFirstToken?: () => void; onChunk?: (chunk: string) => void }
     ) => Promise<string>;
+    /** Optional checkpoint writer. When present, each phase pushes progress
+     *  to disk so an interrupted session can be detected (and eventually
+     *  resumed) on next launch. Undefined when called from contexts that
+     *  don't need persistence (tests, secondary internal calls). */
+    sessionWriter?: import('../../dispatch/session-state').SessionStateWriter;
     /** Execute embedded XML action tags inside an agent output. */
     executeActions: (
         aiMessage: string,

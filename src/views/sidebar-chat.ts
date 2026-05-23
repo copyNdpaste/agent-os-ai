@@ -937,6 +937,53 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         return _hBuildThinkingHtml(graph, forceGraphSrc, cspSource);
     }
 
+    /** Scan sessions/* for state.json files left in 'running' status (extension
+     *  crashed mid-dispatch, network died, user closed VS Code, etc) and post
+     *  a recovery card to the sidebar webview. No-op when none found. */
+    private async _postIncompleteSessions(): Promise<void> {
+        if (!this._view) return;
+        try {
+            const { scanIncompleteSessions } = await import('../dispatch/session-state');
+            const incomplete = scanIncompleteSessions(getCompanyDir());
+            if (incomplete.length === 0) return;
+            const summary = incomplete.map(s => ({
+                sessionDir: s.state.sessionDir,
+                id: s.state.id,
+                prompt: s.state.prompt,
+                currentStep: s.state.currentStep,
+                staleMinutes: s.staleMinutes,
+                completedPhases: s.state.completedPhases,
+                hasReport: !!s.state.report,
+                agentCount: Object.keys(s.state.outputs).length,
+            }));
+            this._view.webview.postMessage({ type: 'incompleteSessions', sessions: summary });
+        } catch (e) {
+            console.error('[sidebar-chat] postIncompleteSessions failed:', e);
+        }
+    }
+
+    /** Mark a session as aborted on disk. Called from recovery card "폐기". */
+    private async _discardSession(sessionDir: string): Promise<void> {
+        try {
+            const { markSessionAborted } = await import('../dispatch/session-state');
+            const stateFile = path.join(sessionDir, 'state.json');
+            markSessionAborted(stateFile, 'user discarded from recovery card');
+            /* Re-scan so card refreshes (if other incomplete sessions remain). */
+            this._postIncompleteSessions();
+        } catch (e) {
+            console.error('[sidebar-chat] discardSession failed:', e);
+        }
+    }
+
+    /** Reveal a session folder in OS file manager. */
+    private _openSessionFolder(sessionDir: string): void {
+        try {
+            vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(sessionDir));
+        } catch (e) {
+            console.error('[sidebar-chat] openSessionFolder failed:', e);
+        }
+    }
+
     /** 메모리 누수 방지: 대화 이력 길이 제한 (최근 50건만 유지, 시스템 프롬프트는 보존) */
     private _pruneHistory() {
         const pruned = _hPruneHistory(this._chatHistory, this._displayMessages);
@@ -2231,6 +2278,9 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             handleBrainMenu: () => this._handleBrainMenu(),
             handleStatusFolderClick: () => this._handleStatusFolderClick(),
             handleStatusGitClick: () => this._handleStatusGitClick(),
+            postIncompleteSessions: () => this._postIncompleteSessions(),
+            discardSession: (dir) => this._discardSession(dir),
+            openSessionFolder: (dir) => this._openSessionFolder(dir),
             sendModels: () => this._sendModels(),
             sendCompanyState: (note) => this._sendCompanyState(note),
             sendStatusUpdate: () => this._sendStatusUpdate(),
@@ -2464,10 +2514,24 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
         // stop button calls _abortController.abort() which propagates through.
         this._abortController = new AbortController();
         const isAborted = () => !!this._abortController?.signal.aborted;
+        /* Session-state writer is created right after sessionDir so every
+           phase that follows can checkpoint progress to disk. Declared out
+           here so the outer try/finally can call finish() exactly once. */
+        let sessionWriter: import('../dispatch/session-state').SessionStateWriter | undefined;
         try {
             ensureCompanyStructure();
             const sessionDir = makeSessionDir();
             const sessionDisplay = sessionDir.replace(os.homedir(), '~');
+            /* Lazy import keeps the dispatch entry hot path slim and lets the
+               session-state module stay tree-shakable. */
+            const { SessionStateWriter } = await import('../dispatch/session-state');
+            sessionWriter = new SessionStateWriter({
+                sessionDir,
+                prompt,
+                modelName,
+                fromTelegram: false,
+            });
+            sessionWriter.setStep('CEO 계획 중');
 
             this._displayMessages.push({ text: prompt, role: 'user' });
 
@@ -2892,6 +2956,9 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
                (이미 SPECIALIST_IDS find 로 dropped 됐지만, 명시 가드로 한 번 더.) */
             plan.tasks = plan.tasks.filter(t => SPECIALIST_IDS.includes(t.agent));
 
+            /* Checkpoint: planner finished, persist plan to state.json. */
+            sessionWriter?.setPlan({ brief: plan.brief, tasks: plan.tasks });
+
             // brief 저장
             try {
                 fs.writeFileSync(
@@ -2946,6 +3013,7 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
                 getProjectMemory: () => this._getProjectMemory(),
                 tryKitShortcut: (id, p) => this._tryKitShortcut(id, p),
                 tryRevenueShortcut: (p) => this._tryRevenueShortcut(p),
+                sessionWriter,
             };
             const __loopResult = await runSpecialistLoop({
                 ctx: corpCtx,
@@ -3083,11 +3151,15 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
             const sessionMsg = `chore(corporate): session ${path.basename(sessionDir)}`;
             _safeGitAutoSync(brainDir, sessionMsg, this).catch(() => { /* silent */ });
             _safeGitAutoSyncCompany(sessionMsg, this).catch(() => { /* silent */ });
+            /* Checkpoint: full dispatch finished cleanly. */
+            sessionWriter?.finish('completed');
         } catch (error: any) {
             if (isAborted()) {
                 this._broadcastCorporate({ type: 'error', value: '🛑 사용자가 중단했어요.' });
+                sessionWriter?.finish('aborted', 'user aborted');
             } else {
                 this._broadcastCorporate({ type: 'error', value: `⚠️ 1인 기업 모드 오류: ${error.message}` });
+                sessionWriter?.finish('failed', String(error?.message || error).slice(0, 500));
             }
         } finally {
             this._abortController = undefined;
@@ -3100,6 +3172,14 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
                webview는 여전히 "응답 중" 상태로 입력 막혀있었음. 사용자가 정지 버튼을
                눌러야 풀리는 사고. 어떤 경로로 끝나든 finally에서 streamEnd 보장. */
             try { this._view?.webview.postMessage({ type: 'streamEnd' }); } catch { /* ignore */ }
+            /* Defensive: if try-block returned early before finish() ran (e.g.
+               earlyReturn from specialist-loop after abort), make sure status
+               isn't left as 'running' forever. Status is idempotent — second
+               finish() on a terminal writer is a no-op. */
+            if (sessionWriter) {
+                const snap = sessionWriter.snapshot();
+                if (snap.status === 'running') sessionWriter.finish('aborted', 'early return');
+            }
         }
     }
 
@@ -3110,7 +3190,7 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
         modelName: string,
         agentId: string,
         broadcast: boolean,
-        opts?: { jsonMode?: boolean; onFirstToken?: () => void }
+        opts?: { jsonMode?: boolean; onFirstToken?: () => void; onChunk?: (chunk: string) => void }
     ): Promise<string> {
         const agentDef = AGENTS[agentId];
         const tier: Tier = agentDef?.tier ?? _modelToTier(modelName);
@@ -3135,6 +3215,11 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
             result += token;
             if (broadcast) {
                 this._broadcastCorporate({ type: 'agentChunk', agent: agentId, value: token });
+            }
+            /* Session checkpoint: stream chunk straight to disk-writer if attached.
+               Writer throttles to ~1s so this is cheap. */
+            if (opts?.onChunk) {
+                try { opts.onChunk(token); } catch { /* never break LLM stream */ }
             }
         });
         return result;

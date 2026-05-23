@@ -53,6 +53,13 @@ export interface MessageContext {
     handleBrainMenu(): Promise<void>;
     handleStatusFolderClick(): Promise<void>;
     handleStatusGitClick(): Promise<void>;
+    /** Scan sessions/* for state.json files with status='running' and post
+     *  a recovery card to the webview (incompleteSessions message). */
+    postIncompleteSessions(): void;
+    /** Mark a session as aborted on disk (used by recovery card 폐기 button). */
+    discardSession(sessionDir: string): void;
+    /** Open a session folder in OS file manager. */
+    openSessionFolder(sessionDir: string): void;
     sendModels(): Promise<void>;
     sendCompanyState(noteToUser?: string): void;
     sendStatusUpdate(): void;
