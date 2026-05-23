@@ -211,7 +211,12 @@ body{display:flex;flex-direction:column}
 .world-decorations img{position:absolute;image-rendering:pixelated;image-rendering:crisp-edges;filter:drop-shadow(0 2px 3px rgba(0,0,0,.5));display:block;transform:translate(-50%,-100%)}
 .office-bg{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated;image-rendering:crisp-edges;pointer-events:none;display:block}
 .office-zones{position:absolute;inset:0;pointer-events:none;z-index:2}
-.office-zones .zone-label{position:absolute;font-family:'SF Mono',monospace;font-size:8px;letter-spacing:1px;color:var(--accent);text-transform:uppercase;text-shadow:0 0 6px rgba(0,255,65,.7),0 1px 2px rgba(0,0,0,.95);opacity:.55;transform:translate(-50%,-100%);white-space:nowrap;padding:1px 4px;border-radius:2px;background:rgba(0,8,4,.45)}
+.office-zones .zone-label{position:absolute;font-family:'SF Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--accent);text-transform:uppercase;text-shadow:0 0 8px rgba(0,255,65,.85),0 1px 2px rgba(0,0,0,.95);opacity:.8;transform:translate(-50%,-100%);white-space:nowrap;padding:2px 6px;border-radius:3px;background:rgba(0,8,4,.55);border:1px solid rgba(0,255,65,.25)}
+
+/* Ambient decor — 빈 영역에 떠다니는 작은 이모지. opacity 살짝, 천천히 위아래 */
+.ambient-decor{position:absolute;inset:0;pointer-events:none;z-index:3}
+.adeco{position:absolute;font-size:14px;opacity:.55;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4));animation:adecoFloat 6s ease-in-out infinite;transform:translate(-50%,-50%)}
+@keyframes adecoFloat{0%,100%{transform:translate(-50%,-50%) translateY(0)}50%{transform:translate(-50%,-50%) translateY(-4px)}}
 /* Hide legacy single-room overlay UI in unified-office mode. */
 body.floorplan .conf-room,body.floorplan .location{display:none!important}
 .office-vignette{position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.45) 100%);pointer-events:none;z-index:3}
@@ -502,6 +507,9 @@ textarea.amd-input{resize:vertical;min-height:50px;line-height:1.45}
    Idle frame: row 1, col 0 → background-position: 0 -96px
    Walking row: row 2 (y=-192), 6 frames per direction (down 0–5, left 6–11, right 12–17, up 18–23) */
 .character{width:48px;height:96px;position:relative;overflow:hidden;image-rendering:pixelated;cursor:default;background-repeat:no-repeat;background-position:0 -96px;background-size:auto;filter:drop-shadow(0 6px 8px rgba(0,0,0,.65));animation:charBob 2.4s ease-in-out infinite;transform:scale(0.8);transform-origin:center bottom}
+/* photo-sprite: 사진 기반 단일 픽셀 sprite. atlas 가 아니므로 background-position 시프트
+   금지하고 한 장 그대로 contain 으로 보여줌. 비율 살리려면 width 도 자연히 채워야 함. */
+.character.photo-sprite{width:64px;height:96px;background-position:center center !important;background-size:contain !important;overflow:visible}
 @keyframes charBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-1px)}}
 
 /* State glow under character */
@@ -582,6 +590,21 @@ body.dispatching .beams{opacity:1}
 }
 .side-tab.active .tab-count{background:var(--accent);color:#1a0f00}
 .side-pane{flex:1;overflow-y:auto;padding:14px 12px;display:none}
+/* Markdown 요소 — 대화록·산출물 탭 안에서 읽기 좋게. side-pane 다크 톤에 맞춤. */
+.md-h1{font-size:14px;font-weight:700;color:var(--accent);margin:14px 0 6px;letter-spacing:-.2px}
+.md-h2{font-size:13px;font-weight:700;color:var(--text-bright,#f1f5f9);margin:12px 0 5px;padding-bottom:3px;border-bottom:1px solid rgba(0,255,65,.2)}
+.md-h3{font-size:12px;font-weight:700;color:var(--accent);margin:10px 0 4px;display:inline-block}
+.md-quote{border-left:2px solid var(--accent);padding:3px 10px;margin:3px 0 3px 8px;color:var(--text,#cbd5e1);background:rgba(0,255,65,.04);border-radius:0 4px 4px 0;font-size:11.5px;line-height:1.55}
+.md-quote strong{color:var(--text-bright,#f1f5f9)}
+.md-pre{background:rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:8px 10px;overflow-x:auto;margin:6px 0;font-family:'SF Mono','JetBrains Mono',monospace;font-size:11px;line-height:1.5}
+.md-pre code{color:#a5f3fc}
+.md-code{background:rgba(0,0,0,.45);color:#a5f3fc;padding:1px 5px;border-radius:3px;font-family:'SF Mono','JetBrains Mono',monospace;font-size:11px;border:1px solid rgba(255,255,255,.08)}
+.md-hr{border:none;height:1px;background:linear-gradient(90deg,transparent,rgba(0,255,65,.4),transparent);margin:10px 0}
+.md-ul,.md-ol{padding-left:18px;margin:4px 0}
+.md-ul li,.md-ol li{margin:2px 0;font-size:11.5px;line-height:1.6}
+.md-gap{height:6px}
+#convBody strong{color:var(--text-bright,#f1f5f9);font-weight:700}
+#convBody em{color:var(--text,#cbd5e1);font-style:italic}
 .side-pane.active{display:block}
 .side-pane::-webkit-scrollbar{width:5px}
 .side-pane::-webkit-scrollbar-thumb{background:rgba(0,255,65,.35);border-radius:3px}
@@ -842,6 +865,7 @@ body.dispatching .beams{opacity:1}
   <div class="actions">
     <button class="topbtn" id="workdayBtn" title="24시간 자동 운영 — 설정 로딩 중...">24h ⋯</button>
     <button class="topbtn primary" id="dashboardBtn" title="👥 직원 에이전트 보기 — 팀 전체 한눈에">👥 직원 에이전트 보기</button>
+    <button class="topbtn ghost" id="revenueBtn" title="💰 매출 컨트롤 센터 — 클릭해서 펼치기">💰</button>
     <button class="topbtn ghost" id="apiBtn" title="🔌 외부 연결 — Telegram · YouTube · Google Calendar 등 API 키 한 곳에서">🔌</button>
     <button class="topbtn ghost" id="toggleSideBtn" title="활동 로그 패널 토글">📋</button>
     <button class="topbtn ghost" id="folderBtn" title="회사 폴더 열기">📁</button>
@@ -859,7 +883,7 @@ body.dispatching .beams{opacity:1}
 <!-- v2.89.143 — Floating Revenue Command Center overlay. 사무실 화면 우상단
      에 떠 있는 매트릭스 풍 HUD. 미니 KPI + 14일 sparkline + 풀스크린 진입 버튼.
      사무실 분위기 안 깨고 별도 레이어로 매출 한눈에 확인. -->
-<div class="floating-revenue" id="floatingRevenue">
+<div class="floating-revenue hidden" id="floatingRevenue">
   <div class="fr-glow"></div>
   <div class="fr-head">
     <div class="fr-icon">💰</div>
@@ -897,7 +921,8 @@ body.dispatching .beams{opacity:1}
 </div>
 
 <!-- 숨김 상태에서 다시 열 수 있는 작은 핍 (floating 닫혔을 때만 보임) -->
-<button class="fr-reopen" id="frReopen" title="매출 컨트롤 센터 열기">💰</button>
+<!-- 플로팅 reopen 핍은 헤더 #revenueBtn 으로 대체됨. 호환을 위해 hidden 상태로 유지. -->
+<button class="fr-reopen" id="frReopen" title="매출 컨트롤 센터 열기" style="display:none">💰</button>
 
 <div class="office-wrap">
   <div class="office-floor" id="floor">
@@ -912,6 +937,14 @@ body.dispatching .beams{opacity:1}
         <div class="world-buildings" id="worldBuildings"></div>
         <div class="world-decorations" id="worldDecor"></div>
         <div class="office-zones" id="officeZones"></div>
+        <!-- Ambient decor — 빈 영역에 작은 floating emoji 5개. 디테일만 살짝. -->
+        <div class="ambient-decor" aria-hidden="true">
+          <span class="adeco" style="left:5%;top:10%;animation-delay:0s">🌿</span>
+          <span class="adeco" style="left:97%;top:14%;animation-delay:1.2s">☕</span>
+          <span class="adeco" style="left:48%;top:6%;animation-delay:2.4s">✨</span>
+          <span class="adeco" style="left:8%;top:88%;animation-delay:3.1s">📚</span>
+          <span class="adeco" style="left:92%;top:90%;animation-delay:4.5s">🕐</span>
+        </div>
         <!-- agents inserted here by JS — coords resolve % of stageInner -->
       </div>
     </div>
@@ -1064,9 +1097,11 @@ function makeAgent(a){
   d.style.setProperty('--ag-color-glow', a.color + '55');
   positionAgentToImageCoord(d, home.x, home.y);
   
-  /* Sprite character */
+  /* Sprite character — atlas (LimeZu 48×96 × 24 frames) OR single photo-sprite.
+     photo-sprite 모드는 background 한 장을 contain 으로 채우고 frame animation 끔. */
   const character = document.createElement('div');
   character.className = 'character';
+  if (a.spriteSource === 'photo') character.classList.add('photo-sprite');
   if (a.sprite) {
     character.style.backgroundImage = 'url(' + a.sprite + ')';
   } else {
@@ -1878,6 +1913,42 @@ function appendOutChunk(agentId, value){
 function endOutCard(agentId){ delete outCardEls[agentId]; }
 
 function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+/* 대화록·산출물용 미니 markdown 렌더러. heading(#·##·###), bold(**), italic(_·*),
+   inline code(\`\`), blockquote(>), hr(---), list (-·*·1.), 줄바꿈 처리.
+   외부 라이브러리 없이 webview 안에서 동작. XSS 방어 위해 escape 먼저. */
+function renderMarkdown(text){
+  if (!text) return '';
+  let html = escapeHtml(text);
+  // code fences (triple backtick blocks) — backtick via \x60 to avoid template-string clash
+  html = html.replace(new RegExp('\\x60\\x60\\x60([\\s\\S]*?)\\x60\\x60\\x60', 'g'), function(_, code){ return '<pre class="md-pre"><code>'+code.replace(/^\n/,'')+'</code></pre>'; });
+  // inline code (single backtick spans)
+  html = html.replace(new RegExp('\\x60([^\\x60\\n]+)\\x60', 'g'), '<code class="md-code">$1</code>');
+  // headings
+  html = html.replace(/^### (.+)$/gm, '<h3 class="md-h3">$1</h3>');
+  html = html.replace(/^## (.+)$/gm, '<h2 class="md-h2">$1</h2>');
+  html = html.replace(/^# (.+)$/gm, '<h1 class="md-h1">$1</h1>');
+  // hr
+  html = html.replace(/^[-_*]{3,}\s*$/gm, '<hr class="md-hr">');
+  // blockquote — 연속 > 라인을 하나로 묶지 않고 한 줄씩 (간단하게)
+  html = html.replace(/^&gt; (.+)$/gm, '<div class="md-quote">$1</div>');
+  // bold + italic
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/(^|[\s(])_([^_\n]+)_(?=[\s).,!?:;]|$)/g, '$1<em>$2</em>');
+  // unordered list — - or * 시작 줄들을 <li> 로
+  html = html.replace(/(?:^|\n)([-*] .+(?:\n[-*] .+)*)/g, (m, block) => {
+    const items = block.split(/\n/).map(l => l.replace(/^[-*] /, '').trim()).filter(Boolean);
+    return '\n<ul class="md-ul">'+items.map(i => '<li>'+i+'</li>').join('')+'</ul>';
+  });
+  // ordered list
+  html = html.replace(/(?:^|\n)(\d+\. .+(?:\n\d+\. .+)*)/g, (m, block) => {
+    const items = block.split(/\n/).map(l => l.replace(/^\d+\. /, '').trim()).filter(Boolean);
+    return '\n<ol class="md-ol">'+items.map(i => '<li>'+i+'</li>').join('')+'</ol>';
+  });
+  // line breaks (남은 일반 줄은 <br>)
+  html = html.replace(/\n{2,}/g, '<div class="md-gap"></div>');
+  html = html.replace(/\n/g, '<br>');
+  return html;
+}
 
 function drawBeams(taskAgentIds){
   if (!beams || !deskEls.ceo) return;
@@ -2233,6 +2304,8 @@ window.addEventListener('message', e => {
         agents.forEach(a => {
           const el = deskEls[a.id]; if (!el) return;
           const characterEl = el.querySelector('.character'); if (!characterEl) return;
+          /* photo-sprite 는 atlas 가 아니라 단일 이미지 — frame shift skip. CSS bob 만 적용됨. */
+          if (characterEl.classList.contains('photo-sprite')) return;
 
           let colOffset = 0;
           switch (el.dataset.dir) {
@@ -2580,7 +2653,7 @@ window.addEventListener('message', e => {
       const dateEl = document.getElementById('convDate');
       const bodyEl = document.getElementById('convBody');
       if (dateEl) dateEl.textContent = m.date ? '📅 ' + m.date : '';
-      if (bodyEl) bodyEl.textContent = m.content || '';
+      if (bodyEl) bodyEl.innerHTML = renderMarkdown(m.content || '');
       /* Auto-scroll to latest entry at the bottom */
       const pane = document.getElementById('convPane');
       if (pane) pane.scrollTop = pane.scrollHeight;
@@ -2660,6 +2733,12 @@ window.addEventListener('message', e => {
   $$('frClose')?.addEventListener('click', frClose);
   REOPEN?.addEventListener('click', frOpen);
   HUD_STAT?.addEventListener('click', frOpen);
+  /* v2.92 — 헤더 매출 버튼. 클릭하면 카드 토글. */
+  $$('revenueBtn')?.addEventListener('click', () => {
+    if (!FR) return;
+    if (FR.classList.contains('hidden')) frOpen();
+    else frClose();
+  });
   $$('frOpenDashboard')?.addEventListener('click', () => {
     vscode.postMessage({ type: 'openRevenueDashboard' });
   });
