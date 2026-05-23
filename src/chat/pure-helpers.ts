@@ -322,7 +322,7 @@ export function detectExplicitMention(prompt: string): { agentId: string; agentN
         { patterns: [/한스짐머[야아!,~ ]/, /짐머[야아!,~ ]/, /@editor\b/, /@한스짐머\b/, /@짐머\b/], agentId: 'editor', agentName: '한스짐머' },
         { patterns: [/카리나[야아!,~ ]/, /카리나야/, /@secretary\b/, /@카리나\b/], agentId: 'secretary', agentName: '카리나' },
         { patterns: [/일론머스크[야아!,~ ]/, /일론[야아!,~ ]/, /머스크[야아!,~ ]/, /@ceo\b/, /@일론머스크\b/, /@일론\b/], agentId: 'ceo', agentName: '일론머스크' },
-        { patterns: [/박재범[야아!,~ ]/, /재범[야아!,~ ]/, /@instagram\b/, /@박재범\b/, /@재범\b/], agentId: 'instagram', agentName: '박재범' },
+        { patterns: [/미스터비스트[야아!,~ ]/, /미스터 비스트[야아!,~ ]/, /비스트[야아!,~ ]/, /@instagram\b/, /@youtube\b/, /@미스터비스트\b/, /@비스트\b/, /@beast\b/i, /@MrBeast\b/i], agentId: 'instagram', agentName: '미스터비스트' },
         { patterns: [/조나단아이브[야아!,~ ]/, /조나단[야아!,~ ]/, /아이브[야아!,~ ]/, /@designer\b/, /@조나단아이브\b/, /@조나단\b/], agentId: 'designer', agentName: '조나단아이브' },
         { patterns: [/셰익스피어[야아!,~ ]/, /셰익[야아!,~ ]/, /@writer\b/, /@셰익스피어\b/], agentId: 'writer', agentName: '셰익스피어' },
         { patterns: [/아인슈타인[야아!,~ ]/, /아인슈[야아!,~ ]/, /@researcher\b/, /@아인슈타인\b/], agentId: 'researcher', agentName: '아인슈타인' },
