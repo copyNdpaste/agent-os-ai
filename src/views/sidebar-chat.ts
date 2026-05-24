@@ -1772,6 +1772,41 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
                     }
                     break;
                 }
+                /* 프로젝트 메타 — workspace 단위. 회사 설정과 분리: 회사 = 글로벌
+                   정체성 (고정), 프로젝트 = 워크스페이스별 목표·기한·상태 (자주 변경). */
+                case 'loadProjectMeta': {
+                    try {
+                        const wf = vscode.workspace.workspaceFolders;
+                        const workspaceFolder = wf && wf.length > 0 ? wf[0].uri.fsPath : undefined;
+                        if (!workspaceFolder) {
+                            webviewView.webview.postMessage({ type: 'projectMetaLoaded', meta: null, hasWorkspace: false });
+                            break;
+                        }
+                        const { readProjectMeta } = await import('../company/project-meta');
+                        const meta = readProjectMeta(workspaceFolder);
+                        const workspaceName = path.basename(workspaceFolder);
+                        webviewView.webview.postMessage({ type: 'projectMetaLoaded', meta, hasWorkspace: true, workspaceName });
+                    } catch (e: any) {
+                        webviewView.webview.postMessage({ type: 'projectMetaLoaded', meta: null, hasWorkspace: false, error: String(e?.message || e) });
+                    }
+                    break;
+                }
+                case 'saveProjectMeta': {
+                    try {
+                        const wf = vscode.workspace.workspaceFolders;
+                        const workspaceFolder = wf && wf.length > 0 ? wf[0].uri.fsPath : undefined;
+                        if (!workspaceFolder) {
+                            webviewView.webview.postMessage({ type: 'projectMetaSaved', ok: false, error: '워크스페이스 폴더가 열려있어야 합니다 — 프로젝트는 워크스페이스 단위로 관리됩니다.' });
+                            break;
+                        }
+                        const { writeProjectMeta } = await import('../company/project-meta');
+                        const r = writeProjectMeta(workspaceFolder, msg.meta || {});
+                        webviewView.webview.postMessage({ type: 'projectMetaSaved', ok: r.ok, error: r.error });
+                    } catch (e: any) {
+                        webviewView.webview.postMessage({ type: 'projectMetaSaved', ok: false, error: String(e?.message || e) });
+                    }
+                    break;
+                }
                 /* v2.89.106 — 대화 세션 아카이브 명령 */
                 case 'listSessions': {
                     const cur = this._currentWorkspaceMeta();

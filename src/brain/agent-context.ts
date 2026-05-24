@@ -64,8 +64,24 @@ export function readAgentSharedContext(agentId: string, opts?: { lean?: boolean 
   const ragMode = readAgentRagMode(agentId);
   let ctx = '';
   // Priority order (most-trusted first):
-  //   agent goal > company goals > company identity > decisions > memory > brain knowledge > tools
+  //   agent goal > 현재 프로젝트 > company goals > company identity > decisions > memory > brain knowledge > tools
+  //   회사 = 글로벌 정체성·창업자 비전 (고정). 프로젝트 = 워크스페이스별 현재 작업
+  //   (목표·기한·상태 자주 바뀜). 둘 다 보여서 specialist 가 "회사 정체성 안에서 이번
+  //   프로젝트 목표 달성" 으로 맥락 잡음.
   if (personalGoal.trim()) ctx += `\n\n[당신의 개인 목표 (최우선 — 매 사이클 이 방향으로 한 스텝 진행)]\n${personalGoal.slice(0, 4000)}`;
+  /* 현재 프로젝트 컨텍스트 — workspace 의 .agent-os-ai/project.json 에서 로드.
+     워크스페이스 없거나 파일 없으면 block 생략 (회사 컨텍스트만으로 동작). */
+  try {
+    const vscode = require('vscode');
+    const wf = vscode?.workspace?.workspaceFolders;
+    const workspaceFolder = wf && wf.length > 0 ? wf[0].uri.fsPath : undefined;
+    if (workspaceFolder) {
+      const { readProjectMeta, buildProjectContextBlock } = require('../company/project-meta');
+      const projectMeta = readProjectMeta(workspaceFolder);
+      const block = buildProjectContextBlock(projectMeta);
+      if (block) ctx += block;
+    }
+  } catch { /* vscode unavailable (tests) or project read failed — skip */ }
   if (companyGoals.trim()) ctx += `\n\n[회사 공동 목표]\n${companyGoals.slice(0, 4000)}`;
   if (identity.trim()) ctx += `\n\n[회사 정체성]\n${identity.slice(0, 2000)}`;
   if (decisions.trim()) ctx += `\n\n[지난 의사결정 로그]\n${decisions.slice(lean ? -1200 : -3000)}`;

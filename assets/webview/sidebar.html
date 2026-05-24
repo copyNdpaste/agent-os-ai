@@ -654,6 +654,14 @@ body.corp-on .msg:not(.msg-user):not(.msg-agent):not(.msg-error):not(.msg-note):
 @keyframes brandPulse{0%,100%{box-shadow:0 0 0 transparent}50%{box-shadow:0 0 10px var(--accent-glow)}}
 body.corp-on .brand-suffix{display:inline-block}
 
+/* 현재 프로젝트 배지 — 회사 정체성 옆 워크스페이스 단위 작업 컨텍스트.
+   project.json 있으면 표시, 없으면 hidden. 클릭 시 편집 모달. */
+.project-badge{display:none;font-size:11px;color:var(--text);font-weight:500;letter-spacing:-.1px;margin-left:6px;padding:3px 9px;border:1px solid rgba(37,99,235,.28);border-radius:6px;background:rgba(37,99,235,.06);cursor:pointer;transition:all .15s;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.project-badge:hover{background:rgba(37,99,235,.12);border-color:var(--accent)}
+.project-badge.visible{display:inline-block}
+.project-badge.no-project{color:var(--text-dim);background:transparent;border-style:dashed;border-color:rgba(15,23,42,.18);font-style:italic}
+.project-badge.no-project:hover{color:var(--accent);border-color:var(--accent);background:rgba(37,99,235,.04)}
+
 /* ===== Cinematic dispatch overlay (boot moment) ===== */
 .corp-overlay{position:absolute;inset:0;background:radial-gradient(circle at center,rgba(37,99,235,.06),rgba(0,0,0,.7));backdrop-filter:blur(2px);pointer-events:none;opacity:0;z-index:50;display:flex;align-items:center;justify-content:center}
 body.corp-dispatching .corp-overlay{opacity:1;animation:overlayPulse 1.5s ease-out forwards}
@@ -1456,7 +1464,7 @@ body.corp-on .agent-dock::before{
 @keyframes apillIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
 @keyframes apDot{0%,100%{opacity:.4;transform:scale(1)}50%{opacity:1;transform:scale(1.3)}}
 </style></head><body class="init">
-<div class="header"><div class="header-left"><div class="logo">✦</div><span class="brand">Agent OS AI</span><span class="brand-suffix" id="brandSuffix"></span></div><div class="header-right"><select id="modelSel"></select><button class="ad-chip" id="adChip" type="button" data-expanded="false" title="specialist 모델 매핑 — 클릭해서 펼치기"><span class="adc-model" id="adcModel">…</span><span class="adc-caret">▾</span></button><button class="btn-icon" id="corporateBtn" title="AI 1인 기업 모드 (Solo Mode) — 나만의 에이전트 팀이 자동으로 일합니다 (현재: OFF)" style="opacity:0.5">👔</button><button class="btn-icon" id="brainBtn" title="내 지식 관리">🧠</button><button class="btn-icon" id="historyBtn" title="이전 대화 보기 — 새 대화를 시작해도 이전 대화는 자동 보관됩니다">📂</button><button class="btn-icon" id="newChatBtn" title="새 대화 시작 (이전 대화는 자동 보관)">+</button><div class="more-wrap"><button class="btn-icon" id="moreBtn" title="더보기">…</button><div class="more-menu" id="moreMenu" hidden><button class="more-item" id="internetBtn" title="DuckDuckGo로 웹 검색 — AI가 결과를 읽어와 답변에 반영">🌐 인터넷 검색</button><button class="more-item" id="thinkingBtn" title="AI의 사고 흐름을 별도 패널에 그래프로 시각화 (지식 노드 연결 표시)">🎬 Thinking 시각화</button><button class="more-item" id="skillLibBtn" title="에이전트 스킬·도구 카탈로그 — 내가 만든 것 + 기본 제공 모두 한 곳에서">🛠 내 스킬 라이브러리</button><button class="more-item" id="settingsBtn" title="모델·서버 주소·시스템 프롬프트·키 등 모든 설정">⚙️ 설정</button></div></div></div></div>
+<div class="header"><div class="header-left"><div class="logo">✦</div><span class="brand">Agent OS AI</span><span class="brand-suffix" id="brandSuffix"></span><span class="project-badge" id="projectBadge" title="현재 프로젝트 — 클릭해서 편집"></span></div><div class="header-right"><select id="modelSel"></select><button class="ad-chip" id="adChip" type="button" data-expanded="false" title="specialist 모델 매핑 — 클릭해서 펼치기"><span class="adc-model" id="adcModel">…</span><span class="adc-caret">▾</span></button><button class="btn-icon" id="corporateBtn" title="AI 1인 기업 모드 (Solo Mode) — 나만의 에이전트 팀이 자동으로 일합니다 (현재: OFF)" style="opacity:0.5">👔</button><button class="btn-icon" id="brainBtn" title="내 지식 관리">🧠</button><button class="btn-icon" id="historyBtn" title="이전 대화 보기 — 새 대화를 시작해도 이전 대화는 자동 보관됩니다">📂</button><button class="btn-icon" id="newChatBtn" title="새 대화 시작 (이전 대화는 자동 보관)">+</button><div class="more-wrap"><button class="btn-icon" id="moreBtn" title="더보기">…</button><div class="more-menu" id="moreMenu" hidden><button class="more-item" id="internetBtn" title="DuckDuckGo로 웹 검색 — AI가 결과를 읽어와 답변에 반영">🌐 인터넷 검색</button><button class="more-item" id="thinkingBtn" title="AI의 사고 흐름을 별도 패널에 그래프로 시각화 (지식 노드 연결 표시)">🎬 Thinking 시각화</button><button class="more-item" id="skillLibBtn" title="에이전트 스킬·도구 카탈로그 — 내가 만든 것 + 기본 제공 모두 한 곳에서">🛠 내 스킬 라이브러리</button><button class="more-item" id="settingsBtn" title="모델·서버 주소·시스템 프롬프트·키 등 모든 설정">⚙️ 설정</button></div></div></div></div>
 <!-- v2.89.116 — 1인 기업 모드 specialist 모델 dock. 일반 모드에선 숨김.
      body.corp-on이 들어오면 헤더의 #modelSel 자리에서 9명 specialist의
      모델 매핑이 한 줄로 보이고, 클릭하면 인라인 popover로 변경. -->
@@ -4530,6 +4538,129 @@ if(abCompanyName){
   abCompanyName.addEventListener('click',(e)=>{e.stopPropagation();showCompanyEditCard();});
 }
 
+/* 프로젝트 배지 — 워크스페이스의 .agent-os-ai/project.json 표시 + 편집 진입.
+   ready 직후 한 번 로드 + 저장 후 자동 갱신. */
+const projectBadge = document.getElementById('projectBadge');
+let _projectState = { hasWorkspace: false, workspaceName: '', meta: null };
+function renderProjectBadge(){
+  if(!projectBadge) return;
+  if(!_projectState.hasWorkspace){
+    projectBadge.classList.add('visible','no-project');
+    projectBadge.textContent = '📂 워크스페이스 없음';
+    projectBadge.title = '워크스페이스 폴더를 열면 프로젝트 메타를 설정할 수 있어요';
+    return;
+  }
+  const m = _projectState.meta;
+  if(!m){
+    projectBadge.classList.add('visible','no-project');
+    projectBadge.textContent = '🎯 프로젝트 설정 +';
+    projectBadge.title = '현재 워크스페이스(' + _projectState.workspaceName + ')의 프로젝트 메타가 없어요. 클릭해서 목표·기한·청중 설정.';
+    return;
+  }
+  projectBadge.classList.add('visible');
+  projectBadge.classList.remove('no-project');
+  const parts = ['🎯 ' + m.name];
+  if(m.goal) parts.push(m.goal.length > 30 ? m.goal.slice(0,27)+'…' : m.goal);
+  projectBadge.textContent = parts.join(' · ');
+  const statusLabels = {ideating:'💡 아이디어',validating:'🔬 검증',building:'🛠 빌드',launched:'🚀 런칭',paused:'⏸ 보류',archived:'📦 종료'};
+  const sl = m.status && statusLabels[m.status] ? ' · ' + statusLabels[m.status] : '';
+  projectBadge.title = '프로젝트: ' + m.name + (m.goal ? ' (목표: ' + m.goal + ')' : '') + sl + '\n클릭해서 편집';
+}
+if(projectBadge){
+  projectBadge.addEventListener('click',(e)=>{e.stopPropagation();showProjectEditCard();});
+}
+/* ready 시 한 번 로드. 이후 저장 시점에도 갱신. */
+setTimeout(()=>{ vscode.postMessage({type:'loadProjectMeta'}); }, 350);
+
+/* 프로젝트 편집 모달 — 회사 모달과 같은 라이트 톤 (.cs-* 클래스 재사용). */
+let _projectEditOpen = false;
+function showProjectEditCard(){
+  if(_projectEditOpen) return;
+  _projectEditOpen = true;
+  const bd = document.createElement('div');
+  bd.className = 'cs-backdrop';
+  bd.innerHTML =
+    '<div class="cs-modal" role="dialog" aria-modal="true">'
+    + '<div class="cs-head">'
+    +   '<span class="cs-head-emoji">🎯</span>'
+    +   '<div>'
+    +     '<div class="cs-head-title">프로젝트 설정 — ' + esc(_projectState.workspaceName || '현재 워크스페이스') + '</div>'
+    +     '<div class="cs-head-sub">회사(Agent OS AI) 안에서 이 워크스페이스의 작업 목표·기한·상태. 매 dispatch 마다 에이전트들이 봅니다.</div>'
+    +   '</div>'
+    +   '<button class="cs-close" id="pjClose" aria-label="닫기">×</button>'
+    + '</div>'
+    + '<div class="cs-body">'
+    +   (_projectState.hasWorkspace ? '' : '<div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.35);border-radius:8px;padding:10px 12px;font-size:12px;color:#b45309">⚠️ 워크스페이스 폴더가 열려있지 않아요. 프로젝트 폴더를 먼저 VS Code 로 열어주세요 (File → Open Folder).</div>')
+    +   '<div class="cs-section"><div class="cs-section-label">프로젝트 이름 <span class="cs-section-help">보통 폴더 이름</span></div><input class="cs-input" id="pjName" placeholder="예: idea-radar"></div>'
+    +   '<div class="cs-section"><div class="cs-section-label">한 줄 설명</div><input class="cs-input" id="pjTagline" placeholder="예: 수요 신호로 아이디어 검증"></div>'
+    +   '<div class="cs-section"><div class="cs-section-label">🎯 이번 프로젝트 목표</div><input class="cs-input" id="pjGoal" placeholder="예: 30일 안에 첫 사전예약 1개"></div>'
+    +   '<div class="cs-section"><div class="cs-section-label">📅 기한 <span class="cs-section-help">YYYY-MM-DD 또는 자유 텍스트</span></div><input class="cs-input" id="pjDeadline" placeholder="예: 2026-07-01 또는 2주 내"></div>'
+    +   '<div class="cs-section"><div class="cs-section-label">📊 단계</div><select class="cs-input" id="pjStatus">'
+    +     '<option value="">선택 안 함</option>'
+    +     '<option value="ideating">💡 아이디어 단계</option>'
+    +     '<option value="validating">🔬 수요 검증 중</option>'
+    +     '<option value="building">🛠 빌드 중</option>'
+    +     '<option value="launched">🚀 런칭 완료</option>'
+    +     '<option value="paused">⏸ 보류</option>'
+    +     '<option value="archived">📦 종료</option>'
+    +   '</select></div>'
+    +   '<div class="cs-section"><div class="cs-section-label">👥 타깃 청중 <span class="cs-section-help">이 프로젝트만의 청중 (회사 청중과 다를 수 있음)</span></div><input class="cs-input" id="pjAudience" placeholder="예: 1인 개발자"></div>'
+    +   '<div class="cs-section"><div class="cs-section-label">📈 KPI <span class="cs-section-help">한 줄에 하나, 최대 5개</span></div><textarea class="cs-textarea" id="pjKpis" placeholder="사전예약 ≥ 10&#10;고객 인터뷰 ≥ 5"></textarea></div>'
+    +   '<div class="cs-section"><div class="cs-section-label">📝 노트 <span class="cs-section-help">위 필드로 안 잡히는 컨텍스트</span></div><textarea class="cs-textarea" id="pjNotes" placeholder="예: 경쟁: similarweb, 차별화: 한국어 niche"></textarea></div>'
+    + '</div>'
+    + '<div class="cs-saved" id="pjSaved">✓ 저장됨</div>'
+    + '<div class="cs-actions">'
+    +   '<button class="cs-btn secondary" id="pjCancel">취소</button>'
+    +   '<button class="cs-btn" id="pjSave" ' + (_projectState.hasWorkspace ? '' : 'disabled style="opacity:.5;cursor:not-allowed"') + '>💾 저장</button>'
+    + '</div>'
+    + '</div>';
+  document.body.appendChild(bd);
+  function close(){
+    _projectEditOpen = false;
+    bd.style.transition='opacity .2s'; bd.style.opacity='0';
+    setTimeout(()=>bd.remove(), 200);
+    document.removeEventListener('keydown', escH);
+  }
+  function escH(ev){ if(ev.key==='Escape')close(); }
+  document.addEventListener('keydown', escH);
+  bd.addEventListener('click', ev=>{ if(ev.target===bd)close(); });
+  document.getElementById('pjClose').addEventListener('click', close);
+  document.getElementById('pjCancel').addEventListener('click', close);
+  /* Preload from current state */
+  const m = _projectState.meta || {};
+  const setV = (id, v) => { const el = document.getElementById(id); if(el) el.value = v || ''; };
+  setV('pjName', m.name || _projectState.workspaceName);
+  setV('pjTagline', m.tagline);
+  setV('pjGoal', m.goal);
+  setV('pjDeadline', m.deadline);
+  setV('pjStatus', m.status);
+  setV('pjAudience', m.audience);
+  setV('pjKpis', Array.isArray(m.kpis) ? m.kpis.join('\n') : '');
+  setV('pjNotes', m.notes);
+  setTimeout(()=>{ const f=document.getElementById('pjGoal'); if(f)f.focus(); }, 50);
+  const saveBtn = document.getElementById('pjSave');
+  if(saveBtn && _projectState.hasWorkspace){
+    saveBtn.addEventListener('click', () => {
+      const v = id => (document.getElementById(id).value || '').trim();
+      const kpisRaw = v('pjKpis');
+      const kpis = kpisRaw ? kpisRaw.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).slice(0,10) : undefined;
+      vscode.postMessage({ type:'saveProjectMeta', meta: {
+        name: v('pjName'),
+        tagline: v('pjTagline') || undefined,
+        goal: v('pjGoal') || undefined,
+        deadline: v('pjDeadline') || undefined,
+        status: v('pjStatus') || undefined,
+        audience: v('pjAudience') || undefined,
+        kpis,
+        notes: v('pjNotes') || undefined,
+      }});
+      const sv = document.getElementById('pjSaved');
+      sv.classList.add('show');
+      setTimeout(close, 700);
+    });
+  }
+}
+
 /* Agent board collapse toggle — keeps the chat clean while letting users
    peek at team status. Default: collapsed. State persists via localStorage. */
 (function(){
@@ -5338,6 +5469,22 @@ window.addEventListener('message',e=>{const msg=e.data;switch(msg.type){
   case 'companyConfigSaved':
     /* Save toast already shown locally; refresh badges via the
        upcoming corporateState echo. */
+    break;
+  case 'projectMetaLoaded':
+    _projectState = {
+      hasWorkspace: !!msg.hasWorkspace,
+      workspaceName: msg.workspaceName || '',
+      meta: msg.meta || null,
+    };
+    renderProjectBadge();
+    break;
+  case 'projectMetaSaved':
+    if(msg.ok){
+      /* 다시 로드해서 배지 갱신 */
+      vscode.postMessage({type:'loadProjectMeta'});
+    } else if(msg.error){
+      try { addMsg('⚠️ 프로젝트 저장 실패: ' + msg.error, 'error'); } catch {}
+    }
     break;
   case 'telegramValidateTokenResult':
   case 'telegramDetectChatIdResult':
