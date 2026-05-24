@@ -2032,12 +2032,21 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
     }
 
     // --------------------------------------------------------
-    // Fetch available Claude models (fixed 3-tier list)
+    // Fetch available models (Claude + Codex/GPT) — extension.ts 의 단일
+    // 소스 (listInstalledModels) 에서 가져오기. 하드코딩 X — gpt-5.5 추가 같은
+    // 변경이 헤더 드롭다운에도 자동 반영. backend 정보는 사이드바엔 불필요해서 id 만 전달.
     // --------------------------------------------------------
     private async _sendModels() {
         if (!this._view) { return; }
-        const models = ['claude-opus-4-7', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'];
-        this._view.webview.postMessage({ type: 'modelsList', value: models });
+        try {
+            const { listInstalledModels } = await import('../extension');
+            const list = await listInstalledModels();
+            const models = list.map(m => m.id);
+            this._view.webview.postMessage({ type: 'modelsList', value: models });
+        } catch {
+            /* defensive fallback — extension 로드 실패 시 최소 Claude 만 */
+            this._view.webview.postMessage({ type: 'modelsList', value: ['claude-opus-4-7', 'claude-sonnet-4-6'] });
+        }
     }
 
     // --------------------------------------------------------
