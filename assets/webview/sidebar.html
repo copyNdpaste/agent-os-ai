@@ -527,6 +527,15 @@ body.corp-dispatching .ab-svg{opacity:1}
 .report-head{display:flex;align-items:center;justify-content:space-between;gap:12px;font-family:'Inter','SF Pro Display',-apple-system,system-ui,sans-serif;font-size:14px;font-weight:700;letter-spacing:-.2px;color:var(--text-bright);margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid rgba(37,99,235,.12)}
 .report-head .rh-tag{flex-shrink:0;padding:3px 9px;border:1px solid rgba(37,99,235,.4);border-radius:6px;background:rgba(37,99,235,.08);font-family:'SF Mono','JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:1.5px;color:var(--accent);text-transform:uppercase}
 .report-body{font-size:13.5px;line-height:1.8;color:var(--text-bright);min-height:48px;word-break:break-word}
+/* Empty-state fallback — amber warning panel (이전엔 var(--text-dim) 라
+   light bg 에서 거의 안 보였음). 진단 단계까지 명시. */
+.report-empty-fallback{background:linear-gradient(135deg,rgba(245,158,11,.08),rgba(245,158,11,.02));border:1px solid rgba(245,158,11,.4);border-radius:10px;padding:14px 16px;color:var(--text-bright);font-family:'Inter','SF Pro Display',sans-serif}
+.report-empty-fallback .ref-head{font-size:13.5px;font-weight:700;color:#b45309;margin-bottom:10px;letter-spacing:-.1px}
+.report-empty-fallback .ref-body{font-size:12.5px;line-height:1.75;color:var(--text-bright);margin-bottom:10px}
+.report-empty-fallback .ref-bullet{display:inline-block;width:18px;color:#b45309;font-weight:700}
+.report-empty-fallback .ref-body b{color:var(--text-bright);font-weight:700}
+.report-empty-fallback .ref-body code{background:rgba(15,23,42,.06);color:var(--accent3);padding:1px 6px;border-radius:4px;font-family:'SF Mono','JetBrains Mono',monospace;font-size:11.5px;border:1px solid rgba(37,99,235,.15)}
+.report-empty-fallback .ref-action{font-size:11.5px;color:var(--text);background:rgba(37,99,235,.04);border-left:2px solid var(--accent);padding:6px 10px;border-radius:0 6px 6px 0;line-height:1.55}
 .report-body h1{font-size:16px;color:var(--accent);margin:16px 0 8px;letter-spacing:-.2px;font-weight:800}
 .report-body h2{font-size:14.5px;color:var(--accent);margin:14px 0 7px;letter-spacing:-.1px;font-weight:700;padding-bottom:4px;border-bottom:1px solid rgba(37,99,235,.16)}
 .report-body h3{font-size:13.5px;color:var(--text-bright);margin:12px 0 5px;font-weight:700}
@@ -4865,14 +4874,20 @@ function showReportCard(brief,report,sessionPath,sessionRel){
   leaveInitState();
   const el=document.createElement('div');el.className='report-card';
   /* 빈 report 가 와도 카드가 헤더만 떠서 "비어 있는 박스" 처럼 보이지 않게
-     의미 있는 fallback. 보통 빈 경우는 단일 에이전트 dispatch + LLM 호출 실패. */
+     진단 친화적 fallback. 텍스트 색을 강한 amber + warning 패널 형태로 띄워
+     "이건 빈 게 아니라 LLM 실패다" 가 한눈에 보이게. */
   const trimmed = String(report||'').trim();
   const bodyHtml = trimmed
     ? fmt(report)
-    : '<div style="font-size:12.5px;color:var(--text-dim);line-height:1.7;padding:8px 0">'
-      + '⚠️ 이번 세션은 종합 보고서로 정리할 내용이 비어있어요 '
-      + '(에이전트 LLM 호출이 실패했거나, 단일 에이전트 dispatch 라 산출물이 위 메시지로 이미 표시됐을 수 있어요).<br>'
-      + '<span style="font-size:11px">아래 \"업무 일지 열람 →\" 버튼으로 세션 폴더를 열면 각 에이전트의 raw 산출물(.md) 을 직접 확인 가능합니다.</span>'
+    : '<div class="report-empty-fallback">'
+      + '<div class="ref-head">⚠️ 이번 세션은 종합 보고서로 정리할 내용이 비어있어요</div>'
+      + '<div class="ref-body">'
+      + '가장 흔한 원인 3가지:<br>'
+      + '<span class="ref-bullet">①</span> <b>Claude CLI · node PATH 문제</b> — sidebar 명령에서 "안녕" 같은 짧은 거 보내봐서 정상 응답 오는지 확인. exit 127 또는 ENOENT 면 <code>which node</code> + <code>which claude</code> 확인 + VS Code 를 터미널에서 <code>code .</code> 로 재시작.<br>'
+      + '<span class="ref-bullet">②</span> <b>단일 에이전트 dispatch</b> — 한 명만 호출된 케이스라 그 답변이 위 메시지로 이미 표시됨 (CEO 종합 단계 스킵).<br>'
+      + '<span class="ref-bullet">③</span> <b>전부 빈 답</b> — 모든 specialist 가 실패해서 종합할 게 없음.'
+      + '</div>'
+      + '<div class="ref-action">📁 아래 <b>"업무 일지 열람 →"</b> 누르면 세션 폴더 열려서 각 에이전트의 raw 산출물(.md)·state.json 직접 확인 가능</div>'
       + '</div>';
   el.innerHTML='<div class="report-head"><span>📝 CEO · 종합 보고서</span><span class="rh-tag">SESSION COMPLETE</span></div><div class="report-body">'+bodyHtml+'</div><div class="report-foot"><span>📁 '+esc(sessionPath||'')+'</span><span class="rf-link" data-sub="'+esc(sessionRel||'')+'">업무 일지 열람 →</span></div>';
   const link=el.querySelector('.rf-link');
