@@ -501,14 +501,15 @@ export function _autoOrchestrateModelMap(installed: { id: string; backend: strin
   return st.autoOrchestrate(installed, AGENT_ORDER);
 }
 
-/* Claude CLI 전환 후 모델 리스트는 3-tier 고정 — Opus 4.7 / Sonnet 4.6 / Haiku 4.5.
-   기존 호출 사이트(오케스트레이션 드롭다운, 에이전트 도크 등)와 호환되도록
-   같은 시그니처 유지. */
-export async function listInstalledModels(): Promise<{ id: string; backend: 'claude' }[]> {
+/* Claude (3-tier) + Codex (GPT-5.5) 듀얼 백엔드. providerFor() 가 모델 id
+   prefix 로 라우팅하므로 list 에는 그냥 다 넣어두면 됨. agent dock 에서
+   고르면 자동으로 codex CLI 가 spawn 됨. */
+export async function listInstalledModels(): Promise<{ id: string; backend: 'claude' | 'codex' }[]> {
   return [
     { id: 'claude-opus-4-7', backend: 'claude' },
     { id: 'claude-sonnet-4-6', backend: 'claude' },
-    { id: 'claude-haiku-4-5-20251001', backend: 'claude' }
+    { id: 'claude-haiku-4-5-20251001', backend: 'claude' },
+    { id: 'gpt-5.5', backend: 'codex' },
   ];
 }
 

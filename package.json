@@ -242,6 +242,11 @@
           "default": "",
           "description": "🤖 Claude Code CLI 실행 파일 경로 — 비우면 PATH의 'claude'를 자동 사용. 직접 지정 예: '/Users/hoony/.local/bin/claude' 또는 '~/bin/claude'."
         },
+        "agentOs.codexBinPath": {
+          "type": "string",
+          "default": "",
+          "description": "🟢 OpenAI Codex CLI 실행 파일 경로 — GPT-5.5 모델을 쓰려면 필요. 비우면 PATH의 'codex'를 자동 사용. 사전 인증: 터미널에서 `codex login` 1회. 설치: `npm install -g @openai/codex`."
+        },
         "agentOs.requestTimeout": {
           "type": "number",
           "default": 300,
