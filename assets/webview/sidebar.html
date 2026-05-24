@@ -134,10 +134,17 @@ body.corp-on .msg:not(.msg-user):not(.msg-agent):not(.msg-error):not(.msg-note):
 .chat-ul li,.chat-ol li{margin:3px 0}
 .chat-ul li::marker{color:var(--accent)}
 .chat-ol li::marker{color:var(--accent);font-weight:700}
-.chat-table{width:100%;border-collapse:collapse;margin:8px 0;font-size:11.5px;background:rgba(0,0,0,.18)}
-.chat-table th{background:rgba(124,106,255,.12);color:var(--text);font-weight:700;padding:6px 8px;text-align:left;border:1px solid rgba(255,255,255,.08)}
-.chat-table td{padding:5px 8px;border:1px solid rgba(255,255,255,.06);color:var(--text);vertical-align:top}
-.chat-table tr:hover td{background:rgba(124,106,255,.04)}
+/* 라이트 테마용 깔끔한 table — 이전엔 dark-theme 잔재 (rgba(0,0,0,.18)
+   검은 fill + rgba(124,106,255,.12) 라벤더) 라 라이트 bg 에서 회색·보라
+   음영으로 보였음. 투명 bg + 행간 border 만으로 가독성 보장. */
+.chat-table{width:100%;border-collapse:collapse;margin:10px 0;font-size:12px;background:transparent}
+.chat-table th{background:rgba(37,99,235,.05);color:var(--text-bright);font-weight:700;padding:8px 12px;text-align:left;border-bottom:1.5px solid rgba(37,99,235,.30);font-size:11.5px;letter-spacing:-.1px}
+.chat-table td{padding:8px 12px;border-bottom:1px solid rgba(15,23,42,.06);color:var(--text-bright);vertical-align:top;line-height:1.5;background:transparent}
+.chat-table tr:hover td{background:rgba(37,99,235,.025)}
+.chat-table tr:last-child td{border-bottom:none}
+/* CEO 종합 보고서 카드 안의 표는 좌우 padding 좀 더 (카드 자체 padding 보정) */
+.report-body .chat-table{font-size:12.5px}
+.report-body .chat-table th,.report-body .chat-table td{padding:9px 14px}
 
 /* WELCOME */
 .welcome{text-align:center;padding:0 20px 20px;position:relative}
