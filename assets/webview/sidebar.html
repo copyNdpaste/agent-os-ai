@@ -4879,27 +4879,61 @@ function showBriefCard(brief,tasks){
 
 function showReportCard(brief,report,sessionPath,sessionRel){
   leaveInitState();
-  const el=document.createElement('div');el.className='report-card';
-  /* 빈 report 가 와도 카드가 헤더만 떠서 "비어 있는 박스" 처럼 보이지 않게
-     진단 친화적 fallback. 텍스트 색을 강한 amber + warning 패널 형태로 띄워
-     "이건 빈 게 아니라 LLM 실패다" 가 한눈에 보이게. */
-  const trimmed = String(report||'').trim();
-  const bodyHtml = trimmed
-    ? fmt(report)
-    : '<div class="report-empty-fallback">'
-      + '<div class="ref-head">⚠️ 이번 세션은 종합 보고서로 정리할 내용이 비어있어요</div>'
-      + '<div class="ref-body">'
-      + '가장 흔한 원인 3가지:<br>'
-      + '<span class="ref-bullet">①</span> <b>Claude CLI · node PATH 문제</b> — sidebar 명령에서 "안녕" 같은 짧은 거 보내봐서 정상 응답 오는지 확인. exit 127 또는 ENOENT 면 <code>which node</code> + <code>which claude</code> 확인 + VS Code 를 터미널에서 <code>code .</code> 로 재시작.<br>'
-      + '<span class="ref-bullet">②</span> <b>단일 에이전트 dispatch</b> — 한 명만 호출된 케이스라 그 답변이 위 메시지로 이미 표시됨 (CEO 종합 단계 스킵).<br>'
-      + '<span class="ref-bullet">③</span> <b>전부 빈 답</b> — 모든 specialist 가 실패해서 종합할 게 없음.'
-      + '</div>'
-      + '<div class="ref-action">📁 아래 <b>"업무 일지 열람 →"</b> 누르면 세션 폴더 열려서 각 에이전트의 raw 산출물(.md)·state.json 직접 확인 가능</div>'
-      + '</div>';
-  el.innerHTML='<div class="report-head"><span>📝 CEO · 종합 보고서</span><span class="rh-tag">SESSION COMPLETE</span></div><div class="report-body">'+bodyHtml+'</div><div class="report-foot"><span>📁 '+esc(sessionPath||'')+'</span><span class="rf-link" data-sub="'+esc(sessionRel||'')+'">업무 일지 열람 →</span></div>';
-  const link=el.querySelector('.rf-link');
-  if(link)link.addEventListener('click',()=>vscode.postMessage({type:'openCompanyFolder',sub:link.dataset.sub.replace(/^Company\//,'')}));
-  chat.appendChild(el);scrollChatToBottomIfNear();
+  /* === Defensive rendering ===
+     사용자 보고: 응답이 라이브에 안 보이고 reload 해야 보임. 원인 후보:
+       (a) fmt(report) 가 특정 입력에서 빈 결과 / throw — body 비어보임
+       (b) DOM 삽입 직후 layout 안정화 전 timing 이슈
+     해결: fmt 결과를 sanity-check 해서 정말 비어있으면 raw escape 로 fallback.
+     fmt 자체가 throw 해도 마지막 보루 addMsg 로 폴백. 사용자가 reload 안 해도
+     반드시 콘텐츠가 보이는 걸 보장. */
+  let el;
+  try {
+    el = document.createElement('div'); el.className='report-card';
+    const trimmed = String(report||'').trim();
+    let bodyHtml;
+    if (!trimmed) {
+      bodyHtml = '<div class="report-empty-fallback">'
+        + '<div class="ref-head">⚠️ 이번 세션은 종합 보고서로 정리할 내용이 비어있어요</div>'
+        + '<div class="ref-body">'
+        + '가장 흔한 원인 3가지:<br>'
+        + '<span class="ref-bullet">①</span> <b>Claude CLI · node PATH 문제</b> — sidebar 명령에서 "안녕" 같은 짧은 거 보내봐서 정상 응답 오는지 확인. exit 127 또는 ENOENT 면 <code>which node</code> + <code>which claude</code> 확인 + VS Code 를 터미널에서 <code>code .</code> 로 재시작.<br>'
+        + '<span class="ref-bullet">②</span> <b>단일 에이전트 dispatch</b> — 한 명만 호출된 케이스라 그 답변이 위 메시지로 이미 표시됨 (CEO 종합 단계 스킵).<br>'
+        + '<span class="ref-bullet">③</span> <b>전부 빈 답</b> — 모든 specialist 가 실패해서 종합할 게 없음.'
+        + '</div>'
+        + '<div class="ref-action">📁 아래 <b>"업무 일지 열람 →"</b> 누르면 세션 폴더 열려서 각 에이전트의 raw 산출물(.md)·state.json 직접 확인 가능</div>'
+        + '</div>';
+    } else {
+      let formatted = '';
+      try { formatted = fmt(report); }
+      catch (e) {
+        console.error('[showReportCard] fmt() threw — falling back to raw text', e);
+        formatted = '';
+      }
+      /* Sanity check — fmt 결과에서 HTML 태그 다 떼어낸 plain text 가 비어있으면
+         렌더 실패로 간주. 원본 raw 텍스트를 <pre> 로 보존해서 보임. */
+      const plainSanity = String(formatted || '').replace(/<[^>]+>/g, '').trim();
+      if (!plainSanity) {
+        console.warn('[showReportCard] fmt produced empty visible content — using raw fallback. raw length:', report.length);
+        formatted = '<pre style="white-space:pre-wrap;word-break:break-word;font-family:inherit;font-size:13px;line-height:1.7;margin:0;padding:0;background:transparent;border:none;color:var(--text-bright)">'
+          + escapeHtml(report) + '</pre>';
+      }
+      bodyHtml = formatted;
+    }
+    el.innerHTML='<div class="report-head"><span>📝 CEO · 종합 보고서</span><span class="rh-tag">SESSION COMPLETE</span></div><div class="report-body">'+bodyHtml+'</div><div class="report-foot"><span>📁 '+esc(sessionPath||'')+'</span><span class="rf-link" data-sub="'+esc(sessionRel||'')+'">업무 일지 열람 →</span></div>';
+    const link=el.querySelector('.rf-link');
+    if(link)link.addEventListener('click',()=>vscode.postMessage({type:'openCompanyFolder',sub:link.dataset.sub.replace(/^Company\//,'')}));
+    chat.appendChild(el);
+  } catch (e) {
+    /* 마지막 보루 — card 생성 자체가 실패해도 사용자는 답을 봐야 함. */
+    console.error('[showReportCard] card render failed entirely, falling back to plain message', e);
+    try { addMsg('📝 **CEO · 종합 보고서**\n\n' + (report || '(빈 보고서)') + '\n\n_📁 ' + (sessionPath || '') + '_', 'ai'); } catch { /* ignore */ }
+  }
+  /* 하단으로 강제 스크롤 (scrollChatToBottomIfNear 은 이미 하단 근처일 때만 따라가므로
+     첫 응답이라 chat 비어있다가 카드 추가된 경우에도 보장하기 위해 직접 호출). */
+  try {
+    scrollChatToBottomIfNear();
+    requestAnimationFrame(() => { chat.scrollTop = chat.scrollHeight; });
+  } catch { /* ignore */ }
 }
 
 let streamEl=null,streamBody=null;
