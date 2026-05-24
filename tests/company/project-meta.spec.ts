@@ -33,7 +33,7 @@ describe('project-meta — read/write', () => {
 
     it('writeProjectMeta → readProjectMeta round-trip', () => {
         const meta: ProjectMeta = {
-            name: 'idea-radar',
+            name: 'alpha-agent-ai',
             tagline: '수요 신호로 아이디어 검증',
             goal: '30일 안에 첫 사전예약 1개',
             deadline: '2026-07-01',
@@ -46,7 +46,7 @@ describe('project-meta — read/write', () => {
 
         expect(r.ok).toBe(true);
         const back = readProjectMeta(ws);
-        expect(back?.name).toBe('idea-radar');
+        expect(back?.name).toBe('alpha-agent-ai');
         expect(back?.goal).toBe('30일 안에 첫 사전예약 1개');
         expect(back?.status).toBe('validating');
         expect(back?.kpis).toEqual(['사전예약 ≥ 10', '고객 인터뷰 ≥ 5']);
@@ -119,11 +119,11 @@ describe('project-meta — helpers', () => {
     it('projectSummaryLine — null 안전, 컴팩트 한 줄', () => {
         expect(projectSummaryLine(null)).toBe('');
         const line = projectSummaryLine({
-            name: 'idea-radar',
+            name: 'alpha-agent-ai',
             goal: '30일 안에 첫 사전예약 1개',
             status: 'validating',
         });
-        expect(line).toContain('idea-radar');
+        expect(line).toContain('alpha-agent-ai');
         expect(line).toContain('사전예약');
         expect(line).toContain('🔬');
     });
@@ -140,7 +140,7 @@ describe('project-meta — helpers', () => {
 
     it('buildProjectContextBlock — 모든 필드 라벨링 포함', () => {
         const block = buildProjectContextBlock({
-            name: 'idea-radar',
+            name: 'alpha-agent-ai',
             tagline: '수요 검증 SaaS',
             goal: '사전예약 10명',
             deadline: '2026-07-01',
@@ -149,11 +149,11 @@ describe('project-meta — helpers', () => {
             kpis: ['예약 10', '인터뷰 5'],
         });
         expect(block).toContain('[현재 프로젝트');
-        expect(block).toContain('이름: idea-radar');
+        expect(block).toContain('이름: alpha-agent-ai');
         expect(block).toContain('🎯 목표: 사전예약 10명');
         expect(block).toContain('📅 기한: 2026-07-01');
         expect(block).toContain('🔬 수요 검증 중');
-        expect(block).toContain('👥 청중: 1인 개발자');
+        expect(block).toContain('👥 타깃: 1인 개발자');
         expect(block).toContain('📈 KPI: 예약 10 / 인터뷰 5');
     });
 });

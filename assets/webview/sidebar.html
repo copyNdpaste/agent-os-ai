@@ -4171,7 +4171,7 @@ const _BOOT_STEPS = [
     fields:[
       { key:'name',     emoji:'🏢', label:'회사·브랜드 이름', placeholder:'예: 제이코프 / 1인 크리에이터' },
       { key:'oneLiner', emoji:'💬', label:'한 줄로 뭐 하시는 분이세요?', placeholder:'예: 자기계발 콘텐츠 만드는 1인 크리에이터' },
-      { key:'audience', emoji:'🎯', label:'누구를 위해 만드세요?', placeholder:'예: 30대 직장인, 자격증 준비생', help:'타깃 청중' },
+      { key:'audience', emoji:'🎯', label:'누구를 위해 만드세요?', placeholder:'예: 30대 직장인, 자격증 준비생', help:'타깃' },
     ]},
   { tag:'STAGE 2 / 3 · STEP 2', h1:'<span class="accent">목표</span>를 정합니다',
     sub:'에이전트들이 매 사이클 이 목표를 보고 다음 한 스텝을 결정합니다. 추상적인 것보다 결과로 측정 가능한 형태가 좋아요.',
@@ -4424,7 +4424,7 @@ function showCompanyEditCard(){
     + '<div class="cs-body">'
     +   '<div class="cs-section"><div class="cs-section-label">회사·브랜드 이름</div><input class="cs-input" id="csName" placeholder="예: 제이코프 / 1인 크리에이터"></div>'
     +   '<div class="cs-section"><div class="cs-section-label">한 줄 소개</div><input class="cs-input" id="csOneLiner" placeholder="예: 자기계발 콘텐츠 만드는 1인 크리에이터"></div>'
-    +   '<div class="cs-section"><div class="cs-section-label">타깃 청중 <span class="cs-section-help">누구를 위해 만드나요</span></div><input class="cs-input" id="csAudience" placeholder="예: 30대 직장인, 자격증 준비생"></div>'
+    +   '<div class="cs-section"><div class="cs-section-label">타깃 <span class="cs-section-help">누구를 위해 만드나요</span></div><input class="cs-input" id="csAudience" placeholder="예: 30대 직장인, 자격증 준비생"></div>'
     +   '<div class="cs-section"><div class="cs-section-label">🎯 올해 핵심 목표</div><input class="cs-input" id="csGoalYear" placeholder="예: 유튜브 구독자 1만"></div>'
     +   '<div class="cs-section"><div class="cs-section-label">📅 이번 달 목표</div><input class="cs-input" id="csGoalMonth" placeholder="예: 영상 4편 + 댓글 패턴 정리"></div>'
     +   '<div class="cs-section"><div class="cs-section-label">🆘 지금 가장 필요한 것 <span class="cs-section-help">시간 / 돈 / 사람 / 툴 / 지식</span></div><textarea class="cs-textarea" id="csNeeds" placeholder="예: 썸네일 디자인 시간이 너무 오래 걸림 → 자동화 필요"></textarea></div>'
@@ -4554,7 +4554,7 @@ function renderProjectBadge(){
   if(!m){
     projectBadge.classList.add('visible','no-project');
     projectBadge.textContent = '🎯 프로젝트 설정 +';
-    projectBadge.title = '현재 워크스페이스(' + _projectState.workspaceName + ')의 프로젝트 메타가 없어요. 클릭해서 목표·기한·청중 설정.';
+    projectBadge.title = '현재 워크스페이스(' + _projectState.workspaceName + ')의 프로젝트 메타가 없어요. 클릭해서 목표·기한·타깃 설정.';
     return;
   }
   projectBadge.classList.add('visible');
@@ -4591,8 +4591,8 @@ function showProjectEditCard(){
     + '</div>'
     + '<div class="cs-body">'
     +   (_projectState.hasWorkspace ? '' : '<div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.35);border-radius:8px;padding:10px 12px;font-size:12px;color:#b45309">⚠️ 워크스페이스 폴더가 열려있지 않아요. 프로젝트 폴더를 먼저 VS Code 로 열어주세요 (File → Open Folder).</div>')
-    +   '<div class="cs-section"><div class="cs-section-label">프로젝트 이름 <span class="cs-section-help">보통 폴더 이름</span></div><input class="cs-input" id="pjName" placeholder="예: idea-radar"></div>'
-    +   '<div class="cs-section"><div class="cs-section-label">한 줄 설명</div><input class="cs-input" id="pjTagline" placeholder="예: 수요 신호로 아이디어 검증"></div>'
+    +   '<div class="cs-section"><div class="cs-section-label">프로젝트 이름 <span class="cs-section-help">보통 폴더 이름</span></div><input class="cs-input" id="pjName" placeholder="예: alpha-agent-ai"></div>'
+    +   '<div class="cs-section"><div class="cs-section-label">한 줄 설명</div><input class="cs-input" id="pjTagline" placeholder="예: 알파 수익 찾는 AI 에이전트 (수요 신호 감지)"></div>'
     +   '<div class="cs-section"><div class="cs-section-label">🎯 이번 프로젝트 목표</div><input class="cs-input" id="pjGoal" placeholder="예: 30일 안에 첫 사전예약 1개"></div>'
     +   '<div class="cs-section"><div class="cs-section-label">📅 기한 <span class="cs-section-help">YYYY-MM-DD 또는 자유 텍스트</span></div><input class="cs-input" id="pjDeadline" placeholder="예: 2026-07-01 또는 2주 내"></div>'
     +   '<div class="cs-section"><div class="cs-section-label">📊 단계</div><select class="cs-input" id="pjStatus">'
@@ -4604,7 +4604,7 @@ function showProjectEditCard(){
     +     '<option value="paused">⏸ 보류</option>'
     +     '<option value="archived">📦 종료</option>'
     +   '</select></div>'
-    +   '<div class="cs-section"><div class="cs-section-label">👥 타깃 청중 <span class="cs-section-help">이 프로젝트만의 청중 (회사 청중과 다를 수 있음)</span></div><input class="cs-input" id="pjAudience" placeholder="예: 1인 개발자"></div>'
+    +   '<div class="cs-section"><div class="cs-section-label">👥 타깃 <span class="cs-section-help">이 프로젝트의 타깃 (회사 타깃과 다를 수 있음)</span></div><input class="cs-input" id="pjAudience" placeholder="예: 1인 개발자"></div>'
     +   '<div class="cs-section"><div class="cs-section-label">📈 KPI <span class="cs-section-help">한 줄에 하나, 최대 5개</span></div><textarea class="cs-textarea" id="pjKpis" placeholder="사전예약 ≥ 10&#10;고객 인터뷰 ≥ 5"></textarea></div>'
     +   '<div class="cs-section"><div class="cs-section-label">📝 노트 <span class="cs-section-help">위 필드로 안 잡히는 컨텍스트</span></div><textarea class="cs-textarea" id="pjNotes" placeholder="예: 경쟁: similarweb, 차별화: 한국어 niche"></textarea></div>'
     + '</div>'

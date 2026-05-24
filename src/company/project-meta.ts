@@ -5,7 +5,7 @@
  * 어떤 프로젝트를 시작하든 사장님 정체성·회사 비전은 동일.
  *
  * 프로젝트는 워크스페이스 단위 — VS Code 가 열린 폴더 하나가 곧 프로젝트.
- * 매 프로젝트마다 별도 목표·기한·청중·상태. 사용자가 동시에 idea-radar +
+ * 매 프로젝트마다 별도 목표·기한·타깃·상태. 사용자가 동시에 alpha-agent-ai +
  * content-bot 두 프로젝트 돌리면 각 워크스페이스가 자기 project.json 가짐.
  *
  * 저장 위치: `<workspaceFolder>/.agent-os-ai/project.json`
@@ -32,7 +32,8 @@ export interface ProjectMeta {
     /** 현재 단계 — ideating(아이디어) / validating(검증) / building(빌드)
      *  / launched(런칭) / paused(보류) / archived(종료). */
     status?: ProjectStatus;
-    /** 타깃 청중 한 줄. 회사 정체성의 audience 와 별도 — 프로젝트별로 다를 수 있음. */
+    /** 타깃 한 줄 (누구를 위한 프로젝트인지). 회사 정체성의 audience 와 별도 —
+     *  프로젝트별로 다를 수 있음. 저장 키는 `audience` (영문) 로 유지. */
     audience?: string;
     /** 측정 지표 (KPI) — 최대 5개 권장. 예: ["사전예약 ≥ 10", "고객 인터뷰 ≥ 5"]. */
     kpis?: string[];
@@ -170,7 +171,7 @@ export function buildProjectContextBlock(meta: ProjectMeta | null): string {
     if (meta.goal) lines.push(`🎯 목표: ${meta.goal}`);
     if (meta.deadline) lines.push(`📅 기한: ${meta.deadline}`);
     if (meta.status) lines.push(`📊 단계: ${statusLabel(meta.status)}`);
-    if (meta.audience) lines.push(`👥 청중: ${meta.audience}`);
+    if (meta.audience) lines.push(`👥 타깃: ${meta.audience}`);
     if (meta.kpis && meta.kpis.length > 0) lines.push(`📈 KPI: ${meta.kpis.slice(0, 5).join(' / ')}`);
     if (meta.notes) lines.push(`📝 노트: ${meta.notes.slice(0, 400)}`);
     return `\n\n[현재 프로젝트 — 이번 워크스페이스]\n${lines.join('\n')}`;
