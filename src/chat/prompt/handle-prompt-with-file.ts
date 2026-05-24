@@ -117,7 +117,9 @@ export async function handlePromptWithFile(
             ctx.view.webview.postMessage({ type: 'streamEnd' });
             aiMessage += reportMsg;
         }
-        ctx.displayMessages.push({ text: ctx.stripActionTags(aiMessage), role: 'ai' });
+        /* raw aiMessage 저장 — fmt() 가 action 태그를 badge 로 렌더하므로
+           strip 불필요. strip 하면 reload 시 표·코드·badge 내용 사라짐. */
+        ctx.displayMessages.push({ text: aiMessage, role: 'ai' });
         ctx.pruneHistory();
         ctx.saveHistory();
 

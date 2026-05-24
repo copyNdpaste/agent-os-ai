@@ -206,7 +206,12 @@ export async function handlePrompt(
         }
 
         // 저장용: AI 응답 기록
-        ctx.displayMessages.push({ text: ctx.stripActionTags(aiMessage), role: 'ai' });
+        /* raw aiMessage 그대로 저장 — 이전엔 stripActionTags 로 <create_file>·
+           <edit_file>·<run_command>·<read_brain> 같은 태그 안 내용을 통째로 지웠는데
+           addMsg→fmt() 가 이미 그 태그들을 file-badge/edit-badge/code-wrap/cmd-badge
+           로 렌더하므로 strip 은 reload 시 콘텐츠 손실만 유발 (사용자 보고: 표·
+           코드블록이 reload 후 사라짐). raw 저장하면 reload 후 동일 화면. */
+        ctx.displayMessages.push({ text: aiMessage, role: 'ai' });
 
         // 📚 Citation badges + 🎬 final source highlight
         const allBrainReads = [...aiMessage.matchAll(/<read_brain>([\s\S]*?)<\/read_brain>/g)]

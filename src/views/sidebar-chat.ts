@@ -2690,7 +2690,9 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
                 } catch (actErr: any) {
                     console.error('[Agent OS] casual-chat 파일 액션 실패:', actErr?.message || actErr);
                 }
-                this._displayMessages.push({ text: this._stripActionTags(text), role: 'ai' });
+                /* raw text 저장 — fmt() 가 action 태그를 badge 로 렌더하므로
+                   strip 불필요. strip 하면 reload 시 표·코드 내용 사라짐. */
+                this._displayMessages.push({ text, role: 'ai' });
                 appendConversationLog({ speaker: 'CEO', emoji: '👔', body: text });
                 try { await this._maybeMirrorToTelegram(); } catch { /* ignore */ }
                 return;
