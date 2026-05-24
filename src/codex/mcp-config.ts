@@ -121,36 +121,47 @@ export async function removeCodexMcpServer(name: string): Promise<void> {
     }
 }
 
-/** Starter pack — filesystem MCP 만 (사장님 정책: API 키 청구 방식 금지).
- *  이미지/콘텐츠 생성은 codex 빌트인 도구 (ChatGPT 구독 인증) 가 알아서 처리하므로
- *  starter pack 에 image-gen 같은 API 키 기반 MCP 는 일부러 포함하지 않음.
+/** Filesystem MCP placeholder 등록 — path 박지 않음 (의도된 동작).
  *
- *  filesystem MCP 는 호출당 청구 0, 로컬 디스크만 접근 — 안전.
- *  허용 경로는 호출자가 지정 (보통 현재 워크스페이스 폴더). */
-export async function setupStarterPack(allowedPath: string): Promise<{
+ *  ⚠️ 핵심 디자인: 글로벌 ~/.codex/config.toml 에 filesystem MCP 의 *형태* 만
+ *  등록해두고 (npx + 패키지명까지만), 실제 허용 경로 (`args` 의 마지막 요소) 는
+ *  **codex-cli.ts 가 매 호출마다 현재 워크스페이스로 -c override**.
+ *
+ *  이게 필요한 이유:
+ *  - alpha-agent-ai 에서 설정 → 글로벌 path 에 alpha-agent-ai 박힘
+ *  - content-bot-ai 워크스페이스 열고 codex 호출 → filesystem MCP 는 여전히
+ *    alpha-agent-ai 가리킴 → 워크스페이스간 누수 발생
+ *  - 그래서 글로벌엔 placeholder, 호출 시점에 동적 path 주입.
+ *
+ *  사용자 시각: 한 번만 "설정" 클릭하면 모든 워크스페이스에서 자동으로 자기
+ *  폴더만 접근. content-bot-ai 가서도 다시 설정 안 해도 됨. */
+export const FILESYSTEM_PLACEHOLDER_PATH = '/__agent_os_ai_dynamic__';
+
+export async function setupStarterPack(_allowedPath?: string): Promise<{
     added: string[];
     skipped: Array<{ name: string; reason: string }>;
 }> {
-    if (!allowedPath || !allowedPath.trim()) {
-        throw new Error('허용 경로가 비어있어요 — 워크스페이스 폴더를 열고 다시 시도해주세요');
-    }
+    /* allowedPath 인자는 backwards-compat 으로 받지만 더 이상 사용 안 함.
+       실제 path 는 호출 시점에 codex-cli.ts 에서 동적 override. */
     const added: string[] = [];
     const skipped: Array<{ name: string; reason: string }> = [];
 
-    /* 이미 등록된 서버는 skip — codex mcp add 가 conflict 에러 던지기 전에 미리 거름 */
     let existing: CodexMcpEntry[] = [];
     try {
         existing = await listCodexMcpServers();
-    } catch { /* list 실패해도 일단 add 시도 — codex 가 다시 에러줄 거임 */ }
+    } catch { /* list 실패해도 add 시도 */ }
     const existingNames = new Set(existing.map(e => e.name));
 
     if (existingNames.has('filesystem')) {
-        skipped.push({ name: 'filesystem', reason: '이미 등록됨' });
+        skipped.push({ name: 'filesystem', reason: '이미 등록됨 (path 는 호출 시 현재 워크스페이스로 자동 override)' });
     } else {
         try {
+            /* placeholder path — codex-cli.ts 가 -c 로 매번 override 함.
+               이 path 가 실제로 쓰이는 일은 없음 (override 못 받으면 codex 가
+               존재 안 하는 dir 에러로 빨리 실패 → 디버깅 용이) */
             await addCodexMcpServer({
                 name: 'filesystem',
-                command: ['npx', '-y', '@modelcontextprotocol/server-filesystem', allowedPath],
+                command: ['npx', '-y', '@modelcontextprotocol/server-filesystem', FILESYSTEM_PLACEHOLDER_PATH],
             });
             added.push('filesystem');
         } catch (e: any) {

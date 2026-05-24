@@ -16,6 +16,17 @@ interface RunOptions {
 
 const DEFAULT_TIMEOUT_MS = 300_000;
 
+/** 현재 VS Code 워크스페이스 폴더. 없으면 undefined.
+ *  codex spawn 의 cwd + filesystem MCP path 양쪽에 쓰여서 워크스페이스간 격리 보장. */
+function getCurrentWorkspaceFolder(): string | undefined {
+  try {
+    const vscode = require('vscode');
+    const wf = vscode?.workspace?.workspaceFolders;
+    if (wf && wf.length > 0) return wf[0].uri.fsPath;
+  } catch { /* vscode unavailable */ }
+  return undefined;
+}
+
 export function runCodexCli(
   prompt: string,
   model: string,
@@ -23,15 +34,29 @@ export function runCodexCli(
   opts: RunOptions
 ): Promise<string> {
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const wsFolder = getCurrentWorkspaceFolder();
+
   /* `codex exec` — 비대화형 one-shot. -m 으로 모델 지정. 마지막 인자가
      prompt. --skip-git-repo-check 는 워크스페이스 검사 우회 (확장에서
-     호출할 땐 cwd 가 임의일 수 있음). */
+     호출할 땐 cwd 가 임의일 수 있음).
+
+     워크스페이스 격리 (사장님 요구): 매 호출마다 cwd + filesystem MCP path 를
+     현재 워크스페이스로 동적 주입. 글로벌 ~/.codex/config.toml 에 박힌
+     filesystem path 가 있어도 -c 가 override 함. alpha-agent-ai 에서 호출
+     → alpha-agent-ai 만 접근. 다른 ws 열면 그 ws 만. */
   const args = [
     'exec',
     '-m', model,
     '--skip-git-repo-check',
-    prompt,
   ];
+  if (wsFolder) {
+    /* TOML array literal 로 path 주입. JSON.stringify 가 큰따옴표·escape 다 처리.
+       codex 의 -c <key=value> 는 value 를 TOML 로 parse 시도 → JSON-style array 도 호환. */
+    const argsToml = `["-y","@modelcontextprotocol/server-filesystem",${JSON.stringify(wsFolder)}]`;
+    args.push('-c', `mcp_servers.filesystem.command="npx"`);
+    args.push('-c', `mcp_servers.filesystem.args=${argsToml}`);
+  }
+  args.push(prompt);
 
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -44,7 +69,10 @@ export function runCodexCli(
     let child;
     try {
       const env = buildSpawnEnv(opts.binPath);
-      child = spawn(opts.binPath, args, { env });
+      /* cwd=워크스페이스 → codex 빌트인 image gen / file write 도구가
+         사장님 프로젝트 폴더에 산출물을 떨굼. 워크스페이스 없으면 process cwd
+         (extension host) 그대로 — 이 경우는 사이드바만 띄운 채로 명령 친 케이스 */
+      child = spawn(opts.binPath, args, wsFolder ? { env, cwd: wsFolder } : { env });
     } catch (e) {
       reject(e);
       return;

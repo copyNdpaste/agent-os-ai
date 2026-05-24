@@ -131,20 +131,17 @@ export function registerDevCommands(
            filesystem MCP 하나만 ~/.codex/config.toml 에 추가해서 codex 가
            워크스페이스 파일을 직접 다룰 수 있게 함. 모든 프로젝트에서 자동 적용. */
         vscode.commands.registerCommand('agentOs.codex.setupMcp', async () => {
-            const ws = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-            if (!ws) {
-                vscode.window.showWarningMessage('워크스페이스 폴더를 먼저 열어주세요 — filesystem MCP 가 허용할 경로를 결정하려면 필요해요.');
-                return;
-            }
             try {
                 const codex = resolveCodexBin();
-                vscode.window.showInformationMessage(`🟢 Codex (${codex || 'codex'}) — MCP starter pack 추가 중…`);
-                const r = await setupStarterPack(ws);
+                vscode.window.showInformationMessage(`🟢 Codex (${codex || 'codex'}) — filesystem MCP 등록 중 (path 는 호출 시 자동 격리)…`);
+                /* allowedPath 인자는 더 이상 사용 안 함 — codex-cli.ts 가 매 호출마다
+                   현재 워크스페이스로 동적 override. setup 은 글로벌 등록 한 번만. */
+                const r = await setupStarterPack();
                 const lines: string[] = [];
                 if (r.added.length > 0) lines.push(`✅ 추가: ${r.added.join(', ')}`);
                 if (r.skipped.length > 0) lines.push(`⏭ 스킵: ${r.skipped.map(s => `${s.name} (${s.reason})`).join(', ')}`);
                 if (lines.length === 0) lines.push('변경 사항 없음');
-                vscode.window.showInformationMessage(`Codex MCP — ${lines.join(' · ')}`);
+                vscode.window.showInformationMessage(`Codex MCP — ${lines.join(' · ')} · 워크스페이스간 자동 격리`);
             } catch (e: any) {
                 vscode.window.showErrorMessage(`Codex MCP 설정 실패: ${e?.message || e}`);
             }

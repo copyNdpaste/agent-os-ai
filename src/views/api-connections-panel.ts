@@ -171,9 +171,9 @@ export class ApiConnectionsPanel {
         🟢 <strong>Codex MCP</strong> — 이미지/콘텐츠 생성은 codex 의 ChatGPT 구독 도구로 (API 청구 X).
         <button onclick="vscode.postMessage({type:'setupCodexMcp'})"
                 style="margin-left: 8px; padding: 4px 12px; background: #00c896; color: #001; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">
-          filesystem MCP 추가
+          filesystem MCP 한 번만 등록
         </button>
-        <span style="opacity:0.7">— 현재 워크스페이스 폴더에 codex 가 파일 R/W 가능하게 함. 모든 프로젝트 공유.</span>
+        <span style="opacity:0.7">— 등록 후엔 모든 워크스페이스에서 자동으로 <strong>현재 폴더만</strong> 접근 (다른 프로젝트 누수 X). 호출 시점에 path 동적 override.</span>
       </div>
     </div>
   </div>
