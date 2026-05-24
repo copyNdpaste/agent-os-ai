@@ -130,10 +130,34 @@ export function readAgentSharedContext(agentId: string, opts?: { lean?: boolean 
     const templatesBlock = readAgentTemplates(agentId, lean ? 1000 : 2000);
     if (templatesBlock) ctx += templatesBlock;
   } catch { /* never break the prompt */ }
-  /* slice(-N) — 최신 N자 사용. 이전엔 slice(0, N) 으로 가장 오래된 N자만
-     읽어서, memory.md 가 커지면 새로 누적한 학습이 prompt 에 안 들어오는
-     버그가 있었음. decisions 처럼 음수 슬라이스로 통일 (최신 우선). */
-  if (memory.trim()) ctx += `\n\n[${AGENTS[agentId]?.name} 개인 메모리 ${ragMode === 'self-rag' ? '— 미검증 포함, 신중히 사용' : ''}]\n${memory.slice(lean ? -1500 : -4000)}`;
+  /* Scope-aware memory injection. 이전엔 단순 slice(-N) 으로 최근 N자만
+     주입했으나 여러 프로젝트 학습이 섞여 들어와 노이즈 + 추론 환각 위험.
+     이제 critical / 현재 project / global 3 섹션으로 예산 분배 (다른 project
+     학습은 dropped). 워크스페이스 없으면 critical + global 만. */
+  if (memory.trim()) {
+    try {
+      const { buildScopedMemoryBlock, MEMORY_BUDGET_NORMAL, MEMORY_BUDGET_LEAN } = require('../dispatch/agent-memory');
+      let currentProjectName: string | undefined;
+      try {
+        const vscode = require('vscode');
+        const wf = vscode?.workspace?.workspaceFolders;
+        const workspaceFolder = wf && wf.length > 0 ? wf[0].uri.fsPath : undefined;
+        if (workspaceFolder) {
+          const { readProjectMeta } = require('../company/project-meta');
+          const pm = readProjectMeta(workspaceFolder);
+          currentProjectName = pm?.name;
+        }
+      } catch { /* vscode unavailable — fall through with undefined */ }
+      const scoped = buildScopedMemoryBlock(memory, currentProjectName, lean ? MEMORY_BUDGET_LEAN : MEMORY_BUDGET_NORMAL);
+      if (scoped) {
+        const ragNote = ragMode === 'self-rag' ? ' — 미검증 포함, 신중히 사용' : '';
+        ctx += `\n\n[${AGENTS[agentId]?.name} 개인 메모리${ragNote}]\n${scoped}`;
+      }
+    } catch {
+      /* Fallback to legacy slice if scoped block fails (defensive). */
+      ctx += `\n\n[${AGENTS[agentId]?.name} 개인 메모리]\n${memory.slice(lean ? -1500 : -4000)}`;
+    }
+  }
   /* Bridge to broader brain folder — Graph RAG retrieval is always on
      (the brain network IS the graph; not using it would be wasteful).
      Normal: 2400 chars cap. Lean: 900 chars cap — 두뇌가 살아있되 짐 가벼움. */

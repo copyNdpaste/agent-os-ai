@@ -25,10 +25,59 @@ export const MEMORY_MAX_BYTES = 30 * 1024;
 export const LEARNING_MIN_CHARS = 20;
 export const LEARNING_MAX_CHARS = 300;
 
-/** Match a `🧠 학습:` prefix tolerant of leading/trailing whitespace.
- *  Strict on the emoji + label so accidental "🧠 노트:" type variants don't
- *  leak through. Capture group = the content after the prefix. */
-const LEARNING_PREFIX_RE = /^\s*🧠\s*학습\s*:\s*(.+?)\s*$/;
+/** Match a `🧠 학습:` prefix with optional `[scope]` selector.
+ *    Group 1 = optional explicit scope ("global" | "critical"), undefined for default
+ *    Group 2 = content after the prefix
+ *  Examples it accepts:
+ *    🧠 학습: 사장님은 즉시 액션 1개 선호
+ *    🧠 학습 [global]: 사장님 톤은 데이터 기반
+ *    🧠 학습 [critical]: PayPal live 키 sandbox 와 별도 발급
+ *  Strict on the emoji + label so accidental "🧠 노트:" variants don't leak. */
+const LEARNING_PREFIX_RE = /^\s*🧠\s*학습(?:\s*\[(global|critical)\])?\s*:\s*(.+?)\s*$/;
+
+/** Memory entry scope:
+ *    'critical' — security/system risks; always shown first regardless of project
+ *    'global'   — cross-project applicable (user style, decision patterns)
+ *    'project'  — bound to one project; only shown when current project matches
+ *  Storage line shape: `YYYY-MM-DD 🧠 [scope[:project]] content`
+ *  Reading time, `buildScopedMemoryBlock` filters by current project. */
+export type LearningScope = 'critical' | 'global' | 'project';
+
+export interface ParsedLearning {
+    /** The substantive content after prefix/scope, trimmed. */
+    content: string;
+    /** Bucket — defaults to 'project' when agent didn't specify [global]/[critical]. */
+    scope: LearningScope;
+}
+
+/** Match a stored memory line: `YYYY-MM-DD 🧠 [scope[:project]] content`.
+ *  Used by buildScopedMemoryBlock to filter by current project at read time.
+ *  Captures: 1=date, 2=scope (critical|global|project), 3=optional project name, 4=content */
+const MEMORY_LINE_RE = /^\s*(\d{4}-\d{2}-\d{2})\s+🧠\s+\[(critical|global|project)(?::([^\]]+))?\]\s+(.+?)\s*$/;
+
+export interface MemoryEntry {
+    date: string;
+    scope: LearningScope;
+    project?: string;  /* present when scope='project' */
+    content: string;
+    /** Raw line as stored — used to reconstruct trimmed memory. */
+    raw: string;
+}
+
+/** Parse a fully-stored memory line. Returns null for malformed/legacy lines
+ *  (the old `- [date] task → sessions/x.md` format from before the scope
+ *  refactor) so callers can skip them gracefully. */
+export function parseMemoryLine(line: string): MemoryEntry | null {
+    const m = MEMORY_LINE_RE.exec(line);
+    if (!m) return null;
+    return {
+        date: m[1],
+        scope: m[2] as LearningScope,
+        project: m[3] || undefined,
+        content: m[4].trim(),
+        raw: line,
+    };
+}
 
 /** Patterns the agent must NOT use as learnings — meta/status noise that has
  *  no future-prompt value. Matched against the content (after prefix strip). */
@@ -45,7 +94,7 @@ const NOISE_PATTERNS: RegExp[] = [
 export function isValidLearning(rawLine: string): boolean {
     const m = LEARNING_PREFIX_RE.exec(rawLine);
     if (!m) return false;
-    const content = m[1].trim();
+    const content = m[2].trim();
     if (content.length < LEARNING_MIN_CHARS) return false;
     if (content.length > LEARNING_MAX_CHARS) return false;
     for (const p of NOISE_PATTERNS) {
@@ -55,22 +104,27 @@ export function isValidLearning(rawLine: string): boolean {
 }
 
 /** Scan an agent's full output text for `🧠 학습:` lines that pass the gate.
- *  Returns the cleaned content (prefix stripped, trimmed) — caller decides
- *  whether to add a date prefix etc. before persisting. */
-export function extractLearnings(output: string): string[] {
+ *  Returns ParsedLearning { content, scope } — caller decides project tagging
+ *  and persistence. Default scope is 'project' when agent didn't specify
+ *  [global] or [critical]. */
+export function extractLearnings(output: string): ParsedLearning[] {
     if (!output) return [];
     const lines = output.split(/\r?\n/);
-    const out: string[] = [];
+    const out: ParsedLearning[] = [];
     const seen = new Set<string>();
     for (const ln of lines) {
         if (!isValidLearning(ln)) continue;
         const m = LEARNING_PREFIX_RE.exec(ln);
         if (!m) continue;
-        const content = m[1].trim();
+        const explicitScope = m[1] as 'global' | 'critical' | undefined;
+        const content = m[2].trim();
         /* 같은 학습 중복 방지 (한 답변에 같은 줄 두 번 출력하는 작은 LLM 케이스) */
         if (seen.has(content)) continue;
         seen.add(content);
-        out.push(content);
+        out.push({
+            content,
+            scope: explicitScope || 'project',
+        });
     }
     return out;
 }
@@ -106,10 +160,20 @@ export function trimMemoryFile(filePath: string): void {
     }
 }
 
-/** Append the validated learnings of one agent's output to its memory.md,
- *  then trim if caps exceeded. Date prefix added so future readers (and the
- *  trim logic) can chronologically scan. No-op when no learnings pass gate. */
-export function persistLearnings(agentId: string, output: string): number {
+/** Append the validated learnings of one agent's output to its memory.md
+ *  with scope + project stamping, then trim if caps exceeded.
+ *
+ *  Storage format per line: `YYYY-MM-DD 🧠 [scope[:project]] content`
+ *
+ *  `currentProject` (optional, from workspace project.json `name`):
+ *   - Stamped onto entries with scope='project' as `[project:NAME]`
+ *   - Ignored for scope='critical' or 'global'
+ *   - When undefined (no workspace), scope='project' entries fall back to
+ *     `[project:_orphan]` so they don't conflict with any real project's
+ *     reads — reader filters them out unless current project is also undefined.
+ *
+ *  Returns count of lines actually appended. */
+export function persistLearnings(agentId: string, output: string, currentProject?: string): number {
     const learnings = extractLearnings(output);
     if (learnings.length === 0) return 0;
     const dir = path.join(getCompanyDir(), '_agents', agentId);
@@ -117,7 +181,13 @@ export function persistLearnings(agentId: string, output: string): number {
     try {
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
         const date = new Date().toISOString().slice(0, 10);
-        const block = learnings.map(l => `${date} 🧠 ${l}`).join('\n') + '\n';
+        const projectTag = currentProject?.trim() || '_orphan';
+        const block = learnings.map(l => {
+            const scopeTag = l.scope === 'project'
+                ? `[project:${projectTag}]`
+                : `[${l.scope}]`;
+            return `${date} 🧠 ${scopeTag} ${l.content}`;
+        }).join('\n') + '\n';
         fs.appendFileSync(file, block, 'utf-8');
         trimMemoryFile(file);
         return learnings.length;
@@ -125,4 +195,75 @@ export function persistLearnings(agentId: string, output: string): number {
         console.error('[agent-memory] persist failed for', agentId, e);
         return 0;
     }
+}
+
+/** Allocation budget for the scoped memory block. Numbers chosen so the
+ *  total roughly matches the old single-block budget (~4000 normal, ~1500
+ *  lean) but distributed across scopes. */
+export interface MemoryBudget {
+    critical: number;
+    project: number;
+    global: number;
+}
+export const MEMORY_BUDGET_NORMAL: MemoryBudget = { critical: 1200, project: 2000, global: 800 };
+export const MEMORY_BUDGET_LEAN: MemoryBudget = { critical: 500, project: 700, global: 300 };
+
+/** Build the memory prompt block for one agent, filtered by scope + current
+ *  project. Allocation per scope is bounded — critical always included
+ *  (security/safety can't be skipped), current project gets the largest share,
+ *  global gets a small slot. Other projects' entries are dropped (would be
+ *  cross-context noise).
+ *
+ *  Returns the assembled block string (already wrapped with section headers),
+ *  or empty string if no entries match. */
+export function buildScopedMemoryBlock(
+    rawMemory: string,
+    currentProject: string | undefined,
+    budget: MemoryBudget = MEMORY_BUDGET_NORMAL,
+): string {
+    if (!rawMemory || !rawMemory.trim()) return '';
+    const lines = rawMemory.split(/\r?\n/);
+    const critical: MemoryEntry[] = [];
+    const projectEntries: MemoryEntry[] = [];
+    const global: MemoryEntry[] = [];
+    for (const ln of lines) {
+        const e = parseMemoryLine(ln);
+        if (!e) continue; /* legacy/malformed — skip */
+        if (e.scope === 'critical') critical.push(e);
+        else if (e.scope === 'global') global.push(e);
+        else if (e.scope === 'project') {
+            /* Match: same project (including both undefined). Drop cross-project. */
+            const proj = e.project || '_orphan';
+            const want = currentProject?.trim() || '_orphan';
+            if (proj === want) projectEntries.push(e);
+        }
+    }
+    /* Newest first within each bucket. Memory file is append-only, so latest
+       entries are at the END of the lines array → reverse to put recent first. */
+    critical.reverse();
+    projectEntries.reverse();
+    global.reverse();
+    function fitWithin(entries: MemoryEntry[], cap: number): string[] {
+        const out: string[] = [];
+        let used = 0;
+        for (const e of entries) {
+            const line = e.raw.trim();
+            if (used + line.length + 1 > cap) break;
+            out.push(line);
+            used += line.length + 1;
+        }
+        return out;
+    }
+    const cBlock = fitWithin(critical, budget.critical);
+    const pBlock = fitWithin(projectEntries, budget.project);
+    const gBlock = fitWithin(global, budget.global);
+    if (cBlock.length === 0 && pBlock.length === 0 && gBlock.length === 0) return '';
+    const sections: string[] = [];
+    if (cBlock.length > 0) sections.push(`🔴 [critical — 항상 우선]\n${cBlock.join('\n')}`);
+    if (pBlock.length > 0) {
+        const label = currentProject ? `이 프로젝트 (${currentProject})` : '현재';
+        sections.push(`📌 [project — ${label}]\n${pBlock.join('\n')}`);
+    }
+    if (gBlock.length > 0) sections.push(`🌍 [global — 모든 프로젝트 공통]\n${gBlock.join('\n')}`);
+    return sections.join('\n\n');
 }

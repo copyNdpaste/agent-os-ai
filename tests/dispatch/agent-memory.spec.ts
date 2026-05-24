@@ -17,6 +17,8 @@ import {
     extractLearnings,
     isValidLearning,
     trimMemoryFile,
+    parseMemoryLine,
+    buildScopedMemoryBlock,
     MEMORY_MAX_LINES,
 } from '../../src/dispatch/agent-memory';
 
@@ -58,7 +60,7 @@ describe('dispatch/agent-memory — isValidLearning', () => {
 });
 
 describe('dispatch/agent-memory — extractLearnings', () => {
-    it('답변 본문에서 학습 라인만 추출', () => {
+    it('답변 본문에서 학습 라인만 추출 + 기본 scope=project', () => {
         const output = `## 분석 결과
 
 매출 데이터를 보면 주말 집중도가 높습니다.
@@ -66,30 +68,34 @@ describe('dispatch/agent-memory — extractLearnings', () => {
 🧠 학습: 주말 매출 비중 65% — 토요일 광고 우선순위 높이기.
 
 추가 권장: ...`;
-        expect(extractLearnings(output)).toEqual([
-            '주말 매출 비중 65% — 토요일 광고 우선순위 높이기.',
-        ]);
+        const r = extractLearnings(output);
+        expect(r.length).toBe(1);
+        expect(r[0].content).toContain('주말 매출 비중 65%');
+        expect(r[0].scope).toBe('project'); /* 기본값 */
     });
 
-    it('여러 학습 줄 모두 추출 + 중복 제거', () => {
-        const output = `
-🧠 학습: 사장님은 즉시 액션 1개를 선호. 보고서 구조 단순화.
-중간 텍스트
-🧠 학습: PayPal live 자격증명 별도 발급 필요. sandbox 와 분리.
-🧠 학습: 사장님은 즉시 액션 1개를 선호. 보고서 구조 단순화.
-`;
-        const result = extractLearnings(output);
-        expect(result.length).toBe(2); /* 중복 한 줄 제거됨 */
-        expect(result).toContain('사장님은 즉시 액션 1개를 선호. 보고서 구조 단순화.');
-        expect(result).toContain('PayPal live 자격증명 별도 발급 필요. sandbox 와 분리.');
+    it('[global] / [critical] 명시 scope 파싱', () => {
+        const output = [
+            '🧠 학습 [global]: 사장님은 즉시 액션 1개를 선호. 보고서 구조 단순화.',
+            '🧠 학습 [critical]: PayPal live 자격증명 sandbox 와 별도 발급 필요. 모드 토글 후 재발급.',
+            '🧠 학습: 인스타 댓글에서 "쇼츠" 키워드 23회 등장 — 콘텐츠 우선순위.',
+        ].join('\n');
+        const r = extractLearnings(output);
+        expect(r.length).toBe(3);
+        expect(r.find(l => l.content.includes('사장님'))?.scope).toBe('global');
+        expect(r.find(l => l.content.includes('PayPal'))?.scope).toBe('critical');
+        expect(r.find(l => l.content.includes('쇼츠'))?.scope).toBe('project');
+    });
+
+    it('중복 content 는 한 번만', () => {
+        const output = [
+            '🧠 학습: 사장님은 즉시 액션 1개를 선호. 보고서 구조 단순화.',
+            '🧠 학습: 사장님은 즉시 액션 1개를 선호. 보고서 구조 단순화.',
+        ].join('\n');
+        expect(extractLearnings(output).length).toBe(1);
     });
 
     it('통과한 학습과 거부된 학습 섞여있어도 통과한 것만 반환', () => {
-        /* 라인 안 inline 주석을 넣으면 길이 게이트를 통과해버리므로 실제 거부될
-           라인은 클린하게. 의도:
-             첫 줄  — 길이 20자 미만 (거부)
-             둘째   — 메타 보고 + sessions/ 경로 (거부)
-             셋째   — 통과해야 함 */
         const output = [
             '',
             '🧠 학습: 짧음.',
@@ -97,9 +103,9 @@ describe('dispatch/agent-memory — extractLearnings', () => {
             '🧠 학습: 인스타 댓글에 "쇼츠" 키워드 23회 등장 — 미스터비스트 콘텐츠 우선순위에 활용.',
             '',
         ].join('\n');
-        const result = extractLearnings(output);
-        expect(result.length).toBe(1);
-        expect(result[0]).toContain('쇼츠');
+        const r = extractLearnings(output);
+        expect(r.length).toBe(1);
+        expect(r[0].content).toContain('쇼츠');
     });
 
     it('학습 라인 없으면 빈 배열', () => {
@@ -146,5 +152,85 @@ describe('dispatch/agent-memory — trimMemoryFile', () => {
         /* 첫 entry 는 잘려나감 */
         expect(kept).not.toContain('entry 0\n');
         expect(kept).toContain('<!-- ⚠️ 자동 정리됨');
+    });
+});
+
+describe('dispatch/agent-memory — parseMemoryLine', () => {
+    it('critical scope 라인 파싱', () => {
+        const e = parseMemoryLine('2026-05-24 🧠 [critical] PayPal live 키 sandbox 와 별도 발급');
+        expect(e?.scope).toBe('critical');
+        expect(e?.date).toBe('2026-05-24');
+        expect(e?.content).toContain('PayPal');
+    });
+
+    it('global scope 라인 파싱', () => {
+        const e = parseMemoryLine('2026-05-24 🧠 [global] 사장님은 즉시 액션 1개 선호');
+        expect(e?.scope).toBe('global');
+        expect(e?.project).toBeUndefined();
+    });
+
+    it('project scope 라인 — project name 캡쳐', () => {
+        const e = parseMemoryLine('2026-05-24 🧠 [project:alpha-agent-ai] 인스타 댓글 쇼츠 23회');
+        expect(e?.scope).toBe('project');
+        expect(e?.project).toBe('alpha-agent-ai');
+        expect(e?.content).toContain('쇼츠');
+    });
+
+    it('legacy/malformed 라인은 null', () => {
+        expect(parseMemoryLine('- [2026-01-15] 옛 메타 한 줄')).toBeNull();
+        expect(parseMemoryLine('일반 텍스트')).toBeNull();
+        expect(parseMemoryLine('')).toBeNull();
+    });
+});
+
+describe('dispatch/agent-memory — buildScopedMemoryBlock', () => {
+    const memory = [
+        '2026-05-20 🧠 [critical] PayPal live 키 sandbox 와 별도 발급',
+        '2026-05-21 🧠 [global] 사장님은 즉시 액션 1개 선호',
+        '2026-05-22 🧠 [project:alpha-agent-ai] 인스타 댓글 쇼츠 23회',
+        '2026-05-23 🧠 [project:content-bot] 한국어 캡션이 일본어보다 engagement 1.5x',
+        '2026-05-24 🧠 [project:alpha-agent-ai] 사전예약 페이지 CTR 8%',
+        '- [2026-01-01] legacy 메타 한 줄 (parser 가 무시)',
+    ].join('\n');
+
+    it('현재 프로젝트 = alpha-agent-ai → 다른 프로젝트 항목 제외', () => {
+        const block = buildScopedMemoryBlock(memory, 'alpha-agent-ai');
+        expect(block).toContain('PayPal');                              /* critical 포함 */
+        expect(block).toContain('사장님은 즉시 액션');                  /* global 포함 */
+        expect(block).toContain('인스타 댓글 쇼츠');                    /* 현재 project 포함 */
+        expect(block).toContain('사전예약 페이지 CTR');                 /* 현재 project 포함 */
+        expect(block).not.toContain('한국어 캡션');                     /* 다른 project 제외 */
+        expect(block).not.toContain('legacy 메타');                     /* malformed 무시 */
+    });
+
+    it('섹션 헤더로 scope 구분', () => {
+        const block = buildScopedMemoryBlock(memory, 'alpha-agent-ai');
+        expect(block).toContain('🔴 [critical');
+        expect(block).toContain('📌 [project — 이 프로젝트 (alpha-agent-ai)');
+        expect(block).toContain('🌍 [global');
+    });
+
+    it('현재 프로젝트 없으면 critical + global 만', () => {
+        const block = buildScopedMemoryBlock(memory, undefined);
+        expect(block).toContain('PayPal');
+        expect(block).toContain('사장님은 즉시 액션');
+        expect(block).not.toContain('인스타 댓글 쇼츠');
+        expect(block).not.toContain('한국어 캡션');
+    });
+
+    it('빈 memory 면 빈 문자열', () => {
+        expect(buildScopedMemoryBlock('', 'x')).toBe('');
+        expect(buildScopedMemoryBlock('   ', 'x')).toBe('');
+    });
+
+    it('각 scope 최신 우선 (append-only 파일이라 끝 라인이 최신)', () => {
+        const m = [
+            '2026-05-20 🧠 [project:alpha-agent-ai] 첫 학습',
+            '2026-05-24 🧠 [project:alpha-agent-ai] 최신 학습',
+        ].join('\n');
+        const block = buildScopedMemoryBlock(m, 'alpha-agent-ai');
+        const firstPos = block.indexOf('첫 학습');
+        const newestPos = block.indexOf('최신 학습');
+        expect(newestPos).toBeLessThan(firstPos); /* 최신이 위에 */
     });
 });

@@ -546,7 +546,18 @@ export async function runSpecialistLoop(args: SpecialistLoopArgs): Promise<Speci
            산출물 위치는 sessions/ 폴더 자체로 추적되므로 메모리 중복 불필요. */
         try {
             const { persistLearnings } = await import('../../dispatch/agent-memory');
-            const n = persistLearnings(t.agent, out);
+            /* 현재 워크스페이스의 프로젝트 이름을 stamp 로 사용. 없으면 _orphan
+               으로 분류 (cross-project 노이즈 방지 — buildScopedMemoryBlock 이
+               다른 프로젝트 학습은 drop 함). */
+            let currentProjectName: string | undefined;
+            try {
+                const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+                if (wsRoot) {
+                    const { readProjectMeta } = await import('../../company/project-meta');
+                    currentProjectName = readProjectMeta(wsRoot)?.name;
+                }
+            } catch { /* fall through with undefined */ }
+            const n = persistLearnings(t.agent, out, currentProjectName);
             if (n > 0) post({ type: 'response', value: `🧠 ${a.emoji} ${a.name} 학습 ${n}개 memory.md 누적` });
         } catch (e: any) {
             console.warn('[specialist-loop] persistLearnings failed:', e?.message || e);
