@@ -95,6 +95,11 @@ export class ApiConnectionsPanel {
                     vscode.commands.executeCommand(msg.command);
                 } else if (msg?.type === 'openHelp' && msg.url) {
                     vscode.env.openExternal(vscode.Uri.parse(msg.url));
+                } else if (msg?.type === 'setupCodexMcp') {
+                    /* Codex MCP starter pack 한 번 클릭 추가 — filesystem 만.
+                       이미지/콘텐츠는 codex 빌트인 도구 (ChatGPT 구독) 가 처리,
+                       API 키 청구 방식 MCP 는 일부러 제외 (사장님 비용 정책). */
+                    vscode.commands.executeCommand('agentOs.codex.setupMcp');
                 }
             } catch (e: any) {
                 this._panel.webview.postMessage({ type: 'saved', serviceId: msg?.serviceId, ok: false, error: e?.message || String(e) });
@@ -162,6 +167,14 @@ export class ApiConnectionsPanel {
       <div class="eyebrow">AGENT OS AI · 외부 연결</div>
       <h1>API 키 한 곳에서 관리</h1>
       <div class="hero-sub">텔레그램 · YouTube · Calendar · OpenAI · Slack · X · Threads · Instagram — 모든 자격증명을 한 패널에서 관리. 회사 기본값은 모든 프로젝트가 공유, 필요 시 프로젝트별 override 가능. 저장 위치: <code>_company/_agents/&lt;id&gt;/config.md</code> + <code>.agent-os-ai/credentials/</code> (둘 다 git 자동 제외).</div>
+      <div style="margin-top: 12px; padding: 10px 14px; background: rgba(0,200,150,0.08); border: 1px solid rgba(0,200,150,0.25); border-radius: 8px; font-size: 13px;">
+        🟢 <strong>Codex MCP</strong> — 이미지/콘텐츠 생성은 codex 의 ChatGPT 구독 도구로 (API 청구 X).
+        <button onclick="vscode.postMessage({type:'setupCodexMcp'})"
+                style="margin-left: 8px; padding: 4px 12px; background: #00c896; color: #001; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">
+          filesystem MCP 추가
+        </button>
+        <span style="opacity:0.7">— 현재 워크스페이스 폴더에 codex 가 파일 R/W 가능하게 함. 모든 프로젝트 공유.</span>
+      </div>
     </div>
   </div>
 </header>

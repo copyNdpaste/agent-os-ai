@@ -6,7 +6,8 @@
      _company/projects/ using a chosen template. */
 
 import * as vscode from 'vscode';
-import { ask, resolveClaudeBin, pingClaude } from '../llm';
+import { ask, resolveClaudeBin, pingClaude, resolveCodexBin, pingCodex } from '../llm';
+import { setupStarterPack, listCodexMcpServers } from '../codex/mcp-config';
 import {
     pythonCmd as _pythonCmd,
     invalidatePythonCmdCache as _invalidatePythonCmdCache,
@@ -124,6 +125,47 @@ export function registerDevCommands(
                 content: `# 🔍 Agent OS — Claude CLI 연결 진단\n\n_${new Date().toLocaleString('ko-KR')}_\n\n${out.join('\n')}\n\n---\n\n## 자주 막히는 곳\n\n### Claude CLI가 처음이면\n1. 공식 설치 가이드: https://docs.claude.com/en/docs/claude-code/setup\n2. 설치 후 터미널에서 \`claude login\` 으로 Claude Max 계정 인증\n3. \`claude --version\` 으로 동작 확인\n4. Agent OS 다시 열고 채팅 시도\n\n### \`claude\` 명령을 못 찾는다면\n- \`which claude\` 결과를 settings.json 의 \`agentOs.claudeBinPath\` 에 절대경로로 박아두세요.\n- 예: \`/Users/hoony/.local/bin/claude\` 또는 \`~/bin/claude\`\n\n### 그래도 안 되면\n- VS Code/Anti-Gravity 재시작\n- 명령 팔레트 (Cmd+Shift+P) → \`Agent OS: 연결 진단\` 다시 실행\n- 위 결과 스크린샷과 함께 제보\n`,
             });
             await vscode.window.showTextDocument(doc, { preview: false });
+        }),
+        /* Codex MCP 글로벌 도우미 — 사장님 정책: 이미지·콘텐츠 생성은 codex 의
+           ChatGPT 구독 인증 도구로만 (OpenAI API per-call 청구 금지). 이 명령은
+           filesystem MCP 하나만 ~/.codex/config.toml 에 추가해서 codex 가
+           워크스페이스 파일을 직접 다룰 수 있게 함. 모든 프로젝트에서 자동 적용. */
+        vscode.commands.registerCommand('agentOs.codex.setupMcp', async () => {
+            const ws = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+            if (!ws) {
+                vscode.window.showWarningMessage('워크스페이스 폴더를 먼저 열어주세요 — filesystem MCP 가 허용할 경로를 결정하려면 필요해요.');
+                return;
+            }
+            try {
+                const codex = resolveCodexBin();
+                vscode.window.showInformationMessage(`🟢 Codex (${codex || 'codex'}) — MCP starter pack 추가 중…`);
+                const r = await setupStarterPack(ws);
+                const lines: string[] = [];
+                if (r.added.length > 0) lines.push(`✅ 추가: ${r.added.join(', ')}`);
+                if (r.skipped.length > 0) lines.push(`⏭ 스킵: ${r.skipped.map(s => `${s.name} (${s.reason})`).join(', ')}`);
+                if (lines.length === 0) lines.push('변경 사항 없음');
+                vscode.window.showInformationMessage(`Codex MCP — ${lines.join(' · ')}`);
+            } catch (e: any) {
+                vscode.window.showErrorMessage(`Codex MCP 설정 실패: ${e?.message || e}`);
+            }
+        }),
+        /* 현재 등록된 codex MCP 서버 목록 확인 — 진단/디버깅용. */
+        vscode.commands.registerCommand('agentOs.codex.listMcp', async () => {
+            try {
+                const list = await listCodexMcpServers();
+                if (list.length === 0) {
+                    vscode.window.showInformationMessage('등록된 Codex MCP 서버가 없어요. `Agent OS: Codex MCP 설정` 명령으로 starter pack 추가 가능.');
+                    return;
+                }
+                const body = list.map(e => `- **${e.name}** \`${e.command}\` (${e.status})`).join('\n');
+                const doc = await vscode.workspace.openTextDocument({
+                    language: 'markdown',
+                    content: `# 🟢 Codex MCP 서버 목록\n\n_${new Date().toLocaleString('ko-KR')}_\n\n${body}\n\n---\n_총 ${list.length}개. 추가: \`codex mcp add <name> -- <cmd>\` / 제거: \`codex mcp remove <name>\`_\n`,
+                });
+                await vscode.window.showTextDocument(doc, { preview: false });
+            } catch (e: any) {
+                vscode.window.showErrorMessage(`Codex MCP 목록 조회 실패: ${e?.message || e}`);
+            }
         }),
         vscode.commands.registerCommand('agentOs.dailyBriefing.fireNow', async () => {
             try {

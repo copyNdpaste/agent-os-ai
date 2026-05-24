@@ -124,6 +124,18 @@
         "icon": "$(pulse)"
       },
       {
+        "command": "agentOs.codex.setupMcp",
+        "title": "🟢 Codex MCP 설정 (filesystem starter pack)",
+        "category": "Agent OS",
+        "icon": "$(plug)"
+      },
+      {
+        "command": "agentOs.codex.listMcp",
+        "title": "🟢 Codex MCP 서버 목록 보기",
+        "category": "Agent OS",
+        "icon": "$(list-unordered)"
+      },
+      {
         "command": "agentOs.youtube.refreshCommentQueue",
         "title": "YouTube 댓글 답장 큐 갱신",
         "category": "Agent OS",
