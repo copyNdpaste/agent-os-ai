@@ -60,6 +60,12 @@ export function appendAgentMemory(agentId: string, line: string) {
     const p = path.join(getCompanyDir(), '_agents', agentId, 'memory.md');
     const stamp = new Date().toISOString().slice(0, 10);
     fs.appendFileSync(p, `\n- [${stamp}] ${line.replace(/\n/g, ' ').slice(0, 300)}`);
+    /* memory.md 가 100줄·30KB 초과 시 오래된 50% 자동 정리 — 무한 누적 차단.
+       OAuth/credentials-blocked 등 시스템 이벤트 경로도 동일하게 trim 적용. */
+    try {
+      const mem = require('../dispatch/agent-memory');
+      mem.trimMemoryFile(p);
+    } catch { /* trim 실패해도 append 자체 깨뜨리지 않음 */ }
   } catch { /* ignore */ }
 }
 

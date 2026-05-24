@@ -540,11 +540,20 @@ export async function runSpecialistLoop(args: SpecialistLoopArgs): Promise<Speci
                 `# ${a.emoji} ${a.name} — ${t.task}\n\n${out}\n`
             );
         } catch { /* ignore */ }
-        // 개인 메모리에 한 줄 누적
-        appendAgentMemory(t.agent, `${t.task} → 산출물 sessions/${path.basename(sessionDir)}/${t.agent}.md`);
+        /* 개인 메모리 누적 — 이전엔 매 task 마다 "task → sessions/x.md" 메타
+           한 줄 무조건 append (noise). 이제는 agent 가 답변에 명시한
+           `🧠 학습: ...` 마커만 검증 게이트 통과 후 저장 (system.md 기준).
+           산출물 위치는 sessions/ 폴더 자체로 추적되므로 메모리 중복 불필요. */
+        try {
+            const { persistLearnings } = await import('../../dispatch/agent-memory');
+            const n = persistLearnings(t.agent, out);
+            if (n > 0) post({ type: 'response', value: `🧠 ${a.emoji} ${a.name} 학습 ${n}개 memory.md 누적` });
+        } catch (e: any) {
+            console.warn('[specialist-loop] persistLearnings failed:', e?.message || e);
+        }
         /* Self-RAG promotion: if this agent is in self-rag mode, scan
            its output for [근거: ...] tagged claims and append them to
-           verified.md. memory.md still gets the firehose entry above
+           verified.md. memory.md still gets the learning gate above
            for traceability. */
         try {
             if (readAgentRagMode(t.agent) === 'self-rag') {

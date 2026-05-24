@@ -114,7 +114,10 @@ export function readAgentSharedContext(agentId: string, opts?: { lean?: boolean 
     const templatesBlock = readAgentTemplates(agentId, lean ? 1000 : 2000);
     if (templatesBlock) ctx += templatesBlock;
   } catch { /* never break the prompt */ }
-  if (memory.trim()) ctx += `\n\n[${AGENTS[agentId]?.name} 개인 메모리 ${ragMode === 'self-rag' ? '— 미검증 포함, 신중히 사용' : ''}]\n${memory.slice(0, lean ? 1500 : 4000)}`;
+  /* slice(-N) — 최신 N자 사용. 이전엔 slice(0, N) 으로 가장 오래된 N자만
+     읽어서, memory.md 가 커지면 새로 누적한 학습이 prompt 에 안 들어오는
+     버그가 있었음. decisions 처럼 음수 슬라이스로 통일 (최신 우선). */
+  if (memory.trim()) ctx += `\n\n[${AGENTS[agentId]?.name} 개인 메모리 ${ragMode === 'self-rag' ? '— 미검증 포함, 신중히 사용' : ''}]\n${memory.slice(lean ? -1500 : -4000)}`;
   /* Bridge to broader brain folder — Graph RAG retrieval is always on
      (the brain network IS the graph; not using it would be wasteful).
      Normal: 2400 chars cap. Lean: 900 chars cap — 두뇌가 살아있되 짐 가벼움. */

@@ -1205,28 +1205,34 @@ body.corp-dispatching .corp-overlay{opacity:1;animation:overlayPulse 1.5s ease-o
 /* Company setup edit modal — reuses the tc-* visual language. Brand badge
    click opens this so users can edit name / goals / needs without digging
    into _shared/ files. */
-.cs-backdrop{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.78);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);animation:apIn .25s ease-out;padding:20px}
-.cs-modal{width:min(460px,100%);max-height:92vh;display:flex;flex-direction:column;background:linear-gradient(180deg,rgba(20,20,26,0.98),rgba(8,8,12,0.99));border:1px solid rgba(255,255,255,0.06);border-radius:18px;box-shadow:0 30px 80px rgba(0,0,0,0.7),0 0 50px rgba(37,99,235,.15);animation:apModalIn .35s cubic-bezier(.16,1,.3,1);overflow:hidden;position:relative}
-.cs-head{display:flex;align-items:center;gap:10px;padding:18px 20px 6px}
-.cs-head-emoji{font-size:22px}
-.cs-head-title{font-family:'SF Mono','JetBrains Mono',monospace;font-size:11px;letter-spacing:1.5px;color:var(--accent);font-weight:700;text-transform:uppercase;text-shadow:0 0 8px var(--accent-glow)}
-.cs-head-sub{font-size:11.5px;color:var(--text-dim);margin-top:1px}
-.cs-close{margin-left:auto;background:transparent;border:none;color:var(--text-dim);font-size:22px;line-height:1;cursor:pointer;padding:4px 8px;border-radius:6px;transition:all .2s}
-.cs-close:hover{background:rgba(255,255,255,0.06);color:var(--text-bright)}
-.cs-body{padding:6px 20px 8px;overflow-y:auto;display:flex;flex-direction:column;gap:11px}
+/* 회사 설정 편집 모달 — 라이트 테마 통일 (사이드바 톤 일치). 이전엔 다크 modal
+   에 mono UPPER 라벨 (Korean 가독성 떨어짐) + invisible 흰색 border 였음. */
+.cs-backdrop{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(15,23,42,.45);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);animation:apIn .25s ease-out;padding:20px}
+.cs-modal{width:min(520px,100%);max-height:92vh;display:flex;flex-direction:column;background:#ffffff;border:1px solid rgba(37,99,235,.18);border-radius:18px;box-shadow:0 24px 60px rgba(15,23,42,.18),0 0 0 1px rgba(37,99,235,.06);animation:apModalIn .35s cubic-bezier(.16,1,.3,1);overflow:hidden;position:relative}
+.cs-head{display:flex;align-items:center;gap:12px;padding:20px 22px 16px;border-bottom:1px solid rgba(37,99,235,.10);background:linear-gradient(180deg,rgba(37,99,235,.04),transparent)}
+.cs-head-emoji{font-size:24px;line-height:1}
+.cs-head-title{font-family:'Inter','SF Pro Display',-apple-system,system-ui,sans-serif;font-size:16px;font-weight:700;letter-spacing:-.2px;color:var(--text-bright);text-transform:none;text-shadow:none}
+.cs-head-sub{font-size:11.5px;color:var(--text-dim);margin-top:2px;line-height:1.4}
+.cs-close{margin-left:auto;background:transparent;border:none;color:var(--text-dim);font-size:22px;line-height:1;cursor:pointer;padding:6px 10px;border-radius:8px;transition:all .15s}
+.cs-close:hover{background:rgba(15,23,42,.06);color:var(--text-bright)}
+.cs-body{padding:18px 22px 8px;overflow-y:auto;display:flex;flex-direction:column;gap:16px}
 .cs-section{display:flex;flex-direction:column;gap:6px}
-.cs-section-label{font-size:9.5px;font-family:'SF Mono',monospace;color:var(--accent);letter-spacing:1.2px;text-transform:uppercase;opacity:.85}
-.cs-section-help{font-size:10.5px;color:var(--text-dim);font-weight:400;letter-spacing:0;text-transform:none;margin-left:6px;opacity:.7}
-.cs-input{width:100%;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:9px;padding:10px 12px;font-family:inherit;font-size:12.5px;color:var(--text-bright);outline:none;transition:all .2s;box-sizing:border-box}
-.cs-input:focus{border-color:var(--accent);background:rgba(0,0,0,0.3);box-shadow:0 0 12px var(--accent-glow)}
-.cs-textarea{width:100%;min-height:60px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:9px;padding:10px 12px;font-family:inherit;font-size:12.5px;color:var(--text-bright);outline:none;resize:vertical;transition:all .2s;box-sizing:border-box;line-height:1.5}
-.cs-textarea:focus{border-color:var(--accent);background:rgba(0,0,0,0.3);box-shadow:0 0 12px var(--accent-glow)}
-.cs-actions{display:flex;gap:8px;padding:14px 20px 20px}
-.cs-btn{flex:1;background:var(--accent);color:#000;border:none;border-radius:10px;padding:11px 14px;font-size:12.5px;font-weight:700;cursor:pointer;transition:all .2s}
-.cs-btn:hover{filter:brightness(1.1)}
-.cs-btn.secondary{background:rgba(255,255,255,0.06);color:var(--text-bright)}
-.cs-btn.secondary:hover{background:rgba(255,255,255,0.1)}
-.cs-saved{font-size:11px;color:#2563eb;text-align:center;padding:0 20px 4px;opacity:0;transition:opacity .25s}
+.cs-section-label{font-family:'Inter','SF Pro Display',sans-serif;font-size:12px;font-weight:600;letter-spacing:-.1px;color:var(--text-bright);text-transform:none;opacity:1;display:flex;align-items:baseline;gap:6px}
+.cs-section-help{font-size:11px;color:var(--text-dim);font-weight:400;letter-spacing:0;text-transform:none;margin-left:0;opacity:1;font-style:italic}
+.cs-input{width:100%;background:#f8fafc;border:1.5px solid rgba(15,23,42,.10);border-radius:9px;padding:10px 14px;font-family:inherit;font-size:13px;color:var(--text-bright);outline:none;transition:all .15s;box-sizing:border-box;line-height:1.5}
+.cs-input::placeholder{color:var(--text-dim);opacity:.65}
+.cs-input:hover{border-color:rgba(15,23,42,.20);background:#ffffff}
+.cs-input:focus{border-color:var(--accent);background:#ffffff;box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.cs-textarea{width:100%;min-height:72px;background:#f8fafc;border:1.5px solid rgba(15,23,42,.10);border-radius:9px;padding:10px 14px;font-family:inherit;font-size:13px;color:var(--text-bright);outline:none;resize:vertical;transition:all .15s;box-sizing:border-box;line-height:1.55}
+.cs-textarea::placeholder{color:var(--text-dim);opacity:.65}
+.cs-textarea:hover{border-color:rgba(15,23,42,.20);background:#ffffff}
+.cs-textarea:focus{border-color:var(--accent);background:#ffffff;box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.cs-actions{display:flex;gap:10px;padding:14px 22px 20px;border-top:1px solid rgba(37,99,235,.08);background:rgba(248,250,252,.6)}
+.cs-btn{flex:1;background:linear-gradient(135deg,var(--accent),var(--accent3));color:#ffffff;border:none;border-radius:10px;padding:11px 16px;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;box-shadow:0 2px 6px rgba(37,99,235,.18)}
+.cs-btn:hover{filter:brightness(1.06);transform:translateY(-1px);box-shadow:0 4px 12px rgba(37,99,235,.28)}
+.cs-btn.secondary{background:#ffffff;color:var(--text-bright);border:1.5px solid rgba(15,23,42,.10);box-shadow:none}
+.cs-btn.secondary:hover{background:#f1f5f9;border-color:rgba(15,23,42,.18);transform:translateY(-1px);box-shadow:0 2px 6px rgba(15,23,42,.08)}
+.cs-saved{font-size:12px;font-weight:600;color:#16a34a;text-align:center;padding:0 22px 6px;opacity:0;transition:opacity .25s}
 .cs-saved.show{opacity:1}
 /* Brand badge becomes interactive so users discover the editor */
 .brand-suffix{cursor:pointer}
@@ -1488,7 +1494,7 @@ body.corp-on .agent-dock::before{
 <div id="welcomeRoot"></div></div>
 <div class="input-wrap"><div class="input-box">
 <div class="attach-preview" id="attachPreview"></div>
-<textarea id="input" rows="1" placeholder="무엇을 만들어 드릴까요?"></textarea>
+<textarea id="input" rows="1" placeholder="어떤 일을 하고 싶으세요?"></textarea>
 <div class="input-footer"><span class="input-hint">Enter 전송 · Shift+Enter 줄바꿈</span>
 <div class="input-btns"><button class="attach-btn" id="attachBtn" title="파일 첨부 (AI에게 보여주기)">+</button><button class="attach-btn" id="injectLocalBtn" title="첨부 파일을 내 지식에 영구 저장">⚡</button><button class="stop-btn" id="stopBtn" title="생성 중단">■</button><button class="send-btn" id="sendBtn" title="전송 (Enter)">↑</button></div></div></div>
 <input type="file" id="fileInput" multiple accept="image/*,audio/*,.txt,.md,.csv,.json,.js,.ts,.html,.css,.py,.java,.rs,.go,.yaml,.yml,.xml,.toml" hidden></div>
@@ -2612,7 +2618,7 @@ function applyCorporateMode(on){
      컨셉(럭셔리 블루)과 안 맞아서 명시적으로 블루 그라디언트 사용. */
   corporateBtn.style.background=on?'linear-gradient(135deg,#38bdf8,#2563eb)':'';
   corporateBtn.title='AI 1인 기업 모드 (Solo Mode) — '+(on?'ON':'OFF (클릭해서 켜기)');
-  input.placeholder=on?'한 줄 명령을 내리세요. 팀이 알아서 일합니다.':'무엇을 만들어 드릴까요?';
+  input.placeholder='어떤 일을 하고 싶으세요?';
   /* Tell extension so autonomous corp activity is gated out of the sidebar
      while OFF. Office panel + conversation log keep recording either way. */
   try{vscode.postMessage({type:'corpModeToggle',on:!!on});}catch{}
@@ -5026,7 +5032,7 @@ window.addEventListener('message',e=>{const msg=e.data;switch(msg.type){
       corporateBtn.style.background=officeOpen?'linear-gradient(135deg,#38bdf8,#2563eb)':'';
       corporateBtn.title=officeOpen?'AI 1인 기업 모드 (Solo Mode) — 사무실 열림 (클릭해서 닫기)':'AI 1인 기업 모드 (Solo Mode) — OFF (클릭해서 사무실 열기)';
     }
-    if(input)input.placeholder=officeOpen?'한 줄 명령을 내리세요. 팀이 알아서 일합니다.':'무엇을 만들어 드릴까요?';
+    if(input)input.placeholder='어떤 일을 하고 싶으세요?';
     break;
   }
   case 'error':hideLoader();setSending(false);addMsg(msg.value,'error');break;
