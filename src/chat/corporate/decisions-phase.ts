@@ -36,9 +36,23 @@ export async function runDecisionsPhase(args: RunDecisionsPhaseArgs): Promise<st
         const m = learnRaw.match(/\{[\s\S]*\}/);
         const parsed = JSON.parse(m ? m[0] : learnRaw);
         if (parsed && Array.isArray(parsed.decisions)) {
+            /* v2.92.x — specialist 환각 차단 2차 가드. LLM 이 prompt 룰 어기고
+               specialist 의 가상 후보·KPI·우선순위를 결정으로 추출해도, 사장님 명령
+               원문에 핵심 명사가 없으면 환각 판정. 사장님 영구 메모리 오염 방지. */
+            const promptLower = (prompt || '').toLowerCase();
+            const PHANTOM_NOUN_RE = /(악플방패|댓글거울|부동산사기|wedge|우선\s*추진|1순위|0→1|1→n|monopoly|독점\s*가능|단일\s*wedge|좁히고|hybrid\s*제품|행동\s*처방|launch는|채택만|폐기|6각형\s*폐기|콜드\s*hybrid)/i;
             for (const d of parsed.decisions) {
                 if (typeof d === 'string' && d.trim().length > 0 && d.trim().length <= 80) {
-                    learnedDecisions.push(d.trim());
+                    const trimmed = d.trim();
+                    /* 의심 키워드가 결정에 있으면 사장님 prompt 에서 같은 단어 확인. 없으면 drop. */
+                    if (PHANTOM_NOUN_RE.test(trimmed)) {
+                        const m = trimmed.match(PHANTOM_NOUN_RE);
+                        if (m && !promptLower.includes(m[0].toLowerCase())) {
+                            /* 환각 결정 — drop + log. 사장님 메모리 안 오염. */
+                            continue;
+                        }
+                    }
+                    learnedDecisions.push(trimmed);
                 }
             }
         }

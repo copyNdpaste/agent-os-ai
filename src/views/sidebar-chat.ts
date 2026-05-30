@@ -153,6 +153,7 @@ import {
     type CorporateContext,
     type Plan as CorporatePlan,
 } from '../chat/corporate';
+import { applyDispatchCap } from '../chat/corporate/dispatch-cap';
 import { _readYtOAuthClient } from '../youtube/oauth';
 import {
     /* 상수 / 프롬프트 */
@@ -466,6 +467,22 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             this._dispatchWorkerRunning = false;
         }
     }
+    /** v2.92.x — 사이드바 corp 입력 큐 라우팅. 진행 중이면 큐에 추가, 끝나면
+     *  worker 가 자동으로 다음 잡 처리. 사장님이 명령 N개 연속으로 던지고 자리
+     *  비울 수 있게 — "사장님 시간 0" 비전과 일치. */
+    public enqueueCorporatePrompt(prompt: string, modelName: string): { queued: boolean; position: number; busy: boolean } {
+        const busy = this._dispatchWorkerRunning && this._currentDispatch !== null;
+        const added = this.enqueueDispatch(prompt, modelName, 'user', false);
+        if (!added) {
+            /* 중복 키 — 이미 진행 중 또는 큐에 있음. silently 무시. */
+            return { queued: false, position: 0, busy };
+        }
+        /* 큐에 추가된 후의 위치 — user priority 는 unshift 이므로 사실상 다음 차례. */
+        const snap = this.getDispatchSnapshot();
+        const position = snap.queueLength;
+        return { queued: busy, position, busy };
+    }
+
     public getDispatchSnapshot(): { current: { prompt: string; priority: string; elapsedSec: number } | null; queueLength: number; queue: Array<{ priority: string; prompt: string }> } {
         const now = Date.now();
         return {
@@ -509,7 +526,12 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         );
     }
     public getDefaultModel(): string {
-        return 'claude-sonnet-4-6';
+        return this._ctx.globalState.get<string>('selectedModel', 'claude-sonnet-4-6');
+    }
+    public getCodexReasoningEffort(): 'low' | 'medium' | 'high' | 'xhigh' {
+        const configured = vscode.workspace.getConfiguration('agentOs').get<string>('codexReasoningEffort', 'medium');
+        const raw = this._ctx.globalState.get<string>('codexReasoningEffort', configured || 'medium');
+        return raw === 'low' || raw === 'high' || raw === 'xhigh' ? raw : 'medium';
     }
 
     /** One round of agent-to-agent ambient chatter. Picks two random specialists,
@@ -967,7 +989,23 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
                 partialResponsePreview: chatInflight.partialResponse.slice(0, 600),
                 staleMinutes: Math.round((Date.now() - chatInflight.lastUpdatedAt) / 60000),
                 errorMessage: chatInflight.errorMessage,
+                retryCount: chatInflight.retryCount ?? 0,
             } : null;
+            /* v2.92.x — 자동 재시도. 사장님이 자리 비웠다 돌아오면 중단된 요청 알아서 다시 시작.
+               조건: retryCount=0 (한 번도 자동 재시도 안 함) + 30초~30분 stale (즉시 abort 직후가
+               아니라 진짜로 중단된 상태). 사장님 의도적 stop 인 경우 finish('aborted') 처리되어
+               findInterruptedChat 가 null 반환하므로 여기 안 옴. */
+            if (chatRecovery && (chatRecovery.retryCount ?? 0) === 0 && chatRecovery.staleMinutes >= 0 && chatRecovery.staleMinutes <= 30) {
+                try {
+                    this._view.webview.postMessage({
+                        type: 'systemNote',
+                        value: `⏪ 이전 중단된 요청 자동 재시도 중 — "${chatRecovery.prompt.slice(0, 60)}${chatRecovery.prompt.length > 60 ? '…' : ''}"`,
+                    });
+                } catch { /* ignore */ }
+                /* 비동기 — _postIncompleteSessions 의 ready 흐름은 빨리 끝나고, 재시도는 백그라운드 시작 */
+                setTimeout(() => { this._retryChatInflight().catch(() => { /* swallow */ }); }, 200);
+                return; /* 카드 안 띄움 — 자동 처리 중 */
+            }
             if (summary.length === 0 && !chatRecovery) return;
             this._view.webview.postMessage({
                 type: 'incompleteSessions',
@@ -1023,8 +1061,9 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             if (!state) return;
             const prompt = state.prompt;
             const modelName = state.modelName || this._lastModel || '';
+            const prevRetry = state.retryCount ?? 0;
             discardChatInflight(getCompanyDir());
-            await this._handlePrompt(prompt, modelName);
+            await this._handlePrompt(prompt, modelName, undefined, { retryCount: prevRetry + 1 });
         } catch (e) {
             console.error('[sidebar-chat] retryChatInflight failed:', e);
         }
@@ -2042,10 +2081,20 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             const { listInstalledModels } = await import('../extension');
             const list = await listInstalledModels();
             const models = list.map(m => m.id);
-            this._view.webview.postMessage({ type: 'modelsList', value: models });
+            this._view.webview.postMessage({
+                type: 'modelsList',
+                value: models,
+                selected: this.getDefaultModel(),
+                selectedEffort: this.getCodexReasoningEffort(),
+            });
         } catch {
             /* defensive fallback — extension 로드 실패 시 최소 Claude 만 */
-            this._view.webview.postMessage({ type: 'modelsList', value: ['claude-opus-4-7', 'claude-sonnet-4-6'] });
+            this._view.webview.postMessage({
+                type: 'modelsList',
+                value: ['claude-opus-4-7', 'claude-sonnet-4-6', 'gpt-5.5'],
+                selected: this.getDefaultModel(),
+                selectedEffort: this.getCodexReasoningEffort(),
+            });
         }
     }
 
@@ -2362,6 +2411,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             },
             handlePrompt: (p, m, i) => this._handlePrompt(p, m, i),
             handleCorporatePrompt: (p, m) => this._handleCorporatePrompt(p, m),
+            enqueueCorporatePrompt: (p, m) => this.enqueueCorporatePrompt(p, m),
             handlePromptWithFile: (p, m, f, i) => this._handlePromptWithFile(p, m, f, i),
             handleInjectLocalBrain: (f) => this._handleInjectLocalBrain(f),
             handleSettingsMenu: () => this._handleSettingsMenu(),
@@ -2417,6 +2467,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
             getWorkspaceContext: () => this._getWorkspaceContext(),
             getSecondBrainContext: () => this._getSecondBrainContext(),
             getProjectMemory: () => this._getProjectMemory(),
+            getCodexReasoningEffort: () => this.getCodexReasoningEffort(),
             readBrainFile: (f) => this._readBrainFile(f),
             executeActions: (msg, opts) => this._executeActions(msg, opts),
             stripActionTags: (t) => this._stripActionTags(t),
@@ -2443,10 +2494,22 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
     // 추가: chat-inflight 체크포인트 — 응답 스트리밍 중 crash 시 _chat/
     // inflight.json 에 prompt + 누적 응답 보존. 다음 ready 에서 복구 카드.
     // --------------------------------------------------------
-    private async _handlePrompt(prompt: string, modelName: string, internetEnabled?: boolean) {
+    private async _handlePrompt(prompt: string, modelName: string, internetEnabled?: boolean, opts?: { retryCount?: number }) {
         if (!this._view) { return; }
+        /* v2.92.x — 모델 메타 질문 우회. corp 모드 안 켜져 있을 때도 LLM 불태우지 말고 즉답. */
+        const _trim = (prompt || '').trim();
+        const _isModelMeta = /(지금|현재|이번|now|current).{0,8}(쓰|사용|는).{0,4}(ai ?모델|모델|model)|(어떤|뭐|무슨|뭔|which|what).{0,4}(모델|model)|모델.{0,4}(뭐|뭐임|뭐야|뭐냐)|gpt ?5\.?5\s*맞|claude\s*맞/i.test(_trim);
+        if (_isModelMeta && _trim.length < 60) {
+            const isCodex = /^(gpt-|gpt5|o1|o3)/i.test(modelName || '');
+            const cliName = isCodex ? 'Codex (GPT-5.5)' : 'Claude';
+            const answer = `🤖 지금 쓰는 모델: **${modelName || '미선택'}**\n\n• 백엔드: ${cliName} CLI\n• 헤더 우측 드롭다운에서 즉시 변경 가능 (선택은 새 대화·재시작에도 유지)\n• 매 메시지마다 그 시점 dropdown 값으로 라우팅`;
+            this._displayMessages.push({ text: prompt, role: 'user' });
+            this._displayMessages.push({ text: answer, role: 'ai' });
+            this._view.webview.postMessage({ type: 'response', value: answer });
+            return;
+        }
         const { ChatInflightWriter } = await import('../dispatch/chat-inflight');
-        const writer = new ChatInflightWriter({ companyDir: getCompanyDir(), prompt, modelName });
+        const writer = new ChatInflightWriter({ companyDir: getCompanyDir(), prompt, modelName, retryCount: opts?.retryCount });
         const ctx = this._buildPromptContext(this._view);
         ctx.inflightAppendChunk = (chunk) => writer.appendChunk(chunk);
         try {
@@ -2488,7 +2551,7 @@ export class SidebarChatProvider implements vscode.WebviewViewProvider {
         }
 
         /* 도구 카탈로그 (활성화된 것만, 두 단계가 공유) */
-        const _BUILTIN_TOOLS = new Set(['google_calendar_write', 'google_calendar']);
+        const _BUILTIN_TOOLS = new Set(['google_calendar_write', 'google_calendar', 'slack_notifier', 'slack_approval_worker']);
         type CatalogEntry = { agentId: string; tool: string; description: string; scriptPath: string };
         const catalog: CatalogEntry[] = [];
         for (const aid of SPECIALIST_IDS) {
@@ -2613,15 +2676,84 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
     // 공동 목표·정체성·자기 메모리를 매번 읽고 작업합니다.
     // --------------------------------------------------------
     private async _handleCorporatePrompt(prompt: string, modelName: string) {
+        /* v2.92.x — 매핑 파일 점검 + dominant 보정.
+           1) Specialist 8명의 dominant 모델 추출 → webview modelName 보정
+           2) ceo/youtube 매핑이 specialist dominant 와 다르면 매핑 파일을 1회 동기화 (사장님이
+              ad-chip 으로 specialist 8명만 변경했을 때 ceo/youtube 옛 매핑이 dispatch CEO 단계
+              까지 끌어가던 사고 차단). 사장님이 specialist 별로 의도적으로 모델 다르게 잡지
+              않은 한 dispatch 가 일관된 모델 사용. */
+        let _mapDiag = '(매핑 파일 빈 상태)';
+        try {
+            const _map = readAgentModelMap();
+            const _entries = Object.entries(_map);
+            _mapDiag = _entries.length === 0
+                ? `(매핑 파일 비어있음 — webview model='${modelName}' 사용)`
+                : _entries.map(([k, v]) => `${k}=${v}`).join(', ');
+            /* specialist 8명만의 dominant — ceo/youtube 는 라우터/도구 역할이라 별도 */
+            const _specVals = SPECIALIST_IDS.map(id => _map[id]).filter(Boolean);
+            if (_specVals.length > 0) {
+                const _counts: Record<string, number> = {};
+                for (const v of _specVals) _counts[v] = (_counts[v] || 0) + 1;
+                const _dominant = Object.entries(_counts).sort((a, b) => b[1] - a[1])[0][0];
+                if (_dominant && _dominant !== modelName) {
+                    modelName = _dominant;
+                    _mapDiag += ` → specialist dominant='${_dominant}' 로 modelName 보정`;
+                }
+                /* ceo/youtube 가 dominant 와 다르면 매핑 파일 한 번 동기화 (사장님이 spec 8명을
+                   gpt-5.5 로 다 바꿨는데 ceo/youtube 만 옛 모델 박혀있던 사고 해결). */
+                const _routers = ['ceo', 'youtube'];
+                const _needFix = _routers.filter(r => _map[r] && _map[r] !== _dominant);
+                if (_needFix.length > 0) {
+                    const _patched = { ..._map };
+                    for (const r of _needFix) _patched[r] = _dominant;
+                    writeAgentModelMap(_patched);
+                    _mapDiag += ` → ${_needFix.join(',')} 도 dominant 로 동기화 완료`;
+                }
+            }
+        } catch (e: any) {
+            _mapDiag = `매핑 읽기/쓰기 실패: ${e?.message || e}`;
+        }
+        (this as any)._lastMapDiag = _mapDiag;
         /* v2.88.4 — 이전 가드 `if (!this._view && this._corporateBroadcastTargets.size === 0) return;`
            는 사이드바도 안 열려있고 사무실 패널도 없으면 즉시 return해서, 텔레그램에서
            디스패치 명령이 와도 아무것도 실행 안 했음. UI 업데이트는 실패해도 OK
            (텔레그램이 출구) — 디스패치 자체는 무조건 실행되어야 함. */
         const post = (m: any) => this._broadcastCorporate(m);
+        /* v2.92.x — 메타 질문 짧은 우회. "지금 쓰는 ai 모델 뭐임?" / "현재 어떤 모델?" 같은
+           시스템 메타 정보 질문을 corp dispatch 로 풀면 9명 팀이 사장님 질문을 코드 분석 task 로
+           오해해서 patch plan 까지 뽑음. modelName 그대로 답해주면 끝. LLM 호출 0. */
+        const _trimmed = (prompt || '').trim();
+        const _lp = _trimmed.toLowerCase();
+        const _isModelMeta = /(지금|현재|이번|now|current).{0,8}(쓰|사용|는).{0,4}(ai ?모델|모델|model)|(어떤|뭐|무슨|뭔|which|what).{0,4}(모델|model)|모델.{0,4}(뭐|뭐임|뭐야|뭐냐)|gpt ?5\.?5\s*맞|claude\s*맞/i.test(_trimmed);
+        if (_isModelMeta && _trimmed.length < 60) {
+            const isCodex = /^(gpt-|gpt5|o1|o3)/i.test(modelName || '');
+            const cliName = isCodex ? 'Codex (GPT-5.5)' : 'Claude';
+            const answer = `🤖 지금 쓰는 모델: **${modelName || '미선택'}**\n\n• 백엔드: ${cliName} CLI\n• 헤더 우측 드롭다운에서 즉시 변경 가능 (선택은 vscode.setState 에 저장돼 새 대화·재시작에도 유지)\n• 매 대화 전송 시 그 시점 dropdown 값으로 라우팅 — 메시지마다 다른 모델 가능`;
+            this._displayMessages.push({ text: prompt, role: 'user' });
+            this._displayMessages.push({ text: answer, role: 'ai' });
+            if (this._view) {
+                this._view.webview.postMessage({ type: 'response', value: answer });
+            }
+            try { appendConversationLog({ speaker: '사용자', emoji: '👤', body: prompt }); } catch { /* ignore */ }
+            try { appendConversationLog({ speaker: '시스템', emoji: '🤖', body: answer }); } catch { /* ignore */ }
+            return;
+        }
         // Single abort controller drives every LLM call in this session — sidebar
         // stop button calls _abortController.abort() which propagates through.
         this._abortController = new AbortController();
         const isAborted = () => !!this._abortController?.signal.aborted;
+        /* v2.92.x — corp dispatch 진입 즉시 사이드바에 알림. _broadcastCorporate 는 sidebarCorpModeOn 일 때만 사이드바 도달 — 사장님이 corp toggle ON 인데도 webview ↔ ext state 어긋난 경우 사이드바 응답 0 였음. 무조건 직접 post 로 보장. */
+        try {
+            const _ceoModel = getAgentModel('ceo', modelName);
+            const _isCodex = /^(gpt-|gpt5|o1|o3)/i.test(_ceoModel || '');
+            const _diag = (this as any)._lastMapDiag || '(진단 정보 없음)';
+            /* v2.92.x — "9명 팀" 거짓말 제거. applyDispatchCap 가 단순 명령엔 1명까지
+               trim 하는데 kickoff 가 cap 전에 발사돼서 "9명" 광고 후 실제론 1명만
+               돌면 사장님이 "기대 대비 빈약" 느낌 받음. 실제 동원 인원은 cap 직후
+               post 되는 capRes.message + agentDispatch 시네마틱이 정확히 보고. */
+            const _kickoff = `🚀 팀 dispatch 시작 — CEO 가 작업 분배 중\n• 라우팅 모델: **${_ceoModel}** (${_isCodex ? 'Codex/GPT-5.5' : 'Claude'} CLI)\n• webview model 인자: \`${modelName}\`\n• 매핑 파일 raw: \`${_diag}\`\n• 실제 동원 인원은 분배 직후 발표 (단순 명령은 1명, 일반 3명 cap)`;
+            this._view?.webview.postMessage({ type: 'systemNote', value: _kickoff });
+        } catch { /* never block dispatch */ }
         /* Session-state writer is created right after sessionDir so every
            phase that follows can checkpoint progress to disk. Declared out
            here so the outer try/finally can call finish() exactly once. */
@@ -2758,11 +2890,14 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
             /* v2.89.132 — 명시적 호출 감지. "개발신아 …" 처럼 사용자가 직접 이름 부르면
                CEO LLM 호출 건너뛰고 그 에이전트만 단독 dispatch. 30초 vs 11분 차이. */
             const explicit = this._detectExplicitMention(prompt);
+            const ceoProgressDetail = explicit
+                ? `${explicit.agentName} 단독 호출로 판단해 CEO LLM을 건너뛰는 중입니다.`
+                : '요청을 읽고 필요한 담당자와 실행 순서를 정하는 중입니다.';
             if (explicit) {
-                post({ type: 'agentStart', agent: 'ceo', task: `${explicit.agentName} 직접 호출 — CEO 우회` });
+                post({ type: 'agentStart', agent: 'ceo', task: `${explicit.agentName} 직접 호출 — CEO 우회`, detail: ceoProgressDetail });
                 _updateActiveDispatchStep(prompt, `${explicit.agentName} 직접 호출`);
             } else {
-                post({ type: 'agentStart', agent: 'ceo', task: '작업 분해' });
+                post({ type: 'agentStart', agent: 'ceo', task: '작업 분해', detail: ceoProgressDetail });
                 _updateActiveDispatchStep(prompt, 'CEO 계획 수립 중');
             }
             let planRaw = '';
@@ -2822,9 +2957,43 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
             } catch (buildErr: any) {
                 post({ type: 'agentEnd', agent: 'ceo' });
                 const stk = buildErr?.stack ? String(buildErr.stack).split('\n').slice(0, 3).join(' | ').slice(0, 300) : '';
-                post({ type: 'error', value: `⚠️ CEO 시스템 프롬프트 빌드 실패 (${ceoStage}): ${buildErr?.message || buildErr}\n[stack] ${stk}` });
+                const _bm = `⚠️ CEO 시스템 프롬프트 빌드 실패 (${ceoStage}): ${buildErr?.message || buildErr}\n[stack] ${stk}`;
+                post({ type: 'error', value: _bm });
+                try { this._view?.webview.postMessage({ type: 'error', value: _bm }); } catch { /* ignore */ }
+                try { sessionWriter?.finish('failed', _bm.slice(0, 500)); } catch { /* ignore */ }
                 return;
             }
+            /* v2.92.x — CEO planner 호출에 heartbeat 추가. 이전엔 specialist-loop 만 progressTick
+               보내서 CEO planning 단계가 무한로딩처럼 보임 (특히 codex prompt 가 클 때 분 단위 처리).
+               매 2.5초 진행 strip 에 "CEO planning [gpt-5.5]" 갱신 → 사장님이 진행 중인지 hang
+               인지 즉시 구분. CEO 응답 도착하면 인터벌 정리. */
+            const _ceoStartTs = Date.now();
+            const _ceoModel = getAgentModel('ceo', modelName);
+            const _ceoDetails = [
+                '요청을 읽고 핵심 작업 범위를 추리는 중입니다.',
+                '단순 명령인지 다중 에이전트 작업인지 판단하는 중입니다.',
+                '필요한 담당자와 실행 순서를 고르는 중입니다.',
+                '각 에이전트에게 넘길 지시를 짧게 정리하는 중입니다.',
+                '분배 계획 JSON을 검증하고 마무리하는 중입니다.',
+            ];
+            const _ceoHeartbeat = setInterval(() => {
+                const sec = Math.round((Date.now() - _ceoStartTs) / 1000);
+                const mm = Math.floor(sec / 60); const ss = sec % 60;
+                const ts = mm > 0 ? `${mm}분 ${ss}초` : `${ss}초`;
+                const detail = _ceoDetails[Math.min(Math.floor(sec / 8), _ceoDetails.length - 1)];
+                try {
+                    this._view?.webview.postMessage({
+                        type: 'progressTick',
+                        agent: 'ceo', emoji: '🎯', name: 'CEO',
+                        phase: '작업 분배 계획 작성 중',
+                        task: detail,
+                        detail,
+                        icon: '🧭',
+                        elapsedSec: sec, timeStr: ts,
+                        model: _ceoModel,
+                    });
+                } catch { /* ignore */ }
+            }, 2500);
             try {
                 /* v2.89.132 — 명시적 호출이면 LLM 안 거치고 직접 plan JSON 생성. */
                 if (explicit) {
@@ -2868,7 +3037,9 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
                         );
                     }
                 }
+                clearInterval(_ceoHeartbeat);
             } catch (e: any) {
+                clearInterval(_ceoHeartbeat);
                 post({ type: 'agentEnd', agent: 'ceo' });
                 // Pull server-side error detail out of the axios stream response so
                 // 500s don't surface as the bare "Request failed with status code 500".
@@ -2887,20 +3058,36 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
                         detail = typeof e.response.data === 'string' ? e.response.data.slice(0, 300) : JSON.stringify(e.response.data).slice(0, 300);
                     }
                 } catch { /* ignore */ }
+                /* CEO 도 specialist 처럼 modelName 으로 provider 분기 — gpt-5.5 사용 중인
+                   사장님이 "Claude CLI 확인" 같은 오답 메시지 안 보게. */
+                const _m = (modelName || '').toLowerCase();
+                const _isCodex = _m.startsWith('gpt-') || _m.startsWith('gpt5') || _m.startsWith('o1') || _m.startsWith('o3');
+                const _cliName = _isCodex ? 'Codex (GPT-5.5)' : 'Claude';
+                const _cliBin = _isCodex ? 'codex' : 'claude';
+                const _binSetting = _isCodex ? 'agentOs.codexBinPath' : 'agentOs.claudeBinPath';
                 let hint = '';
                 if (/context length|context_length|num_ctx|maximum context/i.test(detail)) {
                     hint = '\n💡 컨텍스트 초과 — 더 큰 모델로 바꾸거나 회사 폴더의 _shared/decisions.md / _agents/ceo/memory.md를 줄여주세요.';
                 } else if (/out of memory|cuda|allocation|vram/i.test(detail)) {
                     hint = '\n💡 메모리 부족 — 작은 모델 사용 또는 다른 무거운 앱 종료 후 재시도.';
                 } else if (/ENOENT|not found/i.test(detail) || /ENOENT|not found/i.test(String(e?.message || ''))) {
-                    hint = '\n💡 Claude CLI 를 찾지 못했어요. `claude --version` 으로 설치 확인 또는 settings.json 의 `agentOs.claudeBinPath` 설정.';
+                    hint = `\n💡 ${_cliName} CLI 를 찾지 못했어요. \`${_cliBin} --version\` 으로 설치 확인 또는 settings.json 의 \`${_binSetting}\` 설정.`;
                 } else if (/timed out|timeout/i.test(detail)) {
-                    hint = '\n💡 Claude 응답이 시간 초과. Claude Max 5시간 윈도우 사용량이 거의 다 찼는지 확인하거나 잠시 뒤 재시도.';
+                    hint = _isCodex
+                        ? '\n💡 Codex (GPT-5.5) 응답이 시간 초과. 질문 길이 줄이거나 잠시 뒤 재시도.'
+                        : '\n💡 Claude 응답이 시간 초과. Claude Max 5시간 윈도우 사용량이 거의 다 찼는지 확인하거나 잠시 뒤 재시도.';
                 }
                 /* v2.89.95 — 디버그 보강. 'Maximum call stack' 같은 런타임 에러는
                    원인 추적을 위해 스택 첫 줄도 함께 노출 (사용자 신고 시 정확한 위치 확인). */
                 const stackTop = e?.stack ? String(e.stack).split('\n').slice(0, 3).join(' | ').slice(0, 300) : '';
-                post({ type: 'error', value: `⚠️ CEO 호출 실패: ${e.message}${detail ? '\n원인: ' + detail : ''}${stackTop ? '\n[stack] ' + stackTop : ''}${hint}` });
+                const _errMsg = `⚠️ CEO 호출 실패: ${e.message}${detail ? '\n원인: ' + detail : ''}${stackTop ? '\n[stack] ' + stackTop : ''}${hint}`;
+                post({ type: 'error', value: _errMsg });
+                /* v2.92.x — broadcastCorporate 가 sidebarCorpModeOn flag 검사 통과 못 하는
+                   상황 (webview ↔ ext state 어긋남) 대비 사이드바 직접 post. 사장님이 어떤
+                   경로든 에러 메시지 무조건 봄. + sessionWriter 마감으로 finally 의 'early
+                   return' 라벨 안 붙도록 'failed' 명시. */
+                try { this._view?.webview.postMessage({ type: 'error', value: _errMsg }); } catch { /* ignore */ }
+                try { sessionWriter?.finish('failed', _errMsg.slice(0, 500)); } catch { /* ignore */ }
                 return;
             }
             post({ type: 'agentEnd', agent: 'ceo' });
@@ -2955,22 +3142,75 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
                 } catch { /* fall through to error */ }
             }
 
+            /* v2.92.x — CEO가 유효 JSON 으로 tasks:[] 를 주는 건 파싱 실패가 아니라
+               "담당자 붙일 일 아님 — 내가 직접 답함" 이라는 명시적 신호다. (예:
+               "넌 opus 버전 몇이야?" 같은 단순 질문). _parsePlan 은 tasks.length>0
+               만 plan 으로 인정하므로 이 케이스가 null 로 떨어져 "JSON 생성 실패"
+               에러로 오인됐다. 빈 tasks 가 명시적으로 파싱되면 CEO 대화 응답으로
+               라우팅 — _isCasualChat 가 못 거른 질문형 입력의 정답 경로. */
+            if (!plan) {
+                const _emptyObj = _extractFirstJsonObject(
+                    planRaw.replace(/<\/?[a-zA-Z][^>]*>/g, '').replace(/="[a-zA-Z0-9_-]+">/g, '')
+                );
+                if (_emptyObj && Array.isArray(_emptyObj.tasks) && _emptyObj.tasks.length === 0) {
+                    post({ type: 'agentStart', agent: 'ceo', task: '직접 답변' });
+                    let reply = '';
+                    try {
+                        reply = await this._callAgentLLM(
+                            `${_personalizePrompt(CEO_CHAT_PROMPT)}\n${readAgentSharedContext('ceo')}${readRecentConversations(800)}`,
+                            prompt,
+                            modelName,
+                            'ceo',
+                            true
+                        );
+                    } catch (e: any) {
+                        post({ type: 'agentEnd', agent: 'ceo' });
+                        const _em = `⚠️ CEO 응답 실패: ${e?.message || e}`;
+                        post({ type: 'error', value: _em });
+                        try { sessionWriter?.finish('failed', _em.slice(0, 500)); } catch { /* ignore */ }
+                        return;
+                    }
+                    post({ type: 'agentEnd', agent: 'ceo' });
+                    const streamed = (reply || '').trim();
+                    const text = streamed || String(_emptyObj.brief || '네, 사장님. 무엇을 도와드릴까요?');
+                    /* 스트림이 토큰을 한 글자도 못 받았으면 화면이 빈 채로 끝나므로
+                       fallback 텍스트를 명시 post (casual-chat 경로와 동일 가드). */
+                    if (!streamed) {
+                        post({ type: 'response', value: text });
+                    }
+                    this._displayMessages.push({ text, role: 'ai' });
+                    appendConversationLog({ speaker: 'CEO', emoji: '👔', body: text });
+                    this._saveHistory();
+                    try { await this._maybeMirrorToTelegram(); } catch { /* ignore */ }
+                    try { sessionWriter?.finish('completed'); } catch { /* ignore */ }
+                    return;
+                }
+            }
+
             if (!plan || !Array.isArray(plan.tasks) || plan.tasks.length === 0) {
                 const openBraces = (planRaw.match(/\{/g) || []).length;
                 const closeBraces = (planRaw.match(/\}/g) || []).length;
                 const looksTruncated = openBraces > closeBraces || planRaw.length < 50 || !/\{/.test(planRaw);
+                const _m2 = (modelName || '').toLowerCase();
+                const _isCodex2 = _m2.startsWith('gpt-') || _m2.startsWith('gpt5') || _m2.startsWith('o1') || _m2.startsWith('o3');
+                const _cliName2 = _isCodex2 ? 'Codex (GPT-5.5)' : 'Claude';
+                const _cliBin2 = _isCodex2 ? 'codex' : 'claude';
+                const _capacityLine = _isCodex2
+                    ? '  2) Codex CLI 응답성 (`codex --version`) 확인 + 잠시 뒤 재시도'
+                    : '  2) Claude Max 사용량 한도(5시간 윈도우) 확인';
                 const hint = looksTruncated
-                    ? '\n\n💡 Claude 응답이 중간에 잘린 듯해요:'
+                    ? `\n\n💡 ${_cliName2} 응답이 중간에 잘린 듯해요:`
                     + '\n  1) 회사 폴더 `_shared/decisions.md` / `_agents/ceo/memory.md` 길이를 줄여서 프롬프트 크기 축소'
-                    + '\n  2) Claude Max 사용량 한도(5시간 윈도우) 확인'
-                    + '\n  3) `claude --version` 으로 CLI 정상 작동 확인'
-                    : '\n\n💡 Claude 가 JSON 형식 지시를 못 따랐어요:'
+                    + `\n${_capacityLine}`
+                    + `\n  3) \`${_cliBin2} --version\` 으로 CLI 정상 작동 확인`
+                    : `\n\n💡 ${_cliName2} 가 JSON 형식 지시를 못 따랐어요:`
                     + '\n  1) 잠시 뒤 재시도 (간헐적 모델 흔들림)'
                     + '\n  2) CEO 에이전트를 Opus tier 로 올려보기 (에이전트 도크)';
                 post({
                     type: 'error',
                     value: `⚠️ CEO가 작업 분배 계획(JSON)을 생성하지 못했어요.${hint}\n\n원본 응답:\n${planRaw.slice(0, 400)}`
                 });
+                try { sessionWriter?.finish('failed', `CEO 계획 JSON 파싱 실패 (${(planRaw || '').length}자 응답)`); } catch { /* ignore */ }
                 return;
             }
             // 유효한 에이전트만 필터 — 모델이 케이스/공백/한글명을 섞어 보낼 수 있으니
@@ -3033,24 +3273,72 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
                    기본 3인방 (researcher · business · designer) 로 자동 라우팅.
                    에러로 끊는 대신 사용자 의도에 맞게 진행 → 훨씬 부드러운 UX. */
                 const ceoSelfOnly = wantedIds.length > 0 && wantedIds.every(id => id === 'ceo' || !SPECIALIST_IDS.includes(id));
-                const looksBrainstorm = /아이디어|브레인스토밍|프로젝트.*뭐|어떤.*비즈니스|어떤.*프로젝트|뭐 ?하면 ?좋|뭘 ?만들|돈.*벌|시장|해결.*문제|너희들끼리|상의|고민/i.test(prompt);
                 if (droppedTasks.length > 0) {
                     post({ type: 'error', value: `⚠️ CEO가 비활성 에이전트만 호출했어요. 직원 패널에서 활성화 후 다시 시도해주세요.` });
+                    try { sessionWriter?.finish('failed', `CEO가 비활성 에이전트만 호출 (dropped: ${droppedTasks.map(t => t.agent).join(', ')})`); } catch { /* ignore */ }
                     return;
                 }
-                if (ceoSelfOnly && looksBrainstorm) {
-                    const fallbackBase: { agent: string; task: string }[] = [
-                        { agent: 'researcher', task: `시장·트렌드 리서치: "${prompt.slice(0, 120)}" 관점에서 해결되지 않은 문제·기회를 데이터·출처와 함께 3~5개 정리.` },
-                        { agent: 'business', task: `위 리서치 토대로 수익화 가능한 비즈니스 모델 후보 2~3개 — 고객 관점(Working Backwards), TAM·1년 매출 추정, 진입 장벽 평가.` },
-                        { agent: 'designer', task: `각 후보의 제품 차별화 각도(less but better)와 첫 MVP 범위 — 1주일에 만들 수 있는 단순한 형태로 압축.` },
-                    ];
-                    plan.tasks = fallbackBase.filter(t => isAgentActive(t.agent));
+                if (ceoSelfOnly) {
+                    /* v2.92.x — CEO 자기 호출 도메인 라우팅. brainstorm 외에도 design/dev/
+                       video/marketing/research 도메인을 키워드로 잡아 적절한 specialist 한테
+                       자동 위임. 매칭 없으면 designer+developer+business 3인 일반 처리. */
+                    const lp = prompt.toLowerCase();
+                    /* CEO 가 자기한테 넣었던 task 본문 — 있으면 그대로 사용, 없으면 prompt */
+                    const ceoTask = (originalTasks.find(t => String(t.agent || '').toLowerCase() === 'ceo')?.task) || prompt;
+                    const looksBrainstorm = /아이디어|브레인스토밍|프로젝트.*뭐|어떤.*비즈니스|어떤.*프로젝트|뭐 ?하면 ?좋|뭘 ?만들|돈.*벌|시장 ?조사|해결.*문제|너희들끼리|상의|고민/i.test(prompt);
+                    const looksDesignDev = /랜딩|landing|페이지|page|uiux|ui ?\/? ?ux|디자인|design|색|컬러|color|레이아웃|layout|버튼|button|미래적|모던|modern|컴포넌트|component|타이포|폰트|font|반응형|responsive|애니메이션|animation/i.test(lp);
+                    const looksDev = /코드|코딩|개발|버그|함수|api|배포|deploy|리팩|refactor|타입|typescript|에러|exception|stack ?trace/i.test(lp);
+                    const looksVideo = /영상|video|편집|edit|썸네일|thumbnail|youtube|유튜브|쇼츠|shorts|훅|hook/i.test(lp);
+                    const looksMarketing = /광고|ads?|copy|카피|랜딩 ?카피|훅|마케팅|marketing|인스타|instagram|x ?\(트위터\)|threads|쓰레드|fb|facebook/i.test(lp);
+                    const looksResearch = /리서치|research|조사|경쟁사|competitor|벤치마크|benchmark|트렌드|trend/i.test(lp);
+
+                    let fallback: { agent: string; task: string }[] = [];
+                    let routeLabel = '';
+                    if (looksDesignDev) {
+                        fallback = [
+                            { agent: 'designer', task: `랜딩페이지 UIUX 개선 디자인안: "${ceoTask.slice(0, 200)}"\n— 컬러(빨간 액센트 포함), 타이포, 레이아웃, 컴포넌트 톤, 핵심 카피·예시 결과 톤까지 미래적·모던 방향으로 정리. 비포/애프터 포인트 명시.` },
+                            { agent: 'developer', task: `위 designer 디자인안 토대로 랜딩페이지 코드 개선 — 컴포넌트·스타일·인터랙션·반응형 구현. 변경 파일 목록 + 핵심 diff 요약.` },
+                        ];
+                        routeLabel = '랜딩/UIUX → 디자이너 + 개발자';
+                    } else if (looksDev) {
+                        fallback = [{ agent: 'developer', task: ceoTask }];
+                        routeLabel = '코드/개발 → 개발자';
+                    } else if (looksVideo) {
+                        fallback = [{ agent: 'editor', task: ceoTask }];
+                        routeLabel = '영상/유튜브 → 편집자';
+                    } else if (looksMarketing) {
+                        fallback = [
+                            { agent: 'writer', task: `광고·카피 작성: ${ceoTask.slice(0, 200)}` },
+                            { agent: 'designer', task: `광고 시각물·썸네일 시안: ${ceoTask.slice(0, 200)}` },
+                        ];
+                        routeLabel = '마케팅/광고 → 작가 + 디자이너';
+                    } else if (looksResearch) {
+                        fallback = [{ agent: 'researcher', task: ceoTask }];
+                        routeLabel = '리서치 → 리서처';
+                    } else if (looksBrainstorm) {
+                        fallback = [
+                            { agent: 'researcher', task: `시장·트렌드 리서치: "${prompt.slice(0, 120)}" 관점에서 해결되지 않은 문제·기회를 데이터·출처와 함께 3~5개 정리.` },
+                            { agent: 'business', task: `위 리서치 토대로 수익화 가능한 비즈니스 모델 후보 2~3개 — 고객 관점(Working Backwards), TAM·1년 매출 추정, 진입 장벽 평가.` },
+                            { agent: 'designer', task: `각 후보의 제품 차별화 각도(less but better)와 첫 MVP 범위 — 1주일에 만들 수 있는 단순한 형태로 압축.` },
+                        ];
+                        routeLabel = '브레인스토밍 → 리서처 + 비즈니스 + 디자이너';
+                    } else {
+                        /* 도메인 불명 — 일반 실행 3인방 */
+                        fallback = [
+                            { agent: 'designer', task: ceoTask },
+                            { agent: 'developer', task: ceoTask },
+                            { agent: 'business', task: ceoTask },
+                        ];
+                        routeLabel = '일반 실행 → 디자이너 + 개발자 + 비즈니스';
+                    }
+                    plan.tasks = fallback.filter(t => isAgentActive(t.agent));
                     if (plan.tasks.length > 0) {
                         const fbNames = plan.tasks.map(t => `${AGENTS[t.agent]?.emoji || ''} ${AGENTS[t.agent]?.name || t.agent}`).join(' · ');
-                        post({ type: 'systemNote', value: `🧭 CEO 가 자기 자신만 호출해서 자동 fallback 으로 ${fbNames} 에게 브레인스토밍 분배했습니다.` });
-                        plan.brief = plan.brief || `브레인스토밍: "${prompt.slice(0, 100)}"`;
+                        post({ type: 'systemNote', value: `🧭 CEO가 자기 자신만 호출 → ${routeLabel} 자동 라우팅. (${fbNames})` });
+                        plan.brief = plan.brief || ceoTask.slice(0, 140);
                     } else {
-                        post({ type: 'error', value: `⚠️ Fallback 시도했지만 researcher/business/designer 모두 비활성. 직원 패널에서 활성화 후 다시 시도해주세요.` });
+                        post({ type: 'error', value: `⚠️ ${routeLabel} 대상 specialist 가 전부 비활성. 직원 패널에서 활성화 후 다시 시도해주세요.` });
+                        try { sessionWriter?.finish('failed', `자동 라우팅 대상 specialist 가 전부 비활성 (${routeLabel})`); } catch { /* ignore */ }
                         return;
                     }
                 } else {
@@ -3059,12 +3347,39 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
                         type: 'error',
                         value: `⚠️ CEO가 호출한 에이전트(${wantedStr || '없음'})가 우리 팀에 없어요.\n사용 가능한 id: ${SPECIALIST_IDS.join(', ')}\n\nCEO 원본 응답 일부:\n${(planRaw || '').slice(0, 300)}`
                     });
+                    try { sessionWriter?.finish('failed', `CEO 가 알 수 없는 에이전트 호출: ${wantedStr || '없음'}`); } catch { /* ignore */ }
                     return;
                 }
             }
             /* v2.92 — plan.tasks 안에 'ceo' 가 섞여있는 partial 케이스도 silent drop.
                (이미 SPECIALIST_IDS find 로 dropped 됐지만, 명시 가드로 한 번 더.) */
             plan.tasks = plan.tasks.filter(t => SPECIALIST_IDS.includes(t.agent));
+
+            /* v2.92.x — Dispatch hard cap. ceo-planner.md 의 "최소 동원 원칙" 을
+               LLM 이 박약 의지로 무시하고 단순 명령("켜줘", "에러", "/디버깅") 에도
+               5~9명 specialist 를 다 호출하는 패턴 차단. 시스템 측에서 plan.tasks
+               를 강제 trim. 사장님이 "전 직원" 같은 광범위 동원을 명시한 경우만 cap
+               풀림. */
+            let _isSimpleCommand = false;
+            try {
+                const capRes = applyDispatchCap(plan, prompt);
+                if (capRes.kind === 'simple') {
+                    _isSimpleCommand = true;
+                    post({ type: 'systemNote', value: capRes.message });
+                } else if (capRes.kind === 'cap') {
+                    post({ type: 'systemNote', value: capRes.message });
+                } else if (capRes.kind === 'broad') {
+                    post({ type: 'systemNote', value: capRes.message });
+                } else {
+                    /* v2.92.x — noop 일 때도 실제 동원 인원 한 줄 알림. kickoff 가
+                       "팀" 광고만 하고 끝나면 사장님이 몇 명 도는지 모름. */
+                    const _n = plan.tasks.length;
+                    if (_n > 0) {
+                        const _names = plan.tasks.map(t => `${AGENTS[t.agent]?.emoji || ''}${AGENTS[t.agent]?.name || t.agent}`).join(', ');
+                        post({ type: 'systemNote', value: `🎯 최종 동원 ${_n}명: ${_names}` });
+                    }
+                }
+            } catch { /* cap 실패해도 dispatch 진행 — 안전 모드 */ }
 
             /* Checkpoint: planner finished, persist plan to state.json. */
             sessionWriter?.setPlan({ brief: plan.brief, tasks: plan.tasks });
@@ -3132,12 +3447,22 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
                 modelName,
                 sessionDir,
                 explicit,
+                simpleCommand: _isSimpleCommand,
             });
             const outputs = __loopResult.outputs;
             const agentMeta = __loopResult.agentMeta;
             if (__loopResult.earlyReturn) {
                 /* LLM 호출 도중 사용자가 abort 했거나 fatal 한 케이스 — 후속 phase
-                   skip 하고 사이드바를 streamEnd 로 풀어주는 finally 로 직행. */
+                   skip 하고 사이드바를 streamEnd 로 풀어주는 finally 로 직행.
+                   isAborted() 면 'aborted', 아니면 'failed' (specialist LLM 호출 도중
+                   rate limit·CLI 에러 등으로 loop 가 중단됨). */
+                try {
+                    if (isAborted()) {
+                        sessionWriter?.finish('aborted', '사용자가 specialist 라운드 도중 중단');
+                    } else {
+                        sessionWriter?.finish('failed', 'specialist 라운드 중 LLM 호출 실패로 조기 종료 (rate limit·CLI 에러 가능)');
+                    }
+                } catch { /* ignore */ }
                 return;
             }
             /* __loopResult.blocked (OAuth trigger / credentials block) 케이스도
@@ -3146,6 +3471,7 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
 
             if (isAborted()) {
                 post({ type: 'error', value: '🛑 사용자가 중단했어요.' });
+                try { sessionWriter?.finish('aborted', 'specialist 라운드 후 사용자 중단'); } catch { /* ignore */ }
                 return;
             }
             // 4.5) 에이전트 간 자율 대화 (Confer) — extracted to src/chat/corporate/confer-phase.ts.
@@ -3159,6 +3485,7 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
 
             if (isAborted()) {
                 post({ type: 'error', value: '🛑 사용자가 중단했어요.' });
+                try { sessionWriter?.finish('aborted', 'confer 라운드 후 사용자 중단'); } catch { /* ignore */ }
                 return;
             }
             // 5) CEO 종합 보고서 — extracted to src/chat/corporate/report-phase.ts.
@@ -3272,6 +3599,7 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
                 sessionWriter?.finish('failed', String(error?.message || error).slice(0, 500));
             }
         } finally {
+            const wasAbortSignalForFinish = !!this._abortController?.signal.aborted;
             this._abortController = undefined;
             /* The corp dispatch already sends a Telegram daily-report when
                configured, but we still clear the mirror flag so a follow-up
@@ -3288,7 +3616,29 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
                finish() on a terminal writer is a no-op. */
             if (sessionWriter) {
                 const snap = sessionWriter.snapshot();
-                if (snap.status === 'running') sessionWriter.finish('aborted', 'early return');
+                if (snap.status === 'running') {
+                    /* v2.92.x — abort 사유 정확 분류. _abortController.signal.aborted 면 사용자가
+                       stop 누른 거 (또는 자동 abort). 아니면 어떤 분기가 sessionWriter.finish 없이
+                       silent return. 둘 구분해서 'aborted' / 'failed' 다르게 저장 → 사장님이
+                       session.json 만 봐도 진짜 원인 추정 가능. 추가로 사이드바에 한 줄 에러
+                       표시 (broadcastCorporate 없이 직접) — 정적 무응답 사고 차단. */
+                    const wasAbortSignal = wasAbortSignalForFinish;
+                    /* 명시 분기들이 모두 finish() 를 호출하도록 손봐서, 여기에 도달하는
+                       건 정말로 try-block 어딘가에서 새로 추가된 분기가 finish() 를
+                       빼먹은 회귀 케이스만 남음. 사용자 메시지는 부드럽게 + 디버그
+                       정보는 currentStep 으로 정확 인용. */
+                    const lastStep = snap.currentStep || '단계 정보 없음';
+                    const reason = wasAbortSignal
+                        ? '사용자 중단(또는 자동 abort signal)'
+                        : `예상치 못한 조기 종료 (마지막 단계: ${lastStep})`;
+                    sessionWriter.finish(wasAbortSignal ? 'aborted' : 'failed', reason);
+                    try {
+                        const _msg = wasAbortSignal
+                            ? '🛑 작업이 abort 신호로 중단됐어요. (stop 버튼·newChat·외부 취소 중 하나)'
+                            : `⚠️ 작업이 도중에 멈췄어요. 마지막 단계: ${lastStep}\n💡 흔한 원인: LLM rate limit / CLI 에러. 잠시 뒤 재시도하거나 직원 패널에서 모델 확인.`;
+                        this._view?.webview.postMessage({ type: 'error', value: _msg });
+                    } catch { /* ignore */ }
+                }
             }
         }
     }
@@ -3303,7 +3653,12 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
         opts?: { jsonMode?: boolean; onFirstToken?: () => void; onChunk?: (chunk: string) => void }
     ): Promise<string> {
         const agentDef = AGENTS[agentId];
-        const tier: Tier = agentDef?.tier ?? _modelToTier(modelName);
+        /* v2.92.x — 매핑 강제 적용. corp 모드는 헤더 modelSel 이 hidden 이라 modelName 인자가
+           webview 초기화 시 첫 옵션 (claude-opus-4-7) 으로 stale 인 경우 많음. 사장님이 ad-chip
+           에서 보는 매핑(예: gpt-5.5 일괄) 이 진실 — getAgentModel(agentId, modelName) 으로 우선
+           매핑 적용. 매핑 없으면 인자 그대로. */
+        const effectiveModel = getAgentModel(agentId, modelName);
+        const tier: Tier = agentDef?.tier ?? _modelToTier(effectiveModel);
         const messages = [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userMsg }
@@ -3316,6 +3671,14 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
         let result = '';
         let firstTokenFired = false;
         const signal = this._abortController?.signal;
+        /* opts.model 명시 — UI 에서 gpt-5.5 골라도 _modelToTier 가 'standard' 로만 분류해서
+           streamAsk 가 TIER_TO_MODEL[claude-sonnet-4-6] 로 덮어쓰던 버그 (모든 에이전트
+           dispatch · 종합보고서 가 claude 로 라우팅됨) 차단. providerFor('gpt-*') → codex. */
+        /* v2.92.x — codex CLI filesystem MCP 항상 OFF. 사장님 alpha-agent-ai 의 .venv (수만 파일) 가
+           npx server-filesystem indexing 하느라 5분 timeout 사고. specialist 들도 inline action tag
+           (<read_file>·<edit_file>·<run_command>) 로 backend 가 실제 파일 처리 → codex 빌트인 도구
+           필요 없음. jsonMode (CEO planner) 면 timeout 60초로 더 짧게. */
+        const _isClassifier = !!opts?.jsonMode;
         await streamAsk(claudePrompt, tier, (token) => {
             if (signal?.aborted) return;
             if (!firstTokenFired && token) {
@@ -3331,6 +3694,14 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
             if (opts?.onChunk) {
                 try { opts.onChunk(token); } catch { /* never break LLM stream */ }
             }
+        }, {
+            model: effectiveModel,
+            codexReasoningEffort: this.getCodexReasoningEffort(),
+            skipFilesystemMcp: true, /* 항상 skip — 사장님 .venv hang 사고 차단 */
+            /* v2.92.x — classifier 60s → 180s. CEO planner 가 jsonMode 로 호출되는데
+               명령 복잡도 (보존 룰·thiel 추가·multi-candidate slot 룰 등) 가 누적되어
+               60s 부족 사고. 180s 면 일반 classifier 도 여유. 진짜 hang 은 idle 가드가 잡음. */
+            timeoutMs: _isClassifier ? 180_000 : undefined,
         });
         return result;
     }

@@ -76,8 +76,9 @@ export async function runShortcutTool(
     post({ type: 'response', value: `🔧 ${a.emoji} ${a.name}: \`${entry.tool}\` 실행 중...` });
     let r: { exitCode: number; output: string; timedOut: boolean };
     try {
-        /* v2.89.50 — stdout만 캡쳐. stderr (진행 메시지·DeprecationWarning) 채팅에 안 끼게. */
-        r = await runCommandCaptured(`${_pythonCmd()} ${JSON.stringify(entry.tool)}`, toolsDir, () => {}, 90000, 'stdout');
+        /* stderr 도 캡쳐한다. 실패 시 Python ImportError / env 누락 메시지가
+           stderr 로만 나오면 사용자에게 "(출력 없음)" 으로 보여 원인 파악이 안 된다. */
+        r = await runCommandCaptured(`${_pythonCmd()} ${JSON.stringify(entry.tool)}`, toolsDir, () => {}, 90000, 'both');
     } catch (e: any) {
         post({ type: 'agentEnd', agent: entry.agentId });
         post({ type: 'error', value: `⚠️ 도구 실행 에러: ${e?.message || e}` });

@@ -8,7 +8,7 @@ import * as path from 'path';
 import { writeTracker } from '../../src/tracker/io';
 import type { TrackerTask } from '../../src/tracker/types';
 import { SessionStateWriter } from '../../src/dispatch/session-state';
-import { buildBoard } from '../../src/dispatch/agent-board';
+import { buildBoard, hideBoardEntry } from '../../src/dispatch/agent-board';
 
 let companyDir: string;
 
@@ -109,7 +109,7 @@ describe('dispatch/agent-board', () => {
         expect(snap.entries[0].id).toBe('tracker:new');
     });
 
-    it('aborted session 은 badge=aborted 로 표시 + 미시작 agent 는 pending', () => {
+    it('aborted session 은 완료 컬럼에 badge=aborted 로 표시', () => {
         seedSession('s2', '중단된 작업', w => {
             w.setPlan({ brief: 'x', tasks: [
                 { agent: 'business', task: '매출 분석' },
@@ -124,10 +124,9 @@ describe('dispatch/agent-board', () => {
         const business = snap.entries.find(e => e.agentId === 'business');
         const researcher = snap.entries.find(e => e.agentId === 'researcher');
 
-        /* business 는 streaming 으로 끝났으니 in_progress 인 채로 남음 (writer 가 endAgent 안 부름) */
-        expect(business?.status).toBe('in_progress');
-        /* researcher 는 outputs 에 없으니 pending + aborted badge */
-        expect(researcher?.status).toBe('pending');
+        expect(business?.status).toBe('done');
+        expect(business?.badge).toBe('aborted');
+        expect(researcher?.status).toBe('done');
         expect(researcher?.badge).toBe('aborted');
     });
 
@@ -147,5 +146,35 @@ describe('dispatch/agent-board', () => {
         expect(order[1]).toBe('tracker:p1');    /* pending 2순위 */
         expect(order[2]).toBe('tracker:d2');    /* done — 최신 먼저 */
         expect(order[3]).toBe('tracker:d1');    /* done — 오래된 */
+    });
+
+    it('hideBoardEntry 는 tracker 카드를 칸반 집계에서 제외한다', () => {
+        const now = new Date().toISOString();
+        seedTracker([
+            { id: 't1', title: '삭제할 카드', owner: 'agent', agentIds: ['developer'], createdAt: now, status: 'pending' },
+            { id: 't2', title: '남길 카드', owner: 'agent', agentIds: ['developer'], createdAt: now, status: 'pending' },
+        ]);
+
+        hideBoardEntry(companyDir, { id: 'tracker:t1' });
+        const snap = buildBoard(companyDir, { period: 'all' });
+
+        expect(snap.entries.map(e => e.id)).toEqual(['tracker:t2']);
+        expect(snap.counts.pending).toBe(1);
+        expect(snap.totalBeforeFilter).toBe(1);
+    });
+
+    it('hideBoardEntry 는 같은 sessionDir 의 모든 에이전트 카드를 제외한다', () => {
+        const sessionDir = seedSession('s-hide', '여러 에이전트 작업', w => {
+            w.setPlan({ brief: 'multi', tasks: [
+                { agent: 'researcher', task: '조사' },
+                { agent: 'developer', task: '구현' },
+            ]});
+        });
+
+        hideBoardEntry(companyDir, { id: 'session:s-hide:researcher', sessionDir });
+        const snap = buildBoard(companyDir, { period: 'all' });
+
+        expect(snap.entries).toHaveLength(0);
+        expect(snap.counts.pending).toBe(0);
     });
 });

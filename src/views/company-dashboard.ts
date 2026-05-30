@@ -27,6 +27,7 @@
  *   - readCompanyName
  *   - readTracker, updateTrackerTask
  *   - resolveApproval, listPendingApprovals
+ *   - approveAllPendingApprovals
  *   - listInstalledModels
  *   - readAgentModelMap, writeAgentModelMap
  *   - readReportSchedule, writeReportSchedule
@@ -83,6 +84,7 @@ import {
     readTracker,
     updateTrackerTask,
     resolveApproval,
+    approveAllPendingApprovals,
     listPendingApprovals,
     listInstalledModels,
     readAgentModelMap,
@@ -154,6 +156,60 @@ export class CompanyDashboardPanel {
                     } catch (e: any) {
                         this._panel.webview.postMessage({ type: 'boardData', error: e?.message || String(e) });
                     }
+                } else if (msg?.type === 'loadYouTubeLeads') {
+                    /* 📺 YouTube 콜드 리드 패널 — alpha-agent-ai 의 youtubers.db 읽음.
+                       sqlite3 CLI 로 호출 (추가 npm dep 없음). 발송 X — 표시만. */
+                    try {
+                        const home = require('os').homedir();
+                        const dbPath = path.join(home, 'alpha-agent-ai', 'scripts', 'youtube-collector', 'youtubers.db');
+                        if (!fs.existsSync(dbPath)) {
+                            this._panel.webview.postMessage({ type: 'youtubeLeadsData', error: `DB 없음: ${dbPath} — collector.py 한 번도 실행 안 했거나 다른 경로 사용 중` });
+                            return;
+                        }
+                        const filterCategory = typeof msg.category === 'string' && msg.category !== 'all' ? msg.category : null;
+                        const onlyWithEmail = msg.onlyWithEmail === true;
+                        const where: string[] = [];
+                        if (filterCategory) where.push(`category = '${filterCategory.replace(/'/g, "''")}'`);
+                        if (onlyWithEmail) where.push(`email IS NOT NULL AND email != ''`);
+                        const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+                        const sql = `SELECT json_group_array(json_object('channel_id', channel_id, 'name', name, 'subscribers', subscribers, 'email', email, 'channel_url', channel_url, 'video_count', video_count, 'last_upload_date', last_upload_date, 'uploads_per_week', uploads_per_week, 'category', category, 'email_status', email_status, 'has_contact_hint', has_contact_hint, 'instagram_handle', instagram_handle, 'twitter_handle', twitter_handle, 'threads_handle', threads_handle, 'other_url', other_url, 'email_source', email_source, 'collected_at', collected_at)) FROM (SELECT * FROM youtubers ${whereClause} ORDER BY (CASE WHEN email IS NOT NULL AND email != '' THEN 0 WHEN instagram_handle IS NOT NULL OR twitter_handle IS NOT NULL OR threads_handle IS NOT NULL THEN 1 ELSE 2 END), (CASE WHEN has_contact_hint = 1 THEN 0 ELSE 1 END), subscribers DESC LIMIT 500)`;
+                        /* 카테고리별 + 이메일 상태별 분포 카운트. 사장님이 "왜 이메일 없냐"
+                           눈으로 보고: description 자체 없음 / 있는데 매칭 실패 / about reCAPTCHA 등 사유 구분. */
+                        const sqlCounts = `SELECT json_group_array(json_object('category', COALESCE(category, '미분류'), 'total', total, 'with_email', with_email, 'with_hint_no_email', with_hint_no_email)) FROM (SELECT category, COUNT(*) as total, SUM(CASE WHEN email IS NOT NULL AND email != '' THEN 1 ELSE 0 END) as with_email, SUM(CASE WHEN has_contact_hint = 1 AND (email IS NULL OR email = '') THEN 1 ELSE 0 END) as with_hint_no_email FROM youtubers GROUP BY category ORDER BY total DESC)`;
+                        const sqlStatus = `SELECT json_group_array(json_object('email_status', COALESCE(email_status, 'unknown'), 'count', count)) FROM (SELECT email_status, COUNT(*) as count FROM youtubers GROUP BY email_status ORDER BY count DESC)`;
+                        const r = await new Promise<{ exitCode: number; rows: string; counts: string; status: string }>((resolve) => {
+                            const cp = require('child_process');
+                            const p = cp.spawn('sqlite3', ['-readonly', dbPath, sql, sqlCounts, sqlStatus]);
+                            let buf = '';
+                            p.stdout?.on('data', (d: Buffer) => { buf += d.toString(); });
+                            p.on('close', (code: number) => {
+                                const lines = buf.split('\n').filter(Boolean);
+                                resolve({ exitCode: code ?? -1, rows: lines[0] || '[]', counts: lines[1] || '[]', status: lines[2] || '[]' });
+                            });
+                            setTimeout(() => { try { p.kill(); } catch {} resolve({ exitCode: -1, rows: '[]', counts: '[]', status: '[]' }); }, 8000);
+                        });
+                        if (r.exitCode !== 0) {
+                            this._panel.webview.postMessage({ type: 'youtubeLeadsData', error: `sqlite3 호출 실패 (exit ${r.exitCode}) — sqlite3 CLI 설치 확인` });
+                            return;
+                        }
+                        let rows: any[] = []; let counts: any[] = []; let statusDist: any[] = [];
+                        try { rows = JSON.parse(r.rows); } catch { /* keep [] */ }
+                        try { counts = JSON.parse(r.counts); } catch { /* keep [] */ }
+                        try { statusDist = JSON.parse(r.status); } catch { /* keep [] */ }
+                        this._panel.webview.postMessage({ type: 'youtubeLeadsData', rows, counts, statusDist, filters: { category: filterCategory || 'all', onlyWithEmail } });
+                    } catch (e: any) {
+                        this._panel.webview.postMessage({ type: 'youtubeLeadsData', error: e?.message || String(e) });
+                    }
+                } else if (msg?.type === 'openExternalUrl' && typeof msg.url === 'string') {
+                    /* YouTube 채널 등 외부 URL — 기본 브라우저로 열기. webview 안의
+                       a target=_blank 는 VS Code 정책상 안 열리는 케이스 많아서
+                       명시적으로 openExternal 호출. */
+                    try {
+                        const u = String(msg.url).trim();
+                        if (/^https?:\/\//i.test(u)) {
+                            vscode.env.openExternal(vscode.Uri.parse(u));
+                        }
+                    } catch { /* ignore */ }
                 } else if (msg?.type === 'openSessionFolder' && typeof msg.sessionDir === 'string') {
                     try { vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(msg.sessionDir)); } catch { /* ignore */ }
                 } else if (msg?.type === 'openRevenueDashboard') {
@@ -278,6 +334,10 @@ export class CompanyDashboardPanel {
                 } else if (msg?.type === 'approve' && msg.id) {
                     const r = await resolveApproval(msg.id, 'approved');
                     this._postToast(r.message, !r.ok);
+                    await this._sendState();
+                } else if (msg?.type === 'approveAllPending') {
+                    const r = await approveAllPendingApprovals('대시보드 일괄 승인');
+                    this._postToast(`✅ 일괄 처리: 승인 ${r.approved}건 · 제외 ${r.skipped}건 · 실패 ${r.failed}건`, !r.ok);
                     await this._sendState();
                 } else if (msg?.type === 'reject' && msg.id) {
                     const r = await resolveApproval(msg.id, 'rejected');
@@ -476,6 +536,105 @@ export class CompanyDashboardPanel {
                         }
                     } catch (e: any) {
                         this._postToast(`⚠️ 취소 실패: ${e?.message || e}`, true);
+                    }
+                } else if (msg?.type === 'boardAbortEntry' && typeof msg.id === 'string') {
+                    /* 업무 보드 카드 중단 — id 가 `tracker:...` 면 cancelled, `session:...`
+                       이면 state.json 의 status=aborted 로 마킹. aborted 카드는 ✅완료
+                       열에 grey badge 로 남음 (기록 보존). 영구 제거는 🗑 삭제 액션. */
+                    let ok = false;
+                    try {
+                        const id = String(msg.id);
+                        if (id.startsWith('tracker:')) {
+                            const taskId = id.slice('tracker:'.length);
+                            const target = readTracker().tasks.find(t => t.id === taskId);
+                            if (!target) {
+                                this._postToast(`⚠️ 작업을 못 찾았어요 (tracker)`, true);
+                            } else {
+                                updateTrackerTask(target.id, { status: 'cancelled', evidence: '대시보드 보드에서 중단' });
+                                this._postToast(`⏹ 중단됨: ${target.title.slice(0, 40)}`);
+                                ok = true;
+                            }
+                        } else if (id.startsWith('session:')) {
+                            const sessionDir = typeof msg.sessionDir === 'string' ? msg.sessionDir : '';
+                            if (!sessionDir) {
+                                this._postToast(`⚠️ session 경로 누락 — 카드 데이터 새로고침 후 다시 시도`, true);
+                            } else {
+                                const { markSessionAborted } = await import('../dispatch/session-state');
+                                const stateFile = path.join(sessionDir, 'state.json');
+                                if (!fs.existsSync(stateFile)) {
+                                    this._postToast(`⚠️ 세션 state.json 이 없어요: ${sessionDir}`, true);
+                                } else {
+                                    markSessionAborted(stateFile, '대시보드 보드에서 사용자 중단');
+                                    this._postToast(`⏹ 세션 중단됨`);
+                                    ok = true;
+                                }
+                            }
+                        } else {
+                            this._postToast(`⚠️ 잘못된 보드 항목 id: ${id}`, true);
+                        }
+                    } catch (e: any) {
+                        this._postToast(`⚠️ 중단 실패: ${e?.message || e}`, true);
+                    }
+                    if (ok) {
+                        try { this._panel.webview.postMessage({ type: 'boardReloadHint' }); } catch { /* ignore */ }
+                    }
+                } else if (msg?.type === 'boardDeleteEntry' && typeof msg.id === 'string') {
+                    /* 업무 보드 카드 삭제 — tracker 는 tracker.json 에서 entry 제거,
+                       session 은 sessions/{id} 폴더 통째 삭제 (state.json + 출력 로그
+                       전부). 카드 1장이 sessionId 1개에 매칭 — 같은 session 의 다른
+                       agent 카드도 함께 사라짐 (1세션 = 1폴더). */
+                    let ok = false;
+                    try {
+                        const id = String(msg.id);
+                        const sessionDirFromMsg = typeof msg.sessionDir === 'string' ? msg.sessionDir : '';
+                        try {
+                            const { hideBoardEntry } = await import('../dispatch/agent-board');
+                            hideBoardEntry(getCompanyDir(), { id, sessionDir: sessionDirFromMsg || undefined });
+                        } catch { /* tombstone best-effort — physical delete still attempted */ }
+                        if (id.startsWith('tracker:')) {
+                            const taskId = id.slice('tracker:'.length);
+                            const { writeTracker } = await import('../tracker/io');
+                            const trk = readTracker();
+                            const before = trk.tasks.length;
+                            const nextTasks = trk.tasks.filter(t => t.id !== taskId);
+                            if (nextTasks.length === before) {
+                                this._postToast(`⚠️ 작업을 못 찾았어요 (tracker)`, true);
+                            } else {
+                                writeTracker(getCompanyDir(), { tasks: nextTasks });
+                                this._postToast(`🗑 삭제됨`);
+                                ok = true;
+                            }
+                        } else if (id.startsWith('session:')) {
+                            const sessionDir = sessionDirFromMsg;
+                            if (!sessionDir) {
+                                this._postToast(`🗑 보드에서 숨김 처리됨`);
+                                ok = true;
+                            } else {
+                                const sessionsRoot = path.join(getCompanyDir(), 'sessions');
+                                /* 안전장치: sessionDir 가 정확히 sessions/ 아래여야 삭제. */
+                                const resolved = path.resolve(sessionDir);
+                                const resolvedRoot = path.resolve(sessionsRoot);
+                                if (!resolved.startsWith(resolvedRoot + path.sep)) {
+                                    this._postToast(`🗑 보드에서 숨김 처리됨 (세션 폴더는 안전상 보존)`);
+                                    ok = true;
+                                } else if (!fs.existsSync(resolved)) {
+                                    this._postToast(`⚠️ 세션 폴더가 이미 없어요: ${path.basename(resolved)}`, true);
+                                    /* 이미 없으면 board 에서도 없어야 하니까 refresh 트리거 */
+                                    ok = true;
+                                } else {
+                                    fs.rmSync(resolved, { recursive: true, force: true });
+                                    this._postToast(`🗑 세션 삭제됨: ${path.basename(resolved)}`);
+                                    ok = true;
+                                }
+                            }
+                        } else {
+                            this._postToast(`⚠️ 잘못된 보드 항목 id: ${id}`, true);
+                        }
+                    } catch (e: any) {
+                        this._postToast(`⚠️ 삭제 실패: ${e?.message || e}`, true);
+                    }
+                    if (ok) {
+                        try { this._panel.webview.postMessage({ type: 'boardReloadHint' }); } catch { /* ignore */ }
                     }
                 } else if (msg?.type === 'setAgentRagMode' && typeof msg.agentId === 'string') {
                     /* v2.87.9 — 대시보드 모달의 자가검증 토글에서 호출. mode는
@@ -898,6 +1057,31 @@ export class CompanyDashboardPanel {
     </div>
   </section>
 
+  <!-- 📺 YouTube 콜드 리드 — alpha-agent-ai/youtubers.db. 발송 X, 표시·복사만.
+       사장님 정책: 콜드메일 자동 발송 금지. 사이트 배포 전 테스트 단계라 발송 사고 절대 X. -->
+  <section class="card span-12" id="ytLeadsCard">
+    <div class="card-head">
+      <div class="card-title"><span class="title-icon">📺</span> YouTube 콜드 리드 <span class="badge" id="ytLeadsBadge">—</span></div>
+      <div class="board-toolbar">
+        <span class="board-counts" id="ytLeadsCounts" style="font-size:11px;color:rgba(255,255,255,.6)"></span>
+        <select id="ytLeadsCategory" class="board-select" title="카테고리 필터">
+          <option value="all">전체 카테고리</option>
+        </select>
+        <div class="board-view seg-group" role="tablist">
+          <button class="seg active" data-yt-email="all" title="모든 채널">전체</button>
+          <button class="seg" data-yt-email="only" title="이메일 확보 채널만">📧 이메일</button>
+        </div>
+        <button class="btn ghost" id="ytLeadsRefresh" title="다시 집계">↻</button>
+      </div>
+    </div>
+    <div class="board-body" id="ytLeadsBody">
+      <div class="board-loading">DB 읽는 중…</div>
+    </div>
+    <div style="padding:8px 16px 14px;font-size:11px;color:rgba(255,255,255,.5);border-top:1px solid rgba(255,255,255,.06)">
+      ⚠️ 발송 금지 모드 — 이메일은 <b>📋 복사</b> 만 가능. 콜드메일은 사장님 검토 후 수동 발송.
+    </div>
+  </section>
+
   <!-- 1) 우리 팀 — hero. v2.89.108: 상태 필터 + 범례 추가. -->
   <section class="card span-12 hero-team" id="teamCard">
     <div class="card-head">
@@ -954,7 +1138,10 @@ export class CompanyDashboardPanel {
   <section class="card span-5" id="aprCard">
     <div class="card-head">
       <div class="card-title"><span class="title-icon">⏳</span> 승인 큐 (Pending)</div>
-      <span class="badge warn" id="aprBadge">0</span>
+      <div class="apr-head-actions">
+        <button class="btn small" id="approveAllBtn" title="Excluded 로 표시된 항목은 제외하고 pending 승인 전체 실행">✓ 전체 발송</button>
+        <span class="badge warn" id="aprBadge">0</span>
+      </div>
     </div>
     <div id="aprBody"><div class="empty subtle">대기 중인 승인이 없어요.</div></div>
   </section>

@@ -506,6 +506,7 @@ export function _autoOrchestrateModelMap(installed: { id: string; backend: strin
    고르면 자동으로 codex CLI 가 spawn 됨. */
 export async function listInstalledModels(): Promise<{ id: string; backend: 'claude' | 'codex' }[]> {
   return [
+    { id: 'claude-opus-4-8', backend: 'claude' },
     { id: 'claude-opus-4-7', backend: 'claude' },
     { id: 'claude-sonnet-4-6', backend: 'claude' },
     { id: 'claude-haiku-4-5-20251001', backend: 'claude' },
@@ -816,11 +817,11 @@ function createApproval(req: Omit<PendingApproval, 'id' | 'createdAt'>): Pending
 
 export function listPendingApprovals(): PendingApproval[] { return apv.listPending(getCompanyDir()); }
 
-export async function resolveApproval(id: string, decision: 'approved' | 'rejected', reason: string = ''): Promise<{ ok: boolean; message: string; ap?: PendingApproval }> {
+function _approvalExecutor(): apv.ApprovalExecutor {
     /* Executor callback — approved 시에만 호출됨. spawnSync 기반 격리 실행은
        VS Code 측 책임이라 wrapper 에서 주입. throw 해도 ok:true 로 끝남
        (모듈이 FAIL 마커 audit md 에 기록). */
-    const executor: apv.ApprovalExecutor = async (approval) => {
+    return async (approval) => {
         const execPath = path.join(_approvalsExecutorsDir(), `${approval.kind}.js`);
         if (!fs.existsSync(execPath)) {
             return { ok: true, output: `(no executor for ${approval.kind} — approval recorded, manual follow-up)` };
@@ -834,7 +835,10 @@ export async function resolveApproval(id: string, decision: 'approved' | 'reject
         const output = (res.stdout || '') + (res.stderr ? `\n[stderr]\n${res.stderr}` : '');
         return { ok: res.status === 0, output };
     };
-    const result = await apv.resolveApproval(getCompanyDir(), id, decision, reason, executor);
+}
+
+export async function resolveApproval(id: string, decision: 'approved' | 'rejected', reason: string = ''): Promise<{ ok: boolean; message: string; ap?: PendingApproval }> {
+    const result = await apv.resolveApproval(getCompanyDir(), id, decision, reason, _approvalExecutor());
     if (!result.ok || !result.ap) return result;
     /* Audit 한 줄도 wrapper 에서 — conversation log 는 vscode 측 sink. */
     const ap = result.ap;
@@ -848,6 +852,20 @@ export async function resolveApproval(id: string, decision: 'approved' | 'reject
             body: `${ap.title} (${ap.kind}) → ${decision}${reason ? '\n사유: ' + reason : ''}`,
         });
     } catch { /* ignore */ }
+    return result;
+}
+
+export async function approveAllPendingApprovals(reason: string = '일괄 승인'): Promise<apv.BulkResolveResult> {
+    const result = await apv.approvePendingBulk(getCompanyDir(), reason, _approvalExecutor());
+    try {
+        appendConversationLog({
+            speaker: 'Secretary',
+            emoji: '✅',
+            section: '승인 일괄 처리',
+            body: `대상 ${result.total}건 → 승인 ${result.approved}건, 제외 ${result.skipped}건, 실패 ${result.failed}건`,
+        });
+    } catch { /* ignore */ }
+    try { _approvalsPanelProvider?.refresh(); } catch { /* ignore */ }
     return result;
 }
 

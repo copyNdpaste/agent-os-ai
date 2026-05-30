@@ -52,6 +52,32 @@ INSTAGRAM_UPLOADER = os.path.join(HERE, "instagram_uploader.py")
 X_UPLOADER = os.path.join(HERE, "x_uploader.py")  # 병렬 에이전트가 생성 중
 
 
+def _load_local_env():
+    """Load _company/_agents/instagram/.env style files without extra deps."""
+    candidates = [
+        os.path.join(HERE, ".env"),
+        os.path.join(os.path.dirname(HERE), ".env"),
+        os.path.join(HERE, ".env.local"),
+        os.path.join(os.path.dirname(HERE), ".env.local"),
+    ]
+    for env_path in candidates:
+        if not os.path.isfile(env_path):
+            continue
+        try:
+            with open(env_path, "r", encoding="utf-8") as f:
+                for raw in f:
+                    line = raw.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    k, v = line.split("=", 1)
+                    k = k.strip()
+                    v = v.strip().strip('"').strip("'")
+                    if k and k not in os.environ:
+                        os.environ[k] = v
+        except Exception as e:
+            sys.stderr.write(f"⚠️ .env 로드 실패: {env_path}: {e}\n")
+
+
 # ─── frontmatter 파싱/저장 ────────────────────────────────────────────────
 
 def parse_draft(path: str):
@@ -446,6 +472,7 @@ def on_request(client: SocketModeClient, req: SocketModeRequest):
 
 
 def main():
+    _load_local_env()
     bot_token = (os.environ.get("SLACK_BOT_TOKEN") or "").strip()
     app_token = (os.environ.get("SLACK_APP_TOKEN") or "").strip()
     if not bot_token or not app_token:

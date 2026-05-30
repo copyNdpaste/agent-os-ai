@@ -170,6 +170,7 @@ export function _seedInstagramSlackNotifier(toolsDir: string) {
   const py = _loadToolSeed('instagram/slack_notifier.py');
   const md = _loadToolSeed('instagram/slack_notifier.md');
   const json = JSON.stringify({
+    _enabled: false,
     POST_DELAY_SECONDS: 2,
     DEFAULT_PLATFORM: 'threads',
     _schema: {
@@ -207,6 +208,7 @@ export function _seedInstagramSlackWorker(toolsDir: string) {
   const py = _loadToolSeed('instagram/slack_approval_worker.py');
   const md = _loadToolSeed('instagram/slack_approval_worker.md');
   const json = JSON.stringify({
+    _enabled: false,
     AUTO_START_DAEMON: true,
     _schema: {
       AUTO_START_DAEMON: {

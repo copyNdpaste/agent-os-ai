@@ -1,9 +1,21 @@
 import { spawn } from 'child_process';
 import { buildSpawnEnv } from './index';
 
+function getCurrentWorkspaceFolder(): string | undefined {
+  try {
+    const vscode = require('vscode');
+    const wf = vscode?.workspace?.workspaceFolders;
+    if (wf && wf.length > 0) return wf[0].uri.fsPath;
+  } catch { /* vscode unavailable */ }
+  return undefined;
+}
+
 interface RunOptions {
   binPath: string;
+  /** Wall-clock max — 이 시간 넘으면 무조건 SIGTERM. default 25분. */
   timeoutMs?: number;
+  /** Idle timeout — 마지막 chunk 후 이 시간 안에 다음 chunk 없으면 SIGTERM. default 5분. */
+  idleTimeoutMs?: number;
 }
 
 interface AssistantContentBlock {
@@ -22,7 +34,15 @@ interface StreamMessage {
   error?: string;
 }
 
-const DEFAULT_TIMEOUT_MS = 300_000;
+/* v2.92.x — wall-clock 단일 5분 → (idle + wall) 두 단계 + 0=무제한.
+   사장님 사용 패턴:
+   - 일반 작업: 한 specialist 의 LLM 호출이 1~5분
+   - 큰 작업: claude-opus-4-7 + 큰 컨텍스트 → 10~30분도 가능
+   - 24시간 자율: dispatch 전체가 N번 호출 — 각 호출은 여전히 5~30분 안에 끝남
+   기본값을 보수적으로 키우고, 사장님이 settings 에서 조절 가능 (0 = 무제한).
+   사장님 24시간 자율 시는 wall=0 으로 설정해 한 호출 무제한 ⇒ stuck 안 됨. */
+const DEFAULT_IDLE_TIMEOUT_MS = 900_000;     // 15분 chunk 없으면 죽음 판정
+const DEFAULT_WALL_TIMEOUT_MS = 0;           // 0 = wall 무제한 (idle 만으로 stuck 잡음). 큰 작업·자율 모드 안전
 
 function tryParse(line: string): StreamMessage | null {
   const trimmed = line.trim();
@@ -40,7 +60,8 @@ export function runClaudeCli(
   onDelta: (chunk: string) => void,
   opts: RunOptions
 ): Promise<string> {
-  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const wallTimeoutMs = opts.timeoutMs ?? DEFAULT_WALL_TIMEOUT_MS;
+  const idleTimeoutMs = opts.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
   const args = [
     '-p', prompt,
     '--model', model,
@@ -64,7 +85,10 @@ export function runClaudeCli(
          Code's Dock-launched extension host gets exit 127 on macOS
          because nvm/Volta/asdf paths aren't inherited. */
       const env = buildSpawnEnv(opts.binPath);
-      child = spawn(opts.binPath, args, { env });
+      const wsFolder = getCurrentWorkspaceFolder();
+      const spawnOpts: any = { env };
+      if (wsFolder) spawnOpts.cwd = wsFolder;
+      child = spawn(opts.binPath, args, spawnOpts);
     } catch (e) {
       reject(e);
       return;
@@ -76,12 +100,30 @@ export function runClaudeCli(
     let finalResult: string | null = null;
     let errorFromStream: string | null = null;
 
-    const timer = setTimeout(() => {
-      try { child.kill('SIGTERM'); } catch { /* already dead */ }
-      settle(() => reject(new Error(`Claude CLI timed out after ${timeoutMs}ms`)));
-    }, timeoutMs);
+    /* v2.92.x — idle/wall watchdog. 둘 다 0 이면 watchdog 자체 안 만듦 (무제한).
+       사장님 24시간 자율 모드는 settings 에서 둘 다 0 으로 — stuck 안 됨. */
+    const startTs = Date.now();
+    let lastActivity = startTs;
+    const idleEnabled = idleTimeoutMs > 0;
+    const wallEnabled = wallTimeoutMs > 0;
+    const watchdog = (idleEnabled || wallEnabled) ? setInterval(() => {
+      const now = Date.now();
+      const idle = now - lastActivity;
+      const wall = now - startTs;
+      const idleViolated = idleEnabled && idle > idleTimeoutMs;
+      const wallViolated = wallEnabled && wall > wallTimeoutMs;
+      if (idleViolated || wallViolated) {
+        if (watchdog) clearInterval(watchdog);
+        try { child.kill('SIGTERM'); } catch { /* already dead */ }
+        const reason = wallViolated
+          ? `wall ${Math.round(wall / 1000)}s > ${Math.round(wallTimeoutMs / 1000)}s 한도 (settings agentOs.llmTimeoutWallMin 으로 조절. 0 = 무제한)`
+          : `idle ${Math.round(idle / 1000)}s — 응답 멈춤 (settings agentOs.llmTimeoutIdleMin 으로 조절. 0 = 무제한)`;
+        settle(() => reject(new Error(`Claude CLI timed out: ${reason}`)));
+      }
+    }, 15_000) : null;
 
     child.stdout.on('data', (buf: Buffer) => {
+      lastActivity = Date.now();
       stdoutBuf += buf.toString('utf8');
       const lines = stdoutBuf.split('\n');
       stdoutBuf = lines.pop() ?? '';
@@ -109,11 +151,12 @@ export function runClaudeCli(
     });
 
     child.stderr.on('data', (buf: Buffer) => {
+      lastActivity = Date.now();
       stderrBuf += buf.toString('utf8');
     });
 
     child.on('error', (e: NodeJS.ErrnoException) => {
-      clearTimeout(timer);
+      if (watchdog) clearInterval(watchdog);
       if (e.code === 'ENOENT') {
         settle(() => reject(new Error(
           `Claude CLI not found at '${opts.binPath}'. ` +
@@ -126,7 +169,7 @@ export function runClaudeCli(
     });
 
     child.on('close', (code: number | null) => {
-      clearTimeout(timer);
+      if (watchdog) clearInterval(watchdog);
       if (errorFromStream) {
         settle(() => reject(new Error(errorFromStream as string)));
         return;

@@ -46,19 +46,25 @@ export interface RecentFileAction {
 // the user doesn't see raw <create_file>, <run_command> etc. tags.
 // ---------------------------------------------------------------------------
 export function stripActionTags(text: string): string {
+    /* v2.92.x — opening 태그 attribute 옵션화 (`<edit_file>` 처럼 attr 없는 케이스도 stripping).
+       LLM 이 출력 도중 끊겨 `</edit_file>` 닫는 태그만 남는 trailing 케이스도 라스트 패스에서 제거. */
     return text
-        .replace(/<(?:create_file|write_file|file)\s+[^>]*>[\s\S]*?<\/(?:create_file|write_file|file)>/gi, '')
-        .replace(/<(?:edit_file|edit)\s+[^>]*>[\s\S]*?<\/(?:edit_file|edit)>/gi, '')
-        .replace(/<(?:delete_file|delete)\s+[^>]*\s*\/?>(?:<\/(?:delete_file|delete)>)?/gi, '')
-        .replace(/<(?:read_file|read)\s+[^>]*\s*\/?>(?:<\/(?:read_file|read)>)?/gi, '')
-        .replace(/<(?:list_files|list_dir|ls)\s+[^>]*\s*\/?>(?:<\/(?:list_files|list_dir|ls)>)?/gi, '')
-        .replace(/<(?:reveal_in_explorer|reveal|finder|explorer)\s+[^>]*\s*\/?>(?:<\/(?:reveal_in_explorer|reveal|finder|explorer)>)?/gi, '')
-        .replace(/<(?:open_file|open_in_app|launch)\s+[^>]*\s*\/?>(?:<\/(?:open_file|open_in_app|launch)>)?/gi, '')
-        .replace(/<glob\s+[^>]*\s*\/?>(?:<\/glob>)?/gi, '')
-        .replace(/<grep\s+[^>]*\s*\/?>(?:<\/grep>)?/gi, '')
-        .replace(/<(?:run_command|command|bash|terminal)>[\s\S]*?<\/(?:run_command|command|bash|terminal)>/gi, '')
-        .replace(/<(?:read_brain)>[\s\S]*?<\/(?:read_brain)>/gi, '')
-        .replace(/<(?:read_url|url|fetch_url)>[\s\S]*?<\/(?:read_url|url|fetch_url)>/gi, '')
+        .replace(/<(?:create_file|write_file|file)(?:\s+[^>]*)?>[\s\S]*?<\/(?:create_file|write_file|file)>/gi, '')
+        .replace(/<(?:edit_file|edit)(?:\s+[^>]*)?>[\s\S]*?<\/(?:edit_file|edit)>/gi, '')
+        .replace(/<(?:delete_file|delete)(?:\s+[^>]*)?\s*\/?>(?:<\/(?:delete_file|delete)>)?/gi, '')
+        .replace(/<(?:read_file|read)(?:\s+[^>]*)?\s*\/?>(?:<\/(?:read_file|read)>)?/gi, '')
+        .replace(/<(?:list_files|list_dir|ls)(?:\s+[^>]*)?\s*\/?>(?:<\/(?:list_files|list_dir|ls)>)?/gi, '')
+        .replace(/<(?:reveal_in_explorer|reveal|finder|explorer)(?:\s+[^>]*)?\s*\/?>(?:<\/(?:reveal_in_explorer|reveal|finder|explorer)>)?/gi, '')
+        .replace(/<(?:open_file|open_in_app|launch)(?:\s+[^>]*)?\s*\/?>(?:<\/(?:open_file|open_in_app|launch)>)?/gi, '')
+        .replace(/<glob(?:\s+[^>]*)?\s*\/?>(?:<\/glob>)?/gi, '')
+        .replace(/<grep(?:\s+[^>]*)?\s*\/?>(?:<\/grep>)?/gi, '')
+        .replace(/<(?:run_command|command|bash|terminal)(?:\s+[^>]*)?>[\s\S]*?<\/(?:run_command|command|bash|terminal)>/gi, '')
+        .replace(/<(?:read_brain)(?:\s+[^>]*)?>[\s\S]*?<\/(?:read_brain)>/gi, '')
+        .replace(/<(?:read_url|url|fetch_url)(?:\s+[^>]*)?>[\s\S]*?<\/(?:read_url|url|fetch_url)>/gi, '')
+        /* dangling 닫는 태그 단독 제거 (LLM 중간 중단 케이스) */
+        .replace(/<\/(?:create_file|write_file|file|edit_file|edit|delete_file|delete|read_file|read|list_files|list_dir|ls|reveal_in_explorer|reveal|finder|explorer|open_file|open_in_app|launch|glob|grep|run_command|command|bash|terminal|read_brain|read_url|url|fetch_url)>/gi, '')
+        /* dangling 여는 태그 단독 (closing 까지 LLM 못 뽑은 케이스) */
+        .replace(/<(?:create_file|write_file|file|edit_file|edit|delete_file|delete|read_file|read|list_files|list_dir|ls|reveal_in_explorer|reveal|finder|explorer|open_file|open_in_app|launch|glob|grep|run_command|command|bash|terminal|read_brain|read_url|url|fetch_url)(?:\s+[^>]*)?>/gi, '')
         .trim();
 }
 
@@ -483,15 +489,26 @@ export function tryKitShortcut(agentId: string, userPrompt: string): string | nu
 }
 
 // ---------------------------------------------------------------------------
-// Classify a thrown error from `streamAsk` / `ask` (Claude CLI surface) into
+// Classify a thrown error from `streamAsk` / `ask` (Claude or Codex CLI) into
 // a user-friendly Korean error message. Pure — message in, message out.
+// `modelName` 으로 provider 판정해서 Claude/GPT 메시지 분기. gpt-5.5 쓰는 사장님이
+// "Claude 한도 확인" 같은 오답 안 보게.
 // ---------------------------------------------------------------------------
-export function classifyChatError(msg: string): string {
+export function classifyChatError(msg: string, modelName?: string): string {
+    const m = (modelName || '').toLowerCase();
+    const isCodex = m.startsWith('gpt-') || m.startsWith('gpt5') || m.startsWith('o1') || m.startsWith('o3');
+    const cliName = isCodex ? 'Codex (GPT-5.5)' : 'Claude';
+    const cliBin = isCodex ? 'codex' : 'claude';
+    const setupUrl = isCodex ? 'https://github.com/openai/codex' : 'https://docs.claude.com/en/docs/claude-code/setup';
+    const binPathSetting = isCodex ? 'agentOs.codexBinPath' : 'agentOs.claudeBinPath';
     if (/ENOENT|not found/i.test(msg)) {
-        return `⚠️ Claude CLI 를 찾지 못했어요.\n\n**해결 방법:**\n• 터미널에서 \`which claude\` 로 경로 확인\n• 없으면 https://docs.claude.com/en/docs/claude-code/setup 따라 설치 후 \`claude login\`\n• 설치 경로가 PATH 에 없으면 settings.json 의 \`agentOs.claudeBinPath\` 에 절대경로 입력\n\n💡 **명령 팔레트 (Cmd+Shift+P) → "Agent OS: 연결 진단"** 실행하면 자동 체크해드려요.`;
+        return `⚠️ ${cliName} CLI 를 찾지 못했어요.\n\n**해결 방법:**\n• 터미널에서 \`which ${cliBin}\` 로 경로 확인\n• 없으면 ${setupUrl} 따라 설치${isCodex ? ' (`npm i -g @openai/codex`)' : ` 후 \`${cliBin} login\``}\n• 설치 경로가 PATH 에 없으면 settings.json 의 \`${binPathSetting}\` 에 절대경로 입력\n\n💡 **명령 팔레트 (Cmd+Shift+P) → "Agent OS: 연결 진단"** 실행하면 자동 체크해드려요.`;
     }
     if (/timed out|timeout/i.test(msg)) {
-        return `⚠️ Claude 응답이 너무 오래 걸려요.\n\n**해결 방법:**\n• 질문을 짧게 줄여보기\n• 사용량 한도 (Claude Max 5시간 윈도우) 가 거의 다 찼는지 확인`;
+        const usageHint = isCodex
+            ? '• Codex CLI 가 무거운 작업(긴 컨텍스트·다중 파일) 중일 때 자주 발생 — 질문 쪼개거나 첨부 줄이기\n• `codex --version` 으로 CLI 응답성 확인'
+            : '• 사용량 한도 (Claude Max 5시간 윈도우) 가 거의 다 찼는지 확인';
+        return `⚠️ ${cliName} 응답이 너무 오래 걸려요.\n\n**해결 방법:**\n• 질문을 짧게 줄여보기\n${usageHint}`;
     }
     if (/aborted/i.test(msg)) {
         return `⚠️ 응답이 중간에 취소됐어요.`;

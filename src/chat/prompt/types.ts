@@ -47,6 +47,7 @@ export interface PromptContext {
     getWorkspaceContext: () => string;
     getSecondBrainContext: () => string;
     getProjectMemory: () => string;
+    getCodexReasoningEffort: () => 'low' | 'medium' | 'high' | 'xhigh';
     readBrainFile: (filename: string) => string;
     executeActions: (
         aiMessage: string,

@@ -295,6 +295,8 @@ body::before {
    gold-pink gradient bar, agent face/emoji top-left, big title, action
    icons replace labeled buttons. */
 .apr-list { display: grid; grid-template-columns: 1fr; gap: 10px; }
+.apr-head-actions { display: flex; align-items: center; gap: 8px; }
+#approveAllBtn:disabled { opacity: .45; cursor: default; }
 .apr-card {
   position: relative;
   background: linear-gradient(135deg, rgba(251,191,36,.06) 0%, rgba(255,77,152,.04) 100%);
@@ -693,6 +695,9 @@ body::before {
 .amr-role{font-size:10.5px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .amr-select{width:100%;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.08);color:#fff;padding:7px 9px;border-radius:7px;font-size:11.5px;font-family:'SF Mono','Menlo',monospace;cursor:pointer;outline:none}
 .amr-select:focus{border-color:#A78BFA}
+.amr-bulk{margin-bottom:12px;border-color:rgba(167,139,250,.22);background:rgba(167,139,250,.055)}
+.amr-apply-all{flex:0 0 auto;background:rgba(167,139,250,.14);color:#C4B5FD;border:1px solid rgba(167,139,250,.3);padding:7px 10px;border-radius:7px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit}
+.amr-apply-all:hover{background:rgba(167,139,250,.22);color:#fff}
 .amr-actions{display:flex;gap:8px;justify-content:flex-end}
 .amr-save{background:linear-gradient(135deg,#A78BFA,#7C3AED);color:#fff;border:none;padding:9px 20px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
 .amr-save:hover{filter:brightness(1.1)}
@@ -1608,6 +1613,13 @@ body::before {
 .kc-card .kc-badge-failed{background:rgba(239,68,68,.12);color:#fca5a5;border:1px solid rgba(239,68,68,.4)}
 .kc-card .kc-badge-blocked{background:rgba(245,158,11,.12);color:#fbbf24;border:1px solid rgba(245,158,11,.4)}
 .kc-card .kc-badge-aborted{background:rgba(148,163,184,.12);color:#cbd5e1;border:1px solid rgba(148,163,184,.4)}
+/* 카드 우상단 액션 — hover 시에만 노출 (카드 자체 디자인 방해 X) */
+.kc-card .kc-card-actions{position:absolute;top:6px;right:6px;display:flex;gap:4px;opacity:0;transition:opacity .15s;z-index:2}
+.kc-card:hover .kc-card-actions{opacity:1}
+.kc-card .kc-act-btn{width:22px;height:22px;border-radius:5px;border:1px solid rgba(255,255,255,.1);background:rgba(8,11,16,.85);color:var(--text-dim,#94a3b8);font-size:11px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:all .12s}
+.kc-card .kc-act-btn:hover{transform:scale(1.08)}
+.kc-card .kc-act-btn.kc-act-abort:hover{background:rgba(251,191,36,.18);border-color:rgba(251,191,36,.5);color:#fbbf24}
+.kc-card .kc-act-btn.kc-act-delete:hover{background:rgba(239,68,68,.18);border-color:rgba(239,68,68,.5);color:#f87171}
 
 /* Table view */
 .board-table{width:100%;border-collapse:separate;border-spacing:0;font-size:12px}

@@ -259,10 +259,33 @@
           "default": "",
           "description": "🟢 OpenAI Codex CLI 실행 파일 경로 — GPT-5.5 모델을 쓰려면 필요. 비우면 PATH의 'codex'를 자동 사용. 사전 인증: 터미널에서 `codex login` 1회. 설치: `npm install -g @openai/codex`."
         },
+        "agentOs.codexReasoningEffort": {
+          "type": "string",
+          "default": "medium",
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ],
+          "description": "🟢 GPT/Codex 추론 강도. 사이드바의 GPT low/medium/high/xhigh 선택과 같은 값입니다."
+        },
         "agentOs.requestTimeout": {
           "type": "number",
           "default": 300,
-          "description": "⏱ AI 응답 대기 시간 (초, 기본 300초 = 5분)"
+          "description": "⏱ AI 응답 대기 시간 (초, 기본 300초 = 5분) — 레거시. LLM CLI 자체 timeout 은 아래 wall/idle 사용."
+        },
+        "agentOs.llmTimeoutWallMin": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "description": "⏱ LLM 단일 호출 wall-clock 최대 시간 (분). **기본 0 = 무제한**. 큰 작업·자율 모드에 안전. stuck 우려되면 60 (1시간) 정도. 한 specialist 의 한 LLM 호출에만 적용."
+        },
+        "agentOs.llmTimeoutIdleMin": {
+          "type": "number",
+          "default": 15,
+          "minimum": 0,
+          "description": "💤 LLM 응답 idle 최대 시간 (분). 마지막 chunk 후 이 시간 안에 다음 chunk 안 오면 죽었다 판정 + SIGTERM. **기본 15분**. 0 = 무제한. 이게 진짜 stuck 잡는 안전장치."
         },
         "agentOs.localBrainPath": {
           "type": "string",

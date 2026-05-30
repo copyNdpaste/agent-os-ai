@@ -42,6 +42,8 @@ export interface MessageContext {
     /* --- bound provider methods --- */
     handlePrompt(prompt: string, modelName: string, internetEnabled?: boolean): Promise<void>;
     handleCorporatePrompt(prompt: string, modelName: string): Promise<void>;
+    /** v2.92.x — corp dispatch 큐 라우팅. 직접 await 안 함. 진행 중이면 큐에 추가. */
+    enqueueCorporatePrompt?(prompt: string, modelName: string): { queued: boolean; position: number; busy: boolean };
     handlePromptWithFile(
         prompt: string,
         modelName: string,

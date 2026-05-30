@@ -75,8 +75,23 @@ function ensureProjectGitignore(workspaceFolder: string): void {
 export function readProjectMeta(workspaceFolder: string | undefined): ProjectMeta | null {
     if (!workspaceFolder) return null;
     try {
-        const f = projectMetaPath(workspaceFolder);
-        if (!fs.existsSync(f)) return null;
+        let f = projectMetaPath(workspaceFolder);
+        if (!fs.existsSync(f)) {
+            /* Legacy fallback — 일부 워크스페이스(예: alpha-agent-ai) 는 codex/외부 도구가
+               root 에 직접 project.json 을 만든 적이 있음. `.agent-os-ai/project.json` 없으면
+               root project.json 도 시도하고 발견 시 정식 위치로 1회 마이그레이션. */
+            const legacy = path.join(workspaceFolder, 'project.json');
+            if (fs.existsSync(legacy)) {
+                try {
+                    const dir = path.join(workspaceFolder, '.agent-os-ai');
+                    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+                    ensureProjectGitignore(workspaceFolder);
+                    fs.copyFileSync(legacy, f);
+                } catch { f = legacy; /* 마이그레이션 실패해도 root 직독으로 사장님 데이터 보존 */ }
+            } else {
+                return null;
+            }
+        }
         const parsed = JSON.parse(fs.readFileSync(f, 'utf-8') || '{}') as ProjectMeta;
         if (!parsed || typeof parsed !== 'object') return null;
         /* Light sanitization — strip fields we don't recognize. */

@@ -21,6 +21,7 @@ import * as path from 'path';
 import { AGENTS } from '../agents';
 import {
     resolveApproval,
+    approveAllPendingApprovals,
     listPendingApprovals,
     _approvalsPendingDir,
     _loadWebviewAsset,
@@ -42,6 +43,9 @@ export class ApprovalsPanelProvider implements vscode.WebviewViewProvider {
             } else if (msg?.type === 'approve' && msg.id) {
                 const r = await resolveApproval(msg.id, 'approved');
                 this._post(r.message);
+            } else if (msg?.type === 'approveAll') {
+                const r = await approveAllPendingApprovals('승인 패널 일괄 승인');
+                this._post(`✅ 일괄 처리: 승인 ${r.approved}건 · 제외 ${r.skipped}건 · 실패 ${r.failed}건`);
             } else if (msg?.type === 'reject' && msg.id) {
                 const r = await resolveApproval(msg.id, 'rejected');
                 this._post(r.message);
@@ -101,6 +105,7 @@ export class ApprovalsPanelProvider implements vscode.WebviewViewProvider {
 </div>
 <div class="sb-cta">
   <button class="sb-btn primary" id="openDash">🏢 우리 회사 →</button>
+  <button class="sb-btn" id="approveAll" title="Excluded 제외, pending 전체 승인">✓ 전체 발송</button>
 </div>
 <div id="list" class="sb-body"></div>
 <div class="sb-toast" id="toast"></div>
@@ -110,6 +115,10 @@ const list = document.getElementById('list');
 const cnt  = document.getElementById('cnt');
 const toast = document.getElementById('toast');
 document.getElementById('openDash').onclick = () => vscode.postMessage({ type: 'openDash' });
+document.getElementById('approveAll').onclick = () => {
+  if (!confirm('Pending 승인 전체를 발송할까요?\\n\\nExcluded 로 표시된 항목은 건너뜁니다.')) return;
+  vscode.postMessage({ type: 'approveAll' });
+};
 function showToast(msg, isErr) { toast.textContent = msg; toast.classList.toggle('err', !!isErr); toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 2400); }
 function esc(s){ return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]); }
 window.addEventListener('message', e => {

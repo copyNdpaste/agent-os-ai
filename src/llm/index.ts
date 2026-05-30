@@ -2,7 +2,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
 import { runClaudeCli } from './claude-cli';
-import { runCodexCli } from './codex-cli';
+import { runCodexCli, type CodexReasoningEffort } from './codex-cli';
 
 export type Tier = 'heavy' | 'standard' | 'light';
 export type Provider = 'claude' | 'codex';
@@ -10,11 +10,44 @@ export type Provider = 'claude' | 'codex';
 export interface AskOptions {
   model?: string;
   binPath?: string;
+  /** Wall-clock max (ms). 0 = 무제한. opts 에 없으면 settings 또는 default. */
   timeoutMs?: number;
+  /** Idle max (ms) — 마지막 chunk 후 N ms idle 이면 SIGTERM. 0 = 무제한. */
+  idleTimeoutMs?: number;
+  /** Codex CLI 전용 — filesystem MCP init 우회. 큰 워크스페이스에서 분류기·CEO planner 호출 시 hang 방지. */
+  skipFilesystemMcp?: boolean;
+  /** Codex/GPT 추론 강도. low / medium / high / xhigh. */
+  codexReasoningEffort?: CodexReasoningEffort;
+}
+
+/** v2.92.x — VS Code settings 에서 timeout 값 읽음.
+ *  `agentOs.llmTimeoutWallMin` (분 단위, 0=무제한) / `agentOs.llmTimeoutIdleMin` (분 단위, 0=무제한).
+ *  vscode 모듈은 옵셔널 (테스트 환경에서 없을 수 있음). 없으면 undefined 반환 → CLI runner 의 default 적용. */
+function readTimeoutSettings(): { wallMs?: number; idleMs?: number } {
+  try {
+    const vscode = require('vscode');
+    const cfg = vscode?.workspace?.getConfiguration?.('agentOs');
+    if (!cfg) return {};
+    const wallMin = cfg.get('llmTimeoutWallMin');
+    const idleMin = cfg.get('llmTimeoutIdleMin');
+    return {
+      wallMs: typeof wallMin === 'number' ? wallMin * 60_000 : undefined,
+      idleMs: typeof idleMin === 'number' ? idleMin * 60_000 : undefined,
+    };
+  } catch { return {}; }
+}
+
+function readCodexReasoningEffortSetting(): CodexReasoningEffort {
+  try {
+    const vscode = require('vscode');
+    const cfg = vscode?.workspace?.getConfiguration?.('agentOs');
+    const raw = String(cfg?.get?.('codexReasoningEffort', 'medium') || 'medium').toLowerCase();
+    return raw === 'low' || raw === 'high' || raw === 'xhigh' ? raw : 'medium';
+  } catch { return 'medium'; }
 }
 
 const TIER_TO_MODEL: Record<Tier, string> = {
-  heavy: 'claude-opus-4-7',
+  heavy: 'claude-opus-4-8',
   standard: 'claude-sonnet-4-6',
   light: 'claude-sonnet-4-6'
 };
@@ -208,6 +241,23 @@ export async function ask(
   return streamAsk(prompt, tier, () => { /* no streaming */ }, opts);
 }
 
+/* v2.92.x — 에이전트가 "자꾸 실패" 하던 진짜 원인은 사용량/설치 문제가 아니라
+   CLI 호출 중 일시적 API 오류였다. 특히 Claude CLI 가 agentic 루프 안에서 도구를 쓰다
+   `thinking`/`redacted_thinking` 블록을 다음 턴에 그대로 못 돌려보내면 Anthropic 이
+   400 (`...blocks ... cannot be modified...`) 을 던진다. 이건 간헐적이라 -p 단발 호출을
+   새로 띄우면(상태 없음) 대개 깨끗한 턴이 다시 생성돼 성공한다. overloaded(529)·rate
+   limit(429)·5xx·네트워크 끊김도 같은 부류. 이런 일시 오류는 자동 재시도로 흡수한다.
+   사용자 중단(aborted)·타임아웃·이미 토큰을 흘린 경우는 재시도하지 않는다. */
+export function isTransientLLMError(msg: string): boolean {
+  const m = msg || '';
+  if (/overloaded|rate[_\s-]?limit|too many requests|\b429\b|\b500\b|\b502\b|\b503\b|\b529\b|internal server error|service unavailable|bad gateway|gateway time-?out/i.test(m)) return true;
+  if (/ECONNRESET|ETIMEDOUT|EAI_AGAIN|EPIPE|socket hang ?up|fetch failed|network (error|timeout)|connection (error|reset|closed|refused)/i.test(m)) return true;
+  if (/(thinking|redacted_thinking)[\s\S]{0,120}(cannot be modified|must remain)/i.test(m)) return true;
+  return false;
+}
+
+const MAX_LLM_ATTEMPTS = 3;
+
 export async function streamAsk(
   prompt: string,
   tier: Tier | undefined,
@@ -216,20 +266,52 @@ export async function streamAsk(
 ): Promise<string> {
   const model = resolveModel(tier, opts);
   const provider = providerFor(model);
-  if (provider === 'codex') {
-    const bin = opts?.binPath ?? resolveCodexBin();
-    if (!bin) throw new Error('Codex CLI binary path not resolved.');
-    return runCodexCli(prompt, model, onDelta, {
+  const settings = readTimeoutSettings();
+  /* 우선순위: opts (호출자가 명시) > settings (사장님 설정) > CLI runner default. */
+  const timeoutMs = opts?.timeoutMs ?? settings.wallMs;
+  const idleTimeoutMs = opts?.idleTimeoutMs ?? settings.idleMs;
+
+  const runOnce = (deltaSink: (chunk: string) => void): Promise<string> => {
+    if (provider === 'codex') {
+      const bin = opts?.binPath ?? resolveCodexBin();
+      if (!bin) throw new Error('Codex CLI binary path not resolved.');
+      return runCodexCli(prompt, model, deltaSink, {
+        binPath: bin,
+        timeoutMs,
+        idleTimeoutMs,
+        skipFilesystemMcp: opts?.skipFilesystemMcp,
+        reasoningEffort: opts?.codexReasoningEffort ?? readCodexReasoningEffortSetting(),
+      });
+    }
+    const bin = opts?.binPath ?? resolveClaudeBin();
+    if (!bin) throw new Error('Claude CLI binary path not resolved.');
+    return runClaudeCli(prompt, model, deltaSink, {
       binPath: bin,
-      timeoutMs: opts?.timeoutMs
+      timeoutMs,
+      idleTimeoutMs,
     });
+  };
+
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= MAX_LLM_ATTEMPTS; attempt++) {
+    /* 이번 시도에서 실제 텍스트가 한 토큰이라도 흘렀으면, 재시도 시 같은 답이 두 번
+       보이게 된다 → 그땐 재시도 금지하고 그대로 실패 전파. 일시 API 오류는 보통 최종
+       텍스트가 나오기 전(도구·thinking 단계)에 터져서 emittedText=false 라 깨끗하게 재시도됨. */
+    let emittedText = false;
+    const sink = (chunk: string) => { if (chunk) emittedText = true; onDelta(chunk); };
+    try {
+      return await runOnce(sink);
+    } catch (e: any) {
+      lastErr = e;
+      const msg = String(e?.message || e || '');
+      const canRetry = attempt < MAX_LLM_ATTEMPTS && !emittedText
+        && !/aborted/i.test(msg) && isTransientLLMError(msg);
+      if (!canRetry) throw e;
+      /* 지수 백오프(1.5s, 3s) — overloaded 윈도우 짧게 비켜가기. */
+      await new Promise(r => setTimeout(r, attempt * 1500));
+    }
   }
-  const bin = opts?.binPath ?? resolveClaudeBin();
-  if (!bin) throw new Error('Claude CLI binary path not resolved.');
-  return runClaudeCli(prompt, model, onDelta, {
-    binPath: bin,
-    timeoutMs: opts?.timeoutMs
-  });
+  throw lastErr;
 }
 
 export async function pingCodex(): Promise<string> {

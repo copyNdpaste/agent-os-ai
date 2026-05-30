@@ -27,6 +27,8 @@ export interface ChatInflightState {
      *  the file size bounded — 1MB cap is plenty for any chat turn). */
     partialResponse: string;
     errorMessage?: string;
+    /** 자동 재시도 횟수. ≥1 이면 ready 시점 자동 재시도 skip — 무한 루프 방지. */
+    retryCount?: number;
 }
 
 const MAX_CAPTURE = 1_000_000; /* 1MB cap on captured response */
@@ -49,6 +51,8 @@ export class ChatInflightWriter {
         prompt: string;
         modelName: string;
         throttleMs?: number;
+        /** 자동 재시도로 시작된 경우 1, 그 외 0. ready 자동 재시도 가드. */
+        retryCount?: number;
     }) {
         this.filePath = inflightPath(args.companyDir);
         this.throttleMs = args.throttleMs ?? 1000;
@@ -61,6 +65,7 @@ export class ChatInflightWriter {
             lastUpdatedAt: now,
             status: 'running',
             partialResponse: '',
+            retryCount: args.retryCount ?? 0,
         };
         this.flushNow();
     }

@@ -71,6 +71,11 @@ function toast(text, err) {
 $('refreshBtn').onclick = () => vscode.postMessage({ type: 'refresh' });
 $('briefBtn').onclick   = () => vscode.postMessage({ type: 'fireBriefing' });
 $('queueBtn').onclick   = () => vscode.postMessage({ type: 'queueComments' });
+const approveAllBtn = $('approveAllBtn');
+if (approveAllBtn) approveAllBtn.onclick = () => {
+  if (!confirm('Pending 승인 전체를 발송할까요?\\n\\nExcluded 로 표시된 항목은 건너뜁니다.')) return;
+  vscode.postMessage({ type: 'approveAllPending' });
+};
 /* v2.89.24 — 보고 스케줄 모달 */
 $('scheduleBtn').onclick = () => { vscode.postMessage({ type: 'getReportSchedule' }); };
 /* v2.89.26 — 에이전트별 모델 라우팅 모달 */
@@ -151,6 +156,7 @@ function render(s) {
   /* Approvals — visual queue. Emoji tile + title + icon-only action buttons.
      No "승인/거부/상세" text labels — the icons tell the story. */
   $('aprBadge').textContent = s.approvals.length;
+  if (approveAllBtn) approveAllBtn.disabled = s.approvals.length === 0;
   const aBody = $('aprBody');
   if (s.approvals.length === 0) {
     aBody.innerHTML = '<div class="empty subtle" style="text-align:center;padding:20px;font-size:32px;opacity:.5">✓</div>';
@@ -595,6 +601,10 @@ function showAgentModelRoutingModal(data){
   const helpBlock = noModels
     ? '<div class="amr-empty">설치된 모델이 0개입니다.<br/><br/>터미널에서 한 번 실행:<br/><code>ollama pull qwen2.5:7b</code><br/>또는 LM Studio에서 모델 다운로드 후 모델 로드.</div>'
     : '<div class="amr-help">비워두면 기본 모델 사용. 작은 모델(3B)은 라우팅에, 큰 모델(32B+)은 분석·창작에 적합. 모델 전환 시 첫 호출이 2~5초 느려집니다.</div>';
+  const bulkBlock = noModels ? '' : '<div class="amr-row amr-bulk">'
+    + '<div class="amr-agent"><span class="amr-emoji">↔</span><span class="amr-name">전체 적용</span><span class="amr-role">CEO 포함 모든 에이전트</span></div>'
+    + '<div style="display:flex;gap:6px"><select class="amr-select amr-all-select">' + modelOptions('') + '</select><button type="button" class="amr-apply-all">적용</button></div>'
+    + '</div>';
   /* v2.89.36 — 시스템 사양 배너. 사용자 머신이 어떤 모델까지 안전한지 한 눈에. */
   let specsBlock = '';
   if (specs) {
@@ -619,6 +629,7 @@ function showAgentModelRoutingModal(data){
     +   specsBlock
     +   helpBlock
     +   diagnosticBlock
+    +   bulkBlock
     +   '<div class="amr-rows">' + rows + '</div>'
     +   '<div class="amr-actions">'
     +     '<button type="button" class="amr-trending" title="내 PC에 받아서 쓸 수 있는 로컬 LLM 목록 — HuggingFace 공개 데이터(다운로드 수·태그) 기반">로컬 LLM 카탈로그</button>'
@@ -635,9 +646,17 @@ function showAgentModelRoutingModal(data){
   bd.querySelector('.amr-close').addEventListener('click', close);
   bd.querySelector('.amr-cancel').addEventListener('click', close);
   bd.addEventListener('click', e => { if(e.target === bd) close(); });
+  const applyAllBtn = bd.querySelector('.amr-apply-all');
+  if(applyAllBtn){
+    applyAllBtn.addEventListener('click', () => {
+      const allSel = bd.querySelector('.amr-all-select');
+      const v = allSel ? (allSel.value || '') : '';
+      bd.querySelectorAll('.amr-select[data-agent]').forEach(sel => { sel.value = v; });
+    });
+  }
   bd.querySelector('.amr-save').addEventListener('click', () => {
     const newMap = {};
-    bd.querySelectorAll('.amr-select').forEach(sel => {
+    bd.querySelectorAll('.amr-select[data-agent]').forEach(sel => {
       const aid = sel.getAttribute('data-agent');
       const v = sel.value || '';
       if(v) newMap[aid] = v;
@@ -1123,7 +1142,7 @@ function showAgentDetailModal(a){
 /* ============================================================
    📋 업무 보드 (Kanban + Table) — 에이전트별·기간별 진행상황
    ============================================================ */
-const BOARD_STATE = { period: 'today', agentId: 'all', view: 'kanban' };
+const BOARD_STATE = { period: 'today', agentId: 'all', view: 'kanban', lastEntries: [], lastSnapshot: null };
 const BOARD_AGENT_META = {};   /* agentId → { name, emoji, color } */
 
 function _boardFetch(){
@@ -1153,6 +1172,56 @@ function _boardAgentColor(id){
   return BOARD_AGENT_META[id]?.color || '#38BDF8';
 }
 
+function _boardCounts(entries){
+  const counts = { pending: 0, in_progress: 0, done: 0 };
+  (entries || []).forEach(e => { if (counts[e.status] != null) counts[e.status]++; });
+  return counts;
+}
+
+function _boardSnapshotFromEntries(entries, removedCount){
+  const base = BOARD_STATE.lastSnapshot || {};
+  const agents = Array.from(new Set((entries || []).map(e => e.agentId))).sort();
+  const prevTotal = Number(base.totalBeforeFilter) || (BOARD_STATE.lastEntries || []).length;
+  return {
+    ...base,
+    entries,
+    counts: _boardCounts(entries),
+    agentsInScope: agents,
+    totalBeforeFilter: Math.max(entries.length, prevTotal - (removedCount || 0)),
+    builtAt: Date.now(),
+  };
+}
+
+function _boardOptimisticDelete(e){
+  const cur = (BOARD_STATE.lastEntries || []).slice();
+  if (!cur.length) return;
+  const next = cur.filter(x => {
+    if (e.source === 'session' && e.sessionDir) return x.sessionDir !== e.sessionDir;
+    return x.id !== e.id;
+  });
+  _boardRender(_boardSnapshotFromEntries(next, cur.length - next.length));
+}
+
+function _boardOptimisticAbort(e){
+  const cur = (BOARD_STATE.lastEntries || []).slice();
+  if (!cur.length) return;
+  const now = Date.now();
+  const next = cur.map(x => {
+    const same = (e.source === 'session' && e.sessionDir) ? x.sessionDir === e.sessionDir : x.id === e.id;
+    if (!same) return x;
+    return {
+      ...x,
+      status: 'done',
+      sourceStatus: 'aborted',
+      badge: 'aborted',
+      updatedAt: now,
+      completedAt: now,
+      summary: x.summary || '중단됨',
+    };
+  });
+  _boardRender(_boardSnapshotFromEntries(next, 0));
+}
+
 function _boardRenderKanban(entries){
   const COLS = [
     { id: 'pending',     label: '🟡 예정' },
@@ -1160,12 +1229,12 @@ function _boardRenderKanban(entries){
     { id: 'done',        label: '✅ 완료' },
   ];
   const buckets = { pending: [], in_progress: [], done: [] };
-  for (const e of entries) buckets[e.status]?.push(e);
+  entries.forEach((e, idx) => { if (buckets[e.status]) buckets[e.status].push({ e, idx }); });
   return '<div class="board-kanban">' + COLS.map(col => {
     const items = buckets[col.id];
     const cards = items.length === 0
       ? '<div class="kc-empty">_없음_</div>'
-      : items.map(_boardCard).join('');
+      : items.map(it => _boardCard(it.e, it.idx)).join('');
     return '<div class="kc-col kc-' + col.id + '">'
       + '<div class="kc-head">'
       + '<span class="kc-title">' + col.label + '</span>'
@@ -1176,12 +1245,21 @@ function _boardRenderKanban(entries){
   }).join('') + '</div>';
 }
 
-function _boardCard(e){
+function _boardCard(e, idx){
   const color = _boardAgentColor(e.agentId);
-  const clickable = e.sessionDir ? ' data-clickable="1" data-session-dir="' + _boardEscape(e.sessionDir) + '"' : '';
+  /* v2.89.x — 카드는 무조건 클릭 가능 (상세 모달). 폴더 열기는 모달 안 버튼으로. */
+  const clickable = ' data-clickable="1" data-entry-idx="' + idx + '"';
   const badge = e.badge ? '<span class="kc-badge kc-badge-' + e.badge + '">' + e.badge + '</span>' : '';
   const summary = e.summary ? '<div class="kc-summary">' + _boardEscape(e.summary) + '</div>' : '';
+  /* 멈춰있거나 실패/에러난 작업 즉시 정리 — 카드 우상단에 ⏹ 중단 / 🗑 삭제.
+     중단 버튼은 진행 중 카드에만 노출 (예정·완료엔 의미 없음). */
+  const canAbort = (e.status === 'in_progress') || (e.status === 'pending' && e.source === 'session');
+  const abortBtn = canAbort
+    ? '<button class="kc-act-btn kc-act-abort" data-act="abort" data-entry-idx="' + idx + '" title="이 작업 중단">⏹</button>'
+    : '';
+  const deleteBtn = '<button class="kc-act-btn kc-act-delete" data-act="delete" data-entry-idx="' + idx + '" title="이 작업 삭제">✕</button>';
   return '<div class="kc-card" style="--ag-color:' + color + '"' + clickable + '>'
+    + '<div class="kc-card-actions">' + abortBtn + deleteBtn + '</div>'
     + '<div class="kc-agent">' + _boardEscape(_boardAgentLabel(e.agentId)) + '</div>'
     + '<div class="kc-title-text">' + _boardEscape(e.title) + '</div>'
     + summary
@@ -1193,14 +1271,73 @@ function _boardCard(e){
     + '</div>';
 }
 
+/* VS Code 웹뷰는 window.confirm/alert/prompt 를 막아둠 — 호출해도 아무 일도
+   안 일어나고 falsy 가 반환됨. 그래서 네이티브 confirm 으로 게이트하면 삭제·
+   중단이 영영 실행 안 됨 (카드가 칸반에서 안 사라지던 원인). 자체 모달로 교체. */
+function _boardConfirm(message, okLabel){
+  return new Promise(resolve => {
+    const prev = document.querySelector('.board-confirm-backdrop');
+    if (prev) prev.remove();
+    const bd = document.createElement('div');
+    bd.className = 'board-confirm-backdrop';
+    bd.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55)';
+    const box = document.createElement('div');
+    box.style.cssText = 'max-width:340px;width:86%;background:var(--vscode-editorWidget-background,#252526);color:var(--vscode-foreground,#ddd);border:1px solid var(--vscode-widget-border,#444);border-radius:10px;padding:18px 18px 14px;box-shadow:0 8px 32px rgba(0,0,0,.5);font-size:13px;line-height:1.5';
+    const msg = document.createElement('div');
+    msg.style.cssText = 'white-space:pre-wrap;margin-bottom:14px';
+    msg.textContent = message;
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:8px;justify-content:flex-end';
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = '취소';
+    cancelBtn.style.cssText = 'padding:6px 14px;border-radius:6px;border:1px solid var(--vscode-widget-border,#555);background:var(--vscode-button-secondaryBackground,#3a3d41);color:var(--vscode-button-secondaryForeground,#ddd);cursor:pointer';
+    const okBtn = document.createElement('button');
+    okBtn.textContent = okLabel || '확인';
+    okBtn.style.cssText = 'padding:6px 14px;border-radius:6px;border:none;background:var(--vscode-button-background,#0e639c);color:var(--vscode-button-foreground,#fff);cursor:pointer';
+    function close(val){ document.removeEventListener('keydown', onKey); bd.remove(); resolve(val); }
+    function onKey(ev){ if (ev.key === 'Escape') close(false); else if (ev.key === 'Enter') close(true); }
+    cancelBtn.onclick = () => close(false);
+    okBtn.onclick = () => close(true);
+    bd.onclick = ev => { if (ev.target === bd) close(false); };
+    document.addEventListener('keydown', onKey);
+    row.appendChild(cancelBtn); row.appendChild(okBtn);
+    box.appendChild(msg); box.appendChild(row);
+    bd.appendChild(box);
+    document.body.appendChild(bd);
+    okBtn.focus();
+  });
+}
+
+/* 보드 항목 중단/삭제 액션 — 사장님 confirm 후 백엔드 호출. */
+async function _boardActOnEntry(e, act){
+  if (!e) return;
+  const titleShort = (e.title || '').slice(0, 40);
+  if (act === 'abort') {
+    if (!(await _boardConfirm('이 작업을 중단할까요?\n\n' + titleShort + '\n\n실행 중 프로세스가 있으면 다음 단계부터 멈춰요.', '중단'))) return;
+    _boardOptimisticAbort(e);
+    vscode.postMessage({ type: 'boardAbortEntry', id: e.id, sessionDir: e.sessionDir });
+  } else if (act === 'delete') {
+    const extra = (e.source === 'session')
+      ? '\n\n⚠️ 세션 폴더 전체 삭제 (같은 세션의 다른 에이전트 카드도 함께 사라짐)'
+      : '';
+    if (!(await _boardConfirm('이 작업을 영구 삭제할까요?\n\n' + titleShort + extra, '삭제'))) return;
+    _boardOptimisticDelete(e);
+    vscode.postMessage({ type: 'boardDeleteEntry', id: e.id, sessionDir: e.sessionDir });
+  } else {
+    return;
+  }
+  /* 백엔드 boardReloadHint 가 정답 재조회. 혹시 메시지가 누락되면 backup fetch. */
+  setTimeout(() => _boardFetch(), 1200);
+}
+
 function _boardRenderTable(entries){
   if (entries.length === 0) return '<div class="board-empty"><span class="be-icon">📋</span>이 필터에 해당하는 작업이 없어요.<br><span style="font-size:11px">기간을 늘리거나 다른 에이전트를 선택해보세요.</span></div>';
-  const rows = entries.map(e => {
+  const rows = entries.map((e, idx) => {
     const color = _boardAgentColor(e.agentId);
-    const clickable = e.sessionDir ? ' data-clickable="1" data-session-dir="' + _boardEscape(e.sessionDir) + '"' : '';
+    const clickable = ' data-clickable="1" data-entry-idx="' + idx + '"';
     const badge = e.badge ? ' <span class="kc-badge kc-badge-' + e.badge + '">' + e.badge + '</span>' : '';
     const statusLabel = e.status === 'pending' ? '🟡 예정' : e.status === 'in_progress' ? '🔵 진행' : '✅ 완료';
-    return '<tr' + clickable + '>'
+    return '<tr' + clickable + ' style="cursor:pointer">'
       + '<td class="bt-status s-' + e.status + '">' + statusLabel + '</td>'
       + '<td class="bt-agent" style="--ag-color:' + color + '">' + _boardEscape(_boardAgentLabel(e.agentId)) + '</td>'
       + '<td class="bt-title">' + _boardEscape(e.title) + badge + '</td>'
@@ -1213,6 +1350,69 @@ function _boardRenderTable(entries){
     + '<tbody>' + rows + '</tbody></table></div>';
 }
 
+/* 업무 보드 카드 상세 모달. 클릭하면 바로 폴더 열지 않고 카드 내용을 펼쳐서 보여줌.
+   세션 폴더가 있는 경우만 하단에 "폴더 열기" 버튼 노출. */
+function showBoardEntryDetail(e){
+  if (document.querySelector('.adm-backdrop')) return;
+  const bd = document.createElement('div');
+  bd.className = 'adm-backdrop bed-backdrop';
+  const color = _boardAgentColor(e.agentId);
+  bd.style.setProperty('--ag', color);
+  bd.style.setProperty('--ag-glow', color + '33');
+  const agentLabel = _boardAgentLabel(e.agentId);
+  const statusLabel = e.status === 'pending' ? '🟡 예정' : e.status === 'in_progress' ? '🔵 진행 중' : '✅ 완료';
+  const badge = e.badge ? ' <span class="kc-badge kc-badge-' + e.badge + '" style="margin-left:6px;display:inline-block">' + e.badge + '</span>' : '';
+  const bodyText = (e.summaryFull && e.summaryFull.trim()) || (e.summary && e.summary.trim()) || '';
+  const summary = bodyText
+    ? '<div class="bed-summary" style="font-size:13px;line-height:1.65;color:rgba(255,255,255,.88);white-space:pre-wrap;word-break:break-word;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:14px 16px;min-height:55vh;max-height:75vh;overflow-y:auto">' + _boardEscape(bodyText) + '</div>'
+    : '<div class="bed-empty subtle">요약 내용이 비어있어요.</div>';
+  const titleText = (e.titleFull && e.titleFull.trim()) || e.title || '';
+  const sessionLine = e.sessionDir
+    ? '<div class="bed-session"><span class="bed-session-label">📁 세션</span><code>' + _boardEscape(e.sessionDir) + '</code></div>'
+    : '';
+  bd.innerHTML = ''
+    + '<div class="adm-modal bed-modal" style="width:min(1100px,95vw);max-height:92vh;align-items:stretch;padding:24px 28px 22px;text-align:left;display:flex;flex-direction:column">'
+    +   '<button class="adm-close" aria-label="닫기">×</button>'
+    +   '<div class="bed-agent" style="color:' + color + ';font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;margin-bottom:8px">' + _boardEscape(agentLabel) + '</div>'
+    +   '<div class="bed-title" style="font-size:18px;font-weight:700;line-height:1.4;margin-bottom:12px;white-space:pre-wrap;word-break:break-word">' + _boardEscape(titleText) + badge + '</div>'
+    +   '<div class="bed-meta" style="display:flex;gap:10px;flex-wrap:wrap;font-size:11px;margin-bottom:16px;color:rgba(255,255,255,.7)">'
+    +     '<span class="bt-status s-' + e.status + '" style="padding:3px 8px;border-radius:6px;background:rgba(255,255,255,.06)">' + statusLabel + '</span>'
+    +     '<span style="padding:3px 8px;border-radius:6px;background:rgba(255,255,255,.06)">' + _boardEscape(e.source) + '</span>'
+    +     '<span style="padding:3px 8px;border-radius:6px;background:rgba(255,255,255,.06)">⏱ ' + _boardEscape(_boardWhen(e.updatedAt)) + '</span>'
+    +   '</div>'
+    +   '<div style="font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:rgba(255,255,255,.5);margin-bottom:6px">상세</div>'
+    +   summary
+    +   sessionLine
+    +   '<div class="adm-footer" style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">'
+    +     ((e.status === 'in_progress' || (e.status === 'pending' && e.source === 'session'))
+            ? '<button class="adm-btn-abort" data-act="abort" type="button" style="background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.4);color:#fbbf24;padding:7px 14px;border-radius:8px;font-size:12px;cursor:pointer;font-weight:600">⏹ 작업 중단</button>'
+            : '')
+    +     '<button class="adm-btn-delete" data-act="delete" type="button" style="background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.4);color:#f87171;padding:7px 14px;border-radius:8px;font-size:12px;cursor:pointer;font-weight:600">🗑 삭제</button>'
+    +     (e.sessionDir ? '<button class="adm-btn-folder" data-act="folder" type="button">📁 세션 폴더 열기</button>' : '')
+    +   '</div>'
+    + '</div>';
+  document.body.appendChild(bd);
+  function close(){
+    bd.style.opacity = '0';
+    setTimeout(() => bd.remove(), 200);
+    document.removeEventListener('keydown', escH);
+  }
+  function escH(ev){ if (ev.key === 'Escape') close(); }
+  bd.querySelector('.adm-close').addEventListener('click', close);
+  bd.addEventListener('click', ev => { if (ev.target === bd) close(); });
+  const folderBtn = bd.querySelector('[data-act="folder"]');
+  if (folderBtn && e.sessionDir) {
+    folderBtn.addEventListener('click', () => {
+      vscode.postMessage({ type: 'openSessionFolder', sessionDir: e.sessionDir });
+    });
+  }
+  const abortBtn = bd.querySelector('[data-act="abort"]');
+  if (abortBtn) abortBtn.addEventListener('click', () => { _boardActOnEntry(e, 'abort'); close(); });
+  const deleteBtn = bd.querySelector('[data-act="delete"]');
+  if (deleteBtn) deleteBtn.addEventListener('click', () => { _boardActOnEntry(e, 'delete'); close(); });
+  document.addEventListener('keydown', escH);
+}
+
 function _boardRender(snap){
   const body = document.getElementById('boardBody');
   const countsEl = document.getElementById('boardCounts');
@@ -1222,6 +1422,8 @@ function _boardRender(snap){
     if (countsEl) countsEl.textContent = '';
     return;
   }
+  BOARD_STATE.lastSnapshot = snap;
+  BOARD_STATE.lastEntries = snap.entries || [];
   if (snap.entries.length === 0) {
     body.innerHTML = '<div class="board-empty"><span class="be-icon">📋</span>이 필터에 해당하는 작업이 없어요.<br><span style="font-size:11px">기간을 늘리거나 다른 에이전트를 선택해보세요.</span></div>';
     if (countsEl) countsEl.textContent = (snap.totalBeforeFilter ? '전체 ' + snap.totalBeforeFilter + '건' : '');
@@ -1245,11 +1447,23 @@ function _boardRender(snap){
     }
     sel.value = cur;
   }
-  /* Wire card/row click → open session folder. */
+  /* 카드/행 클릭 → 상세 모달. (예전엔 바로 폴더 열림 → 사장님이 내용 못 봄)
+     모달 안에 "📁 세션 폴더 열기" 버튼 별도. */
   body.querySelectorAll('[data-clickable="1"]').forEach(el => {
     el.onclick = () => {
-      const dir = el.getAttribute('data-session-dir');
-      if (dir) vscode.postMessage({ type: 'openSessionFolder', sessionDir: dir });
+      const idx = parseInt(el.getAttribute('data-entry-idx') || '-1', 10);
+      const entry = (BOARD_STATE.lastEntries || [])[idx];
+      if (entry) showBoardEntryDetail(entry);
+    };
+  });
+  /* 카드 우상단 ⏹ / ✕ — stopPropagation 으로 카드 클릭(모달) 차단. */
+  body.querySelectorAll('.kc-act-btn').forEach(btn => {
+    btn.onclick = (ev) => {
+      ev.stopPropagation();
+      const idx = parseInt(btn.getAttribute('data-entry-idx') || '-1', 10);
+      const entry = (BOARD_STATE.lastEntries || [])[idx];
+      const act = btn.getAttribute('data-act');
+      if (entry && act) _boardActOnEntry(entry, act);
     };
   });
 }
@@ -1304,6 +1518,7 @@ window.addEventListener('message', e => {
     render(m);
   }
   else if (m.type === 'boardData') _boardRender(m.snapshot);
+  else if (m.type === 'boardReloadHint') _boardFetch();
   else if (m.type === 'toast') toast(m.text, m.err);
   else if (m.type === 'skillRunOutput') {
     /* v2.89.12 — 스킬 단독 실행 결과 라이브 표시 */
@@ -1331,7 +1546,7 @@ window.addEventListener('message', e => {
   else if (m.type === 'agentModelRoutingAuto') {
     /* v2.89.27 — 자동 추천 결과를 드롭다운에 적용 */
     const map = m.map || {};
-    document.querySelectorAll('.amr-select').forEach(sel => {
+    document.querySelectorAll('.amr-select[data-agent]').forEach(sel => {
       const aid = sel.getAttribute('data-agent');
       if(aid && map[aid]){
         sel.value = map[aid];
@@ -1474,3 +1689,218 @@ window.addEventListener('message', e => {
   const m = e.data;
   if (m.type === 'revenueMini') _renderRevenueMini(m.data);
 });
+
+/* ============ 📺 YouTube 콜드 리드 패널 ============
+ * 정책 (사장님 2026-05-25): 발송 절대 X. 이메일은 클립보드 복사만.
+ * 사이트 배포 전 테스트 단계라 자동 발송하면 사고.
+ * 카테고리 + 이메일 보유 필터, 정렬은 서버에서 (이메일 있는 채널 먼저). */
+const YT_LEADS_STATE = { category: 'all', onlyWithEmail: false, rows: [] };
+
+function _ytEsc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function _ytFmtSubs(n){
+  const v = Number(n) || 0;
+  if (v >= 1e6) return (v/1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (v >= 1e3) return (v/1e3).toFixed(1).replace(/\.0$/, '') + 'k';
+  return String(v);
+}
+function _ytCopyToClipboard(text, btn){
+  navigator.clipboard?.writeText(text).then(() => {
+    if (!btn) return;
+    const orig = btn.textContent;
+    btn.textContent = '✅ 복사됨';
+    btn.disabled = true;
+    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1400);
+  }).catch(() => {
+    if (btn) { btn.textContent = '❌ 실패'; setTimeout(() => { btn.textContent = '📋 복사'; }, 1400); }
+  });
+}
+function _ytRequest(){
+  const body = document.getElementById('ytLeadsBody');
+  if (body) body.innerHTML = '<div class="board-loading">DB 읽는 중…</div>';
+  vscode.postMessage({
+    type: 'loadYouTubeLeads',
+    category: YT_LEADS_STATE.category,
+    onlyWithEmail: YT_LEADS_STATE.onlyWithEmail,
+  });
+}
+/* email_status → "왜 NULL인지" 사장님이 한눈에 보는 칩.
+   description_no_match 가 압도적이면 → "이 카테고리 유튜버는 본문에 이메일 안 적는 성향" = 3차 보강(SNS·Google) 필요.
+   description_empty 가 많으면 → 카테고리 자체가 description 짧은 채널 풀.
+   about_failed 가 많으면 → 네트워크/rate-limit. */
+function _ytStatusChip(status, hasHint){
+  const map = {
+    'found':                { label: 'description', color: '#34d399', bg: 'rgba(52,211,153,.12)' },
+    'found_about':          { label: 'about', color: '#7dd3fc', bg: 'rgba(125,211,252,.12)' },
+    'description_empty':    { label: '설명 비어있음', color: '#9ca3af', bg: 'rgba(156,163,175,.12)' },
+    'description_no_match': { label: '본문에 없음', color: '#9ca3af', bg: 'rgba(156,163,175,.12)' },
+    'about_no_match':       { label: 'about reCAPTCHA?', color: '#fbbf24', bg: 'rgba(251,191,36,.12)' },
+    'about_failed':         { label: 'about fetch 실패', color: '#f87171', bg: 'rgba(248,113,113,.12)' },
+    'unknown':              { label: '미분류', color: '#6b7280', bg: 'rgba(107,114,128,.12)' },
+  };
+  const s = map[status] || map['unknown'];
+  const hint = hasHint ? '<span title="컨택 힌트 키워드 발견 (문의/이메일/gmail 등) — 3차 보강 우선 대상" style="margin-left:4px">💡</span>' : '';
+  return '<span style="display:inline-flex;align-items:center;font-size:10px;padding:2px 7px;border-radius:5px;background:' + s.bg + ';color:' + s.color + ';font-weight:600;letter-spacing:.2px">' + s.label + hint + '</span>';
+}
+function _ytRenderRows(rows){
+  if (!rows || rows.length === 0) {
+    return '<div class="board-empty"><span class="be-icon">📭</span>해당 필터에 채널이 없어요.<br><span style="font-size:11px">필터를 풀거나 collector.py 를 실행하세요.</span></div>';
+  }
+  const escAttr = (s) => _ytEsc(s).replace(/"/g, '&quot;');
+  const head = '<thead><tr>'
+    + '<th style="text-align:left">채널</th>'
+    + '<th style="text-align:left">카테고리</th>'
+    + '<th style="text-align:right">구독자</th>'
+    + '<th style="text-align:right">영상</th>'
+    + '<th style="text-align:right">주/회</th>'
+    + '<th style="text-align:left">최근업로드</th>'
+    + '<th style="text-align:left">이메일</th>'
+    + '<th style="text-align:left">SNS</th>'
+    + '<th></th>'
+    + '</tr></thead>';
+  const tr = rows.map(r => {
+    /* url NULL 인 구버전 row 도 channel_id 가 있으면 fallback URL 생성. */
+    const url = (r.channel_url && String(r.channel_url).trim())
+      || (r.channel_id ? 'https://www.youtube.com/channel/' + r.channel_id : '');
+    const hasMail = !!(r.email && String(r.email).trim());
+    const hasHint = !!(r.has_contact_hint && Number(r.has_contact_hint) === 1);
+    const statusChip = _ytStatusChip(r.email_status || 'unknown', hasHint);
+    const mailCell = hasMail
+      ? '<div style="display:flex;flex-direction:column;gap:3px;align-items:flex-start"><code style="font-size:11px;background:rgba(255,255,255,.05);padding:2px 6px;border-radius:4px">' + _ytEsc(r.email) + '</code>' + statusChip + '</div>'
+      : '<div style="display:flex;flex-direction:column;gap:3px;align-items:flex-start"><span style="color:rgba(255,255,255,.3);font-size:11px">—</span>' + statusChip + '</div>';
+    const copyBtn = hasMail
+      ? '<button class="btn ghost yt-copy-btn" data-copy="' + escAttr(r.email) + '" style="font-size:11px;padding:3px 8px">📋 복사</button>'
+      : '';
+    /* a target=_blank 안 통하는 케이스 있으니 명시적으로 extension 으로 메시지 보내
+       openExternal (= 기본 브라우저, 사장님은 chrome) 호출. */
+    const nameLink = url
+      ? '<a href="#" class="yt-open-link" data-url="' + escAttr(url) + '" style="color:#7dd3fc;text-decoration:none;cursor:pointer">' + _ytEsc(r.name) + ' <span style="opacity:.4;font-size:10px">↗</span></a>'
+      : _ytEsc(r.name);
+    /* SNS 칩 — 이메일 없는 채널의 콜드 DM 대안 경로 */
+    const snsChip = (label, handle, baseUrl, color) => {
+      if (!handle) return '';
+      const safeHandle = _ytEsc(handle);
+      const url = baseUrl + handle;
+      return '<a href="#" class="yt-open-link" data-url="' + escAttr(url) + '" '
+        + 'style="display:inline-flex;align-items:center;font-size:10px;padding:2px 6px;border-radius:5px;'
+        + 'background:' + color + '22;color:' + color + ';font-weight:600;text-decoration:none;margin-right:4px"'
+        + ' title="' + label + ' @' + safeHandle + ' 열기">'
+        + label + ' @' + safeHandle + '</a>';
+    };
+    const snsCell = (snsChip('IG', r.instagram_handle, 'https://instagram.com/', '#e1306c')
+                   + snsChip('X',  r.twitter_handle,   'https://x.com/',         '#1da1f2')
+                   + snsChip('TH', r.threads_handle,   'https://threads.net/@',  '#9ca3af')
+                   + (r.other_url
+                      ? '<a href="#" class="yt-open-link" data-url="' + escAttr(r.other_url) + '" style="font-size:10px;color:#fbbf24;text-decoration:none" title="link tree 열기">🔗</a>'
+                      : ''))
+      || '<span style="color:rgba(255,255,255,.25);font-size:11px">—</span>';
+    return '<tr>'
+      + '<td>' + nameLink + '</td>'
+      + '<td><span style="font-size:11px;color:rgba(255,255,255,.7)">' + _ytEsc(r.category || '—') + '</span></td>'
+      + '<td style="text-align:right;font-variant-numeric:tabular-nums">' + _ytFmtSubs(r.subscribers) + '</td>'
+      + '<td style="text-align:right;font-variant-numeric:tabular-nums">' + (r.video_count != null ? r.video_count : '—') + '</td>'
+      + '<td style="text-align:right;font-variant-numeric:tabular-nums">' + (r.uploads_per_week != null ? Number(r.uploads_per_week).toFixed(1) : '—') + '</td>'
+      + '<td style="font-size:11px;color:rgba(255,255,255,.65)">' + _ytEsc(r.last_upload_date || '—') + '</td>'
+      + '<td>' + mailCell + '</td>'
+      + '<td>' + snsCell + '</td>'
+      + '<td style="text-align:right">' + copyBtn + '</td>'
+      + '</tr>';
+  }).join('');
+  return '<div style="max-height:520px;overflow-y:auto"><table class="board-table" style="width:100%;border-collapse:collapse">' + head + '<tbody>' + tr + '</tbody></table></div>';
+}
+function _ytRender(payload){
+  const body = document.getElementById('ytLeadsBody');
+  const badge = document.getElementById('ytLeadsBadge');
+  const counts = document.getElementById('ytLeadsCounts');
+  const sel = document.getElementById('ytLeadsCategory');
+  if (!body) return;
+  if (payload?.error) {
+    body.innerHTML = '<div class="board-empty"><span class="be-icon">⚠️</span>' + _ytEsc(payload.error) + '</div>';
+    if (badge) badge.textContent = '!';
+    if (counts) counts.textContent = '';
+    return;
+  }
+  YT_LEADS_STATE.rows = payload.rows || [];
+  if (badge) badge.textContent = String(YT_LEADS_STATE.rows.length);
+  if (counts && payload.counts) {
+    const total = payload.counts.reduce((s, c) => s + (c.total||0), 0);
+    const emails = payload.counts.reduce((s, c) => s + (c.with_email||0), 0);
+    const hints = payload.counts.reduce((s, c) => s + (c.with_hint_no_email||0), 0);
+    /* status 분포: '왜 NULL인지' 사장님이 한눈에. */
+    const statusParts = (payload.statusDist || [])
+      .filter(s => s.email_status !== 'found' && s.email_status !== 'found_about')
+      .map(s => {
+        const label = ({
+          'description_empty': '설명 비어있음',
+          'description_no_match': '본문에 없음',
+          'about_no_match': 'about?',
+          'about_failed': 'fetch실패',
+          'unknown': '미분류',
+        })[s.email_status] || s.email_status;
+        return label + ' ' + s.count;
+      });
+    const statusLine = statusParts.length ? ' · ' + statusParts.join(' · ') : '';
+    /* SNS only — 이메일 NULL인데 SNS 핸들로 컨택 가능한 추가 풀 */
+    const snsOnly = YT_LEADS_STATE.rows.filter(row => {
+      const hasMail = !!(row.email && String(row.email).trim());
+      const hasSocial = !!(row.instagram_handle || row.twitter_handle || row.threads_handle);
+      return !hasMail && hasSocial;
+    }).length;
+    const reachable = emails + snsOnly;
+    counts.innerHTML = '전체 <b>' + total + '</b>채널 · 📧 <b style="color:#34d399">' + emails + '</b>'
+      + (snsOnly ? ' · 📱 <b style="color:#e1306c">+' + snsOnly + '</b>(SNS only)' : '')
+      + ' · 🎯 컨택가능 <b style="color:#7dd3fc">' + reachable + '</b>'
+      + (hints ? ' · 💡힌트 <b style="color:#fbbf24">' + hints + '</b>' : '')
+      + '<span style="color:rgba(255,255,255,.4)">' + statusLine + '</span>';
+  }
+  /* 카테고리 드롭다운 sync — 처음 한 번만 채움 */
+  if (sel && payload.counts && sel.options.length <= 1) {
+    for (const c of payload.counts) {
+      const o = document.createElement('option');
+      o.value = c.category; o.textContent = (c.category || '미분류') + ' (' + c.total + ')';
+      sel.appendChild(o);
+    }
+    sel.value = YT_LEADS_STATE.category;
+  }
+  body.innerHTML = _ytRenderRows(YT_LEADS_STATE.rows);
+  /* 복사 버튼 위임 */
+  body.querySelectorAll('.yt-copy-btn').forEach(btn => {
+    btn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      _ytCopyToClipboard(btn.getAttribute('data-copy') || '', btn);
+    });
+  });
+  /* 채널명 클릭 → 기본 브라우저 (chrome) 로 외부 열기 */
+  body.querySelectorAll('.yt-open-link').forEach(a => {
+    a.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      const u = a.getAttribute('data-url');
+      if (u) vscode.postMessage({ type: 'openExternalUrl', url: u });
+    });
+  });
+}
+function _ytInit(){
+  const sel = document.getElementById('ytLeadsCategory');
+  const refresh = document.getElementById('ytLeadsRefresh');
+  if (sel) sel.addEventListener('change', () => { YT_LEADS_STATE.category = sel.value; _ytRequest(); });
+  if (refresh) refresh.addEventListener('click', _ytRequest);
+  document.querySelectorAll('#ytLeadsCard [data-yt-email]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#ytLeadsCard [data-yt-email]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      YT_LEADS_STATE.onlyWithEmail = btn.getAttribute('data-yt-email') === 'only';
+      _ytRequest();
+    });
+  });
+  _ytRequest();
+}
+window.addEventListener('message', e => {
+  const m = e.data;
+  if (m?.type === 'youtubeLeadsData') _ytRender(m);
+});
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', _ytInit);
+} else {
+  _ytInit();
+}

@@ -107,6 +107,9 @@ export async function handlePrompt(
 
         const tier: Tier = _modelToTier(modelName);
         const claudePrompt = _serializeMessages(reqMessages);
+        /* modelName (예: 'gpt-5.5') 을 opts.model 로 명시 전달.
+           streamAsk → resolveModel 이 opts.model 우선 → providerFor 가 gpt-* → codex 라우팅.
+           이전엔 tier 만 넘겨서 항상 TIER_TO_MODEL[claude-sonnet-4-6] 로 덮였음 (gpt 선택 무시 버그). */
         await streamAsk(claudePrompt, tier, (token) => {
             if (abortController.signal.aborted) return;
             aiMessage += token;
@@ -118,7 +121,7 @@ export async function handlePrompt(
                 fireAnswerStart();
                 ctx.postThinking({ type: 'answer_chunk', text: token });
             }
-        });
+        }, { model: modelName, codexReasoningEffort: ctx.getCodexReasoningEffort() });
 
         // 스트리밍 완료 알림 잠시 보류 (연속된 답변을 같은 상자에 이어서 출력하기 위함)
 
@@ -186,7 +189,7 @@ export async function handlePrompt(
                 if (ctx.shouldEmitThinking()) {
                     ctx.postThinking({ type: 'answer_chunk', text: token });
                 }
-            });
+            }, { model: modelName, codexReasoningEffort: ctx.getCodexReasoningEffort() });
         }
 
         // 모든 스트리밍(1차 및 2차)이 끝난 후, 박스 포장 완료
@@ -203,6 +206,101 @@ export async function handlePrompt(
             ctx.view.webview.postMessage({ type: 'streamChunk', value: reportMsg });
             ctx.view.webview.postMessage({ type: 'streamEnd' });
             aiMessage += reportMsg;
+        }
+
+        /* v2.92.x — Multi-turn continuation loop (simple chat 모드).
+           사장님 사례: "src/llm/index.ts 읽고 timeoutMs 60000으로 바꿔" 명령에 agent 가
+           <read_file> 만 출력하고 멈춤. 이유: 단발 LLM 호출 → executeActions 가 파일 읽어서
+           chatHistory 에 결과 push → 그러나 다음 LLM 호출 없음 → agent 가 결과 보고 edit 못 함.
+           이 loop 는 agent 가 <done/> 출력하거나 새 액션 발행 멈출 때까지 자동 추가 턴.
+           각 턴: executeActions 가 이미 chatHistory 에 tool 결과 push 했으니 그냥 streamAsk 재호출. */
+        const MAX_CONTINUATION_TURNS = 5;
+        const DONE_RE = /<done\s*\/?>/i;
+        const ACTION_RE = /<(?:read_file|read|list_files|glob|grep|run_command|command|bash|terminal|create_file|write_file|edit_file|delete_file|file|read_brain|read_url)\b/i;
+        const READ_ACTION_RE = /<(?:read_file|read|list_files|glob|grep|read_brain|read_url|run_command|command|bash|terminal)\b/i;
+        const WRITE_ACTION_RE = /<(?:create_file|write_file|edit_file|delete_file|file)\b/i;
+        for (let ct = 0; ct < MAX_CONTINUATION_TURNS; ct++) {
+            if (abortController.signal.aborted) break;
+            /* 직전 응답에 <done/> 있으면 종료 */
+            if (DONE_RE.test(aiMessage)) break;
+            /* 직전 응답에 액션이 전혀 없으면 agent 가 자발적 종료한 것 → 종료 */
+            if (!ACTION_RE.test(aiMessage)) break;
+            /* 직전 응답이 순수 write 액션만이고 report 에 성공 표시 있으면, 보통 작업 끝.
+               하지만 사장님 명령이 read → write 흐름이면 read 만 했을 때 강제로 continuation. */
+            const hadReadOnly = READ_ACTION_RE.test(aiMessage) && !WRITE_ACTION_RE.test(aiMessage);
+            const hadWrite = WRITE_ACTION_RE.test(aiMessage);
+            /* write 만 있고 read 없으면 (단순 create_file), 다음 턴은 굳이 안 돌려도 됨 — 사용자가
+               명시적으로 "검증해" 같은 multi-step 안 시켰을 가능성. read 가 섞여 있으면 (편집 흐름)
+               무조건 continuation 진입. */
+            if (!hadReadOnly && hadWrite && report.some(r => r.startsWith('✏️') || r.startsWith('✅'))) {
+                /* write 만 한 단순 케이스 — 추가 턴 의미 적음. 사장님이 명시적 multi-step 명령했으면
+                   agent 가 자기 응답에 다음 액션 박았을 것 (그러면 위 ACTION_RE 통과 못 했을 것). */
+                break;
+            }
+
+            /* write 결과 (chatHistory 에 안 들어감) 를 user msg 로 보충 주입.
+               LLM 이 "edit 됐다" 인지하고 다음 단계 (보통 검증 또는 done) 진행 가능. */
+            const writeReports = report.filter(r =>
+                r.startsWith('✅') || r.startsWith('✏️') || r.startsWith('🗑️') || r.startsWith('🖥️') || r.startsWith('🚀')
+            );
+            if (writeReports.length > 0) {
+                ctx.chatHistory.push({
+                    role: 'user',
+                    content: `[시스템: 너의 직전 write/exec 액션 결과]\n${writeReports.join('\n')}\n\n작업이 완전히 끝났으면 <done/> 한 줄. 아니면 다음 액션 (예: 검증 run_command) 또는 추가 edit_file.`,
+                });
+            } else if (!hadReadOnly) {
+                /* 액션 있었는데 report 에 성공 표시 0 = 실패만 있음. 그래도 LLM 에게 다음 결정권. */
+                ctx.chatHistory.push({
+                    role: 'user',
+                    content: `[시스템: 직전 액션이 모두 실패하거나 결과를 못 만듦. 경로/이름 확인 후 다시 시도하거나 <done/> 출력.]`,
+                });
+            }
+            /* read-only 였다면 read 결과는 이미 chatHistory 에 push 됨 — 그대로 진행. */
+
+            /* UI 표시: multi-turn 시작 */
+            const turnHeaderMsg = `\n\n---\n🔄 **multi-turn ${ct + 2}** — 결과 보고 다음 단계 결정 중…\n\n`;
+            ctx.view.webview.postMessage({ type: 'streamStart' });
+            ctx.view.webview.postMessage({ type: 'streamChunk', value: turnHeaderMsg });
+
+            /* 다음 턴 LLM 호출 — chatHistory 그대로 직렬화. */
+            let turnAiMessage = '';
+            try {
+                const turnReqMessages = [...ctx.chatHistory];
+                /* system msg 는 reqMessages 첫 번째 그대로 유지. ctx.chatHistory[0] 이 이미 system 임. */
+                const turnPrompt = _serializeMessages(turnReqMessages);
+                await streamAsk(turnPrompt, _modelToTier(modelName), (token) => {
+                    if (abortController.signal.aborted) return;
+                    turnAiMessage += token;
+                    ctx.view!.webview.postMessage({ type: 'streamChunk', value: token });
+                    try { ctx.inflightAppendChunk?.(token); } catch { /* never break stream */ }
+                    if (ctx.shouldEmitThinking()) {
+                        ctx.postThinking({ type: 'answer_chunk', text: token });
+                    }
+                }, { model: modelName, codexReasoningEffort: ctx.getCodexReasoningEffort() });
+            } catch (e: any) {
+                ctx.view.webview.postMessage({ type: 'streamChunk', value: `\n⚠️ multi-turn ${ct + 2} 실패: ${e?.message || e}` });
+                ctx.view.webview.postMessage({ type: 'streamEnd' });
+                break;
+            }
+            ctx.view.webview.postMessage({ type: 'streamEnd' });
+            if (!turnAiMessage.trim()) break;
+            ctx.chatHistory.push({ role: 'assistant', content: turnAiMessage });
+
+            /* 새 액션 실행 */
+            const turnReport = await ctx.executeActions(turnAiMessage);
+            if (turnReport.length > 0) {
+                const turnReportMsg = `\n\n---\n**에이전트 작업 결과 (turn ${ct + 2})**\n${turnReport.join('\n')}`;
+                ctx.view.webview.postMessage({ type: 'streamChunk', value: turnReportMsg });
+                ctx.view.webview.postMessage({ type: 'streamEnd' });
+            }
+            /* 다음 iteration 의 조건 체크용으로 aiMessage / report 갱신 */
+            aiMessage = turnAiMessage;
+            (report as string[]).length = 0;
+            (report as string[]).push(...turnReport);
+        }
+        if (DONE_RE.test(aiMessage)) {
+            ctx.view.webview.postMessage({ type: 'streamChunk', value: `\n✅ **<done/>** 작업 완료\n` });
+            ctx.view.webview.postMessage({ type: 'streamEnd' });
         }
 
         // 저장용: AI 응답 기록
@@ -229,11 +327,18 @@ export async function handlePrompt(
 
     } catch (error: any) {
         const msg = error?.message || String(error);
+        /* provider 판정 — gpt-5.5 사용 중인데 "Claude 한도 확인" 같은 오답 나오면 사장님 혼란. */
+        const _m = (modelName || '').toLowerCase();
+        const _isCodex = _m.startsWith('gpt-') || _m.startsWith('gpt5') || _m.startsWith('o1') || _m.startsWith('o3');
+        const _cliName = _isCodex ? 'Codex (GPT-5.5)' : 'Claude';
+        const _cliBin = _isCodex ? 'codex' : 'claude';
+        const _binSetting = _isCodex ? 'agentOs.codexBinPath' : 'agentOs.claudeBinPath';
         let errMsg: string;
         if (/ENOENT|not found/i.test(msg)) {
-            errMsg = `⚠️ Claude CLI 를 찾지 못했어요.\n\`claude --version\` 으로 설치를 확인하거나 settings.json 의 \`agentOs.claudeBinPath\` 를 설정해주세요.`;
+            errMsg = `⚠️ ${_cliName} CLI 를 찾지 못했어요.\n\`${_cliBin} --version\` 으로 설치를 확인하거나 settings.json 의 \`${_binSetting}\` 를 설정해주세요.`;
         } else if (/timed out|timeout/i.test(msg)) {
-            errMsg = `⚠️ Claude 응답이 너무 오래 걸려요. 질문을 짧게 줄이거나 Claude Max 사용량 한도를 확인해주세요.`;
+            const usageHint = _isCodex ? 'Codex CLI 응답성 (`codex --version`) 또는 질문 길이를 확인' : 'Claude Max 사용량 한도를 확인';
+            errMsg = `⚠️ ${_cliName} 응답이 너무 오래 걸려요. 질문을 짧게 줄이거나 ${usageHint}해주세요.`;
         } else if (/aborted/i.test(msg)) {
             errMsg = `⚠️ 응답이 중간에 취소됐어요.`;
         } else {

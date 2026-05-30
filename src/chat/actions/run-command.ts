@@ -48,11 +48,25 @@ export async function executeRunCommand(ctx: ActionContext): Promise<void> {
                 ctx.postWebview({ type: 'streamChunk', value: '\n```\n' });
             }
 
+            /* 백그라운드 detach 패턴 (`nohup ... &`, 트레일링 `&`) 은 외부 셸이
+               자식을 떼어 띄우므로 마지막 sync 명령의 종료 코드가 1이어도
+               실제 작업은 정상 시작됐을 가능성이 큼. 사장님 케이스:
+                 nohup bash -c "..." & echo PID; sleep 1; ls -la logs/
+               → 첫 실행 때 `logs/` 가 아직 없어서 `ls` 가 1 → 전체 ❌ 라벨이
+               붙고 dispatch 보고가 "실패" 로 잘못 떴음. 백그라운드 흔적이면
+               🚀 라벨로 다르게 표시 (정보성). */
+            const isBackground = /\bnohup\b/.test(cmd)
+                || /&\s*(\r?\n|$)/.test(cmd)
+                || /\bdisown\b/.test(cmd)
+                || /^\s*PID=\d+/m.test(result.output)
+                || /\bnohup\b/.test(result.output);
             const status = result.timedOut
                 ? '⏱️ 25분 시간 초과로 중단됨'
                 : result.exitCode === 0
                     ? '✅ 종료 코드 0'
-                    : `❌ 종료 코드 ${result.exitCode}`;
+                    : isBackground
+                        ? `🚀 백그라운드 시작 (셸 종료 코드 ${result.exitCode} — detach 후 후속 명령 결과)`
+                        : `❌ 종료 코드 ${result.exitCode}`;
             report.push(`🖥️ 실행: \`${cmd}\` — ${status}`);
 
             // Inject the output back so the AI can continue with context

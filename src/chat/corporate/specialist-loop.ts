@@ -17,6 +17,7 @@ import {
     appendAgentMemory,
     appendConversationLog,
     addTrackerTask,
+    getAgentModel,
     getCompanyDir,
     getCompanyMetrics,
     updateCompanyMetrics,
@@ -36,6 +37,11 @@ import {
 import { _readYtOAuthClient } from '../../youtube/oauth';
 import { runCommandCaptured } from '../../infra/process';
 import type { AgentMetaEntry, CorporateContext, Plan } from './types';
+import {
+    detectDangerousCommand,
+    formatBlockedCommandInjection,
+    formatBlockedCommandNotice,
+} from './safety-filter';
 
 export interface SpecialistLoopArgs {
     ctx: CorporateContext;
@@ -44,6 +50,10 @@ export interface SpecialistLoopArgs {
     modelName: string;
     sessionDir: string;
     explicit: { agentId: string; agentName: string } | null;
+    /** v2.92.x — applyDispatchCap 가 'simple' 판정한 단순 명령. specialist 가 환각
+     *  retry 후 적용 재시도 + multi-turn 까지 다 도는 게 과잉 (README 1줄 추가에
+     *  LLM 4회 호출 → 사장님 좌절 사례). simple 이면 환각 retry 1회 후 종료. */
+    simpleCommand?: boolean;
 }
 
 export interface SpecialistLoopResult {
@@ -57,8 +67,125 @@ export interface SpecialistLoopResult {
     blocked: boolean;
 }
 
+/* v2.92.x — Read-only 의도 명령 감지. 사장님이 "분석만/보고서만/수정 금지/건드리지 마"
+   같은 키워드 명시한 명령은 write 액션 0 이 정상. 환각 가드가 false-positive 로
+   재시도 메시지 띄우는 사고 차단. 사장님 사례: Level 4 "코드 수정은 절대 하지 말고
+   분석 보고서만" 명령에 환각 retry 발동 → 사장님이 "왜 자꾸 환각 떠?" 의문. */
+const READ_ONLY_INTENT_RE = /수정\s*(?:은\s*)?(?:절대\s*)?(?:하지\s*마|금지|말|마)|건드리지\s*(?:마|말)|보고서(?:만| only)|분석(?:만| only)|read[-_\s]?only|읽기\s*전용|코드\s*수정\s*(?:없|금지|X|x)|변경\s*(?:없|금지)|만들지\s*(?:마|말)|쓰지\s*(?:마|말)/i;
+
+/* v2.92.x — 환각 탐지 v2. 이전 ACTION_TAG_RE 에는 읽기 액션(read_file·glob·grep·
+   list_files)이 포함되어 있어서, developer 가 그것만 호출하고 정작 수정(<edit_file>)
+   은 안 한 채 "Before/After 표 + ✅ 완료" 가짜 보고서를 써도 통과됨 (사장님 실제 사례:
+   sessions/2026-05-26T06-15 — 4개 읽기 액션 + 0개 쓰기 액션 + 풍성한 diff 표). 이제
+   읽기/쓰기 분리해서 "쓰기 0 + 가짜 완료 보고" 패턴을 환각으로 명확히 판정. */
+const READ_ACTION_RE = /<(?:read_file|read|list_files|list_dir|ls|glob|grep)\b/i;
+/* v2.92.x — write 는 "파일 시스템 영구 변경" 만. run_command/bash 는 grep·ls·cat
+   같은 read-only 도 흔하므로 별도 카테고리 (EXEC) 로 분리. 이전엔 run_command
+   가 write 로 카운트돼서 "grep 1번 + ls 1번 = write 2회" → 환각 가드 무력화. */
+const WRITE_ACTION_RE = /<(?:create_file|write_file|file|edit_file|edit|delete_file)\b/i;
+const EXEC_ACTION_RE = /<(?:run_command|command|bash|terminal)\b/i;
+const READ_ONLY_CLAIM_RE = /read-only|읽기\s*전용|권한.*(?:없|차단|막힘)|실제\s*(?:반영|수정|적용).*(?:불가|차단|못|안\s*됨)|도구\s*실행:\s*\(?없음|LLM\s*추론만/i;
+/* 가짜 완료 보고 패턴 — 실제로 수정 안 했는데 "다 했어요" 작성. */
+const HALLUCINATED_COMPLETION_RE = /Before\s*\/\s*After|before\s*\/\s*after|변경\s*(?:사항|파일|요약|결과)\s*(?:요약|보고)?|##\s*📦|✅\s*(?:완료|검증|확인|적용|반영|교체)|diff\s*요약|적용\s*완료|반영\s*완료|교체\s*완료|수정\s*완료|##\s*🔄/i;
+/* v2.92.x — 확장. 사장님 명령은 동사 form 이 다양 ("완성하고", "확장", "짜기",
+   "채우", "구축", "모듈/스크립트/엔드포인트" 같은 명사 단독). 이전 정규식은
+   "고쳐/만들어/구현해" 만 잡아서 단순 명사 명령 ("채널 수집 모듈 구현") 도 미스.
+   여기에 산출물 명사 + 한국어 동사 종결 form 확대. */
+const IMPLEMENTATION_REQUEST_RE = /(?:고쳐|만들어|구현해(?:\s*줘)?|바꿔(?:\s*줘)?|추가해(?:\s*줘)?|작성해(?:\s*줘)?|리팩(?:토링)?\s*해|적용해\s*줘|반영해\s*줘|수정해\s*줘|개선해\s*줘|완성(?:해|시켜|하고|시켜줘)?|확장(?:해|시켜|하고)?|채우(?:고|기|어|어줘)?|구축(?:해|하고)?|구성(?:해|하고)?|짜(?:줘|봐|기|는|서)|세팅(?:해|하고)?|셋업|setup|배포(?:해|하고)?|deploy|랜딩(?:\s*페이지)?|landing\s*page|css|tailwind|tsx|\.html\b|모듈\s*(?:구현|만|작성|구축|확장)?|스크립트\s*(?:구현|만|작성|짜)?|스키마\s*(?:추가|확장|마이그)?|엔드포인트|마이그레이션|템플릿\s*확장|발송\s*(?:모듈|로직)?|수집\s*(?:모듈|스크립트)?|warm[-_\s]?up|버그(?:\s*잡|\s*고)|에러(?:\s*잡|\s*고))/i;
+const WRITE_SUCCESS_RE = /^(?:✅|✏️|🗑️|🖥️|🚀)/m;
+/* v2.92.x — read 만 호출하고 끝낸 specialist 자동 재호출 대상.
+   secretary/editor 는 단순 보고형이 많아 제외. 작업형(코드·디자인·카피·리서치·
+   비즈니스·콘텐츠) 은 read 후 반드시 write 까지 가야 함. */
+const WORK_AGENTS = new Set(['developer', 'designer', 'writer', 'researcher', 'business', 'instagram']);
+
+/* v2.92.x — 사장님 원 명령에서 보존 키워드를 자동 추출. CEO LLM 이 ceo-planner.md
+   의 "보존 인용" 룰을 빼먹어도 시스템이 직접 specialist userMsg 에 박아 넣음.
+   추출 규칙: '기존/유지/그대로/건드리지/살려/보존/남겨/놔둬' 키워드를 포함한 절
+   (최대 3개) 을 그대로 인용. 광범위 변경 키워드('전체 갈아엎/처음부터 다시/재구축')
+   가 있으면 보존 규칙은 풀고 빈 문자열. */
+function extractPreservationClauses(prompt: string): string[] {
+    if (/전체\s*갈아엎|처음부터\s*다시|재구축|싹\s*다\s*바꿔/i.test(prompt)) return [];
+    const PRESERVE_RE = /(기존|유지|그대로|건드리지|살려|보존|남겨|놔둬)/;
+    const sentences = prompt.split(/(?<=[.!?。\n])\s+|,\s*/g);
+    const hits: string[] = [];
+    for (const s of sentences) {
+        const trimmed = s.trim();
+        if (trimmed.length < 4 || trimmed.length > 140) continue;
+        if (PRESERVE_RE.test(trimmed)) hits.push(trimmed);
+        if (hits.length >= 3) break;
+    }
+    return hits;
+}
+
+/** v2.92.x — Claude CLI bypassPermissions 모드는 LLM 이 ProoAI custom 태그
+ *  (<edit_file>/<run_command>) 없이 Claude 내장 Edit/Write 도구로 직접 파일을
+ *  변경함. 환각 가드는 텍스트 안 태그만 카운트해서 "0회" 로 false-positive 판정 →
+ *  사장님이 "변경 안 됐다" 오해 + 재시도 메시지로 신뢰 깨짐.
+ *  해결: 환각 판정 전·후 wsRoot 의 git status 를 비교. 다르면 실제 변경 발생 →
+ *  환각 retry skip. ProoAI 액션 0개여도 Claude 내장 도구로 변경한 것이라 OK. */
+function getWsRoot(): string | undefined {
+    try {
+        const vscode = require('vscode');
+        const wf = vscode?.workspace?.workspaceFolders;
+        if (wf && wf.length > 0) return wf[0].uri.fsPath;
+    } catch { /* vscode unavailable */ }
+    return undefined;
+}
+
+function captureGitState(wsRoot: string | undefined): string {
+    if (!wsRoot) return '';
+    try {
+        const { execSync } = require('child_process');
+        return execSync('git status --porcelain', {
+            cwd: wsRoot, encoding: 'utf8', timeout: 3000,
+        });
+    } catch { return ''; }
+}
+
+function needsConcreteDeveloperAction(agentId: string, task: string, prompt: string): boolean {
+    /* v2.92.x — 이전엔 developer 만 강제 retry 대상이었음 → designer/writer/researcher
+       가 "tailwind 적용해줘", "copy 다시 써줘", "경쟁사 분석해줘" 같은 implementation
+       명령에 환각 완료 보고만 작성해도 시스템이 못 잡음. 모든 WORK_AGENTS 로 확장
+       해서 implementation 키워드면 강제 retry 발동. */
+    if (!WORK_AGENTS.has(agentId)) return false;
+    return IMPLEMENTATION_REQUEST_RE.test(`${task}\n${prompt}`);
+}
+
+/** 환각 판정 — 쓰기 액션 0개 + (가짜 완료 보고 OR read-only 변명).
+ *  읽기 액션만 부르고 결과는 보지 않은 채 "완료" 작성하는 케이스를 잡음.
+ *  v2.92.x — execCount 분리: run_command/bash 는 grep·ls 같은 read-only 도 흔하므로
+ *  writeCount 에서 빼고 별도 카운트. write = 파일 시스템 영구 변경만. */
+function isHallucinatingCompletion(out: string): { hallucinating: boolean; readCount: number; writeCount: number; execCount: number; reason: string } {
+    const readCount = (out.match(/<(?:read_file|read|list_files|list_dir|ls|glob|grep)\b/gi) || []).length;
+    const writeCount = (out.match(/<(?:create_file|write_file|file|edit_file|edit|delete_file)\b/gi) || []).length;
+    const execCount = (out.match(/<(?:run_command|command|bash|terminal)\b/gi) || []).length;
+    if (writeCount > 0) return { hallucinating: false, readCount, writeCount, execCount, reason: 'has-write' };
+    if (HALLUCINATED_COMPLETION_RE.test(out)) {
+        return { hallucinating: true, readCount, writeCount, execCount, reason: 'fake-completion-report' };
+    }
+    if (READ_ONLY_CLAIM_RE.test(out)) {
+        return { hallucinating: true, readCount, writeCount, execCount, reason: 'read-only-excuse' };
+    }
+    return { hallucinating: false, readCount, writeCount, execCount, reason: 'plain-text-no-claim' };
+}
+
+/** v2.92.x — read·exec 만 호출하고 write 액션 0 인 채 응답 종료한 작업형 specialist
+ *  를 잡음. 사장님 원 명령에 명시적 implementation 키워드가 없어도 (예: "다음 작업
+ *  진행해", "outreach 완성하고 ...") 작업형 agent 가 read·grep·ls 만 부르고 끝나면
+ *  시스템이 1회 재호출해 실제 write 까지 가게 강제. */
+function needsContinuationAfterRead(
+    agentId: string,
+    readCount: number,
+    writeCount: number,
+    execCount: number,
+): boolean {
+    if (!WORK_AGENTS.has(agentId)) return false;
+    if (writeCount > 0) return false;
+    return (readCount + execCount) > 0;
+}
+
 export async function runSpecialistLoop(args: SpecialistLoopArgs): Promise<SpecialistLoopResult> {
-    const { ctx, plan, prompt, modelName, sessionDir, explicit } = args;
+    const { ctx, plan, prompt, modelName, sessionDir, explicit, simpleCommand } = args;
     const { post, isAborted } = ctx;
 
     const outputs: Record<string, string> = {};
@@ -66,6 +193,7 @@ export async function runSpecialistLoop(args: SpecialistLoopArgs): Promise<Speci
        받았고, 핵심 산출이 뭔지를 CEO 보고에 포함시켜 사용자가 한눈에 파악. */
     const agentMeta: Record<string, AgentMetaEntry> = {};
 
+    const _wsRoot = getWsRoot();
     for (const t of plan.tasks) {
         if (isAborted()) {
             /* User pressed stop. Mark this agent as failed so resume can know
@@ -76,12 +204,20 @@ export async function runSpecialistLoop(args: SpecialistLoopArgs): Promise<Speci
         }
         const a = AGENTS[t.agent];
         if (!a) continue;
-        post({ type: 'agentStart', agent: t.agent, task: t.task });
+        /* v2.92.x — Claude 내장 도구 변경 감지용 baseline. specialist 시작 직전 git
+           status 캡처. 환각 판정 시점에 다시 캡처해서 비교 → 다르면 실제 변경 발생. */
+        const _gitBefore = captureGitState(_wsRoot);
+        const stripTask = String(t.task || '').replace(/\s+/g, ' ').trim().slice(0, 220);
+        post({ type: 'agentStart', agent: t.agent, task: t.task, detail: stripTask });
         _updateActiveDispatchStep(prompt, `${a.emoji} ${a.name} 작업 중 — ${t.task.slice(0, 40)}`);
 
         // 이전 에이전트들의 산출물을 동료의 작업으로 함께 제공
+        /* v2.92.x — peerCtx 1500 → 4000자. 사장님 협업 깊이 ↑. designer 가 4000자
+           디자인 토큰 표를 만들었을 때 다음 specialist (developer) 가 그 중 1500자만
+           봐서 tail 의 Tailwind diff 짤려 추측으로 채우던 사고 차단. 4명 X 4000 = 16K
+           추가 token 이지만 claude-opus-4-7 200K 한도에 여유. */
         const peerCtx = Object.keys(outputs).length > 0
-            ? `\n\n[같은 세션의 동료 에이전트 산출물]\n${Object.entries(outputs).map(([k, v]) => `\n### ${AGENTS[k]?.emoji} ${AGENTS[k]?.name}\n${v.slice(0, 1500)}`).join('\n')}`
+            ? `\n\n[같은 세션의 동료 에이전트 산출물 — 비판·개선·인용 가능]\n${Object.entries(outputs).map(([k, v]) => `\n### ${AGENTS[k]?.emoji} ${AGENTS[k]?.name}\n${v.slice(0, 4000)}`).join('\n')}`
             : '';
 
         /* v2.89.10 — Prefetch 진짜 데이터: LLM 호출 직전에 시스템이
@@ -90,7 +226,7 @@ export async function runSpecialistLoop(args: SpecialistLoopArgs): Promise<Speci
            주입된 실제 데이터와 충돌이 보임). */
         let realtimeData = '';
         try {
-            post({ type: 'response', value: `🔍 ${a.emoji} ${a.name} 데이터 가져오는 중...` });
+            post({ type: 'progressTick', agent: t.agent, emoji: a.emoji, name: a.name, phase: '데이터 가져오는 중', icon: '🔍', elapsedSec: 0 });
             realtimeData = await prefetchAgentRealtimeData(t.agent);
         } catch { /* prefetch 실패해도 dispatch 안 막음 */ }
         /* v2.89.38 — 환각 방지 가드. 사용자 원 명령에 키워드가 등장하는데
@@ -118,7 +254,29 @@ export async function runSpecialistLoop(args: SpecialistLoopArgs): Promise<Speci
            호출해 실패하던 사고 차단. */
         const recentFilesCtx = ctx.buildRecentFilesContext(t.agent);
         const sysPrompt = `${buildSpecialistPrompt(t.agent)}${ctx.getProjectMemory()}${buildAgentConfigStatus(t.agent)}${realtimeData}${readAgentSharedContext(t.agent, { lean: useLeanContext })}${peerCtx}${hallucinationGuard}${recentFilesCtx}`;
-        const userMsg = `[CEO의 지시]\n${t.task}\n\n[원 사용자 명령 참고]\n${prompt}`;
+        /* v2.92.x — 사장님 원 명령을 최상단·강조 형태로. 이전엔 "[CEO 지시] → [원 명령 참고]"
+           순서라 specialist 가 "CEO 지시를 좀 더 잘 해석한 결과" 같은 광범위 변형을 만듦.
+           이제 사장님 원 명령이 1순위, CEO 지시는 그걸 구체화한 step 으로 명시. recency
+           bias 활용 — instruction-following 모델은 prompt 끝 쪽 명령을 더 강하게 따름. */
+        /* v2.92.x — 보존 키워드 자동 추출 → CEO LLM 이 빼먹어도 시스템이 박음. */
+        const preserveClauses = extractPreservationClauses(prompt);
+        const preserveBlock = preserveClauses.length > 0
+            ? `\n\n🔒 **[보존 제약 — 사장님 원 명령에서 자동 추출, 절대 위반 금지]**\n` +
+              preserveClauses.map(c => `  · "${c}"`).join('\n') +
+              `\n→ 위 영역은 read-only. 절대 삭제·수정·재작성 금지. 변경 충동 들어도 무시.`
+            : '';
+        const userMsg = `🎯 **사장님이 직접 내린 원 명령 (1순위 — 그대로 따름)**
+${prompt}${preserveBlock}
+
+────────────────────────────────────────
+📋 [CEO 가 위 명령을 specialist 용 step 으로 변환한 지시]
+${t.task}
+────────────────────────────────────────
+
+규칙:
+- 위 사장님 원 명령과 CEO step 이 충돌하면 **사장님 원 명령**이 우선.
+- 사장님 원 명령에 명시 안 된 변경은 만들지 마세요 (페르소나 충동 무시).
+- 페르소나는 톤·말투에만 쓰고, instruction-following 이 최우선.${preserveClauses.length > 0 ? '\n- 위 🔒 보존 제약은 CEO task 보다도 우선. 충돌하면 보존이 이긴다.' : ''}`;
 
         let out = '';
         /* v2.89.133 — 키트 shortcut. 명시적 호출(`개발신아 ...`) + 두뇌 키트
@@ -163,6 +321,17 @@ export async function runSpecialistLoop(args: SpecialistLoopArgs): Promise<Speci
            시 모두 클리어 + "응답 시작 (XX초 소요)" 채팅 메시지. */
         const llmStartTs = Date.now();
         let heartbeatChatTick = 0; /* 채팅창에 push 한 횟수 (30초 단위) */
+        /* v2.92.x — 진행 strip 에 실제 호출되는 모델 표시. 사장님이 "정말 gpt-5.5 로 가는지" 눈으로 확인. */
+        const agentModelForStrip = getAgentModel(t.agent, modelName);
+        const progressDetails = [
+            '작업 지시를 읽고 필요한 컨텍스트를 고르는 중입니다.',
+            '요청과 기존 자료를 대조하며 핵심 조건을 확인하는 중입니다.',
+            '필요한 데이터와 실행 단계를 정리하는 중입니다.',
+            '결론과 적용할 변경 내용을 좁히는 중입니다.',
+            '보고서에 넣을 핵심 결과를 압축하는 중입니다.',
+            '응답을 마무리하고 검토하는 중입니다.',
+            '모델 응답을 기다리며 진행 상태를 유지하는 중입니다.',
+        ];
         const heartbeatInterval = setInterval(() => {
             const elapsedSec = Math.round((Date.now() - llmStartTs) / 1000);
             const mm = Math.floor(elapsedSec / 60);
@@ -182,30 +351,45 @@ export async function runSpecialistLoop(args: SpecialistLoopArgs): Promise<Speci
                     elapsedSec
                 });
             } catch { /* ignore */ }
-            /* v2.89.157 — 채팅창 진행 표시 10초마다. "정지처럼 보인다" 사용자 피드백 반영.
-               매 10초 이모지·문구가 바뀌어 backend 가 살아있다는 signal 강화. */
-            const tick = Math.floor(elapsedSec / 10);
-            if (tick > heartbeatChatTick && elapsedSec >= 10) {
-                heartbeatChatTick = tick;
-                const phases = [
-                    `🔄 ${a.emoji} ${a.name} 분석 중 — ${timeStr} 경과`,
-                    `🧠 ${a.emoji} ${a.name} 데이터 처리 중 — ${timeStr} 경과`,
-                    `⚙️ ${a.emoji} ${a.name} 추론 중 — ${timeStr} 경과`,
-                    `💭 ${a.emoji} ${a.name} 결과 정리 중 — ${timeStr} 경과`,
-                    `✨ ${a.emoji} ${a.name} 거의 다 됐어요 — ${timeStr} 경과`,
-                    `⏳ ${a.emoji} ${a.name} 무거운 모델 처리 중 — ${timeStr} 경과 _(정상)_`,
-                ];
-                post({
-                    type: 'response',
-                    value: phases[(tick - 1) % phases.length]
-                });
-            }
+            /* v2.92.x — progressTick (in-place strip 갱신). 매 2.5초마다 elapsed 갱신 →
+               웹뷰의 thinking strip 이 progress bar + 텍스트 부드럽게 흐름. phase 는 10초마다 변경 (시각 다양성). */
+            const phaseIdx = Math.max(0, Math.floor(elapsedSec / 10));
+            const phaseDefs: { icon: string; phase: string }[] = [
+                { icon: '⏳', phase: '시작 중' },
+                { icon: '🔄', phase: '분석 중' },
+                { icon: '🧠', phase: '데이터 처리 중' },
+                { icon: '⚙️', phase: '추론 중' },
+                { icon: '💭', phase: '결과 정리 중' },
+                { icon: '✨', phase: '거의 다 됐어요' },
+                { icon: '⏳', phase: '무거운 모델 처리 중' },
+            ];
+            const cur = phaseDefs[Math.min(phaseIdx, phaseDefs.length - 1)];
+            const detail = `${progressDetails[Math.min(phaseIdx, progressDetails.length - 1)]} · ${stripTask}`;
+            post({
+                type: 'progressTick',
+                agent: t.agent,
+                emoji: a.emoji,
+                name: a.name,
+                phase: cur.phase,
+                task: stripTask,
+                detail,
+                icon: cur.icon,
+                elapsedSec,
+                timeStr,
+                model: agentModelForStrip,
+            });
+            heartbeatChatTick = phaseIdx; /* 호환 — 더는 사용 안 함 */
         }, 2500); /* v2.89.157 — 2.5초로 단축. 사무실 시각 효과 (sparkle·thought·status) 더 자주 갱신 → 정지처럼 안 보임. */
         /* Session-state checkpoint: start agent slot so partial output
            is persisted even if the LLM call dies mid-stream. */
         ctx.sessionWriter?.startAgent(t.agent, t.task);
         try {
-            out = await ctx.callAgentLLM(sysPrompt, userMsg, modelName, t.agent, true, {
+            /* v2.92.x — specialist 모델 매핑 적용. corp 모드는 modelSel.value 가 CSS hidden 으로
+               stale (사장님이 직접 만질 수 없음). 사장님이 ad-chip 에서 본 매핑 (예: gpt-5.5 일괄) 이
+               실제 라우팅까지 가야 함. getAgentModel(t.agent, modelName) — agent 매핑 있으면 그걸,
+               없으면 modelName (corp 진입 시 fallback) 사용. */
+            const agentModel = agentModelForStrip;
+            out = await ctx.callAgentLLM(sysPrompt, userMsg, agentModel, t.agent, true, {
                 onFirstToken: () => {
                     clearInterval(heartbeatInterval);
                     const waitSec = Math.round((Date.now() - llmStartTs) / 1000);
@@ -214,8 +398,13 @@ export async function runSpecialistLoop(args: SpecialistLoopArgs): Promise<Speci
                     const timeStr = mm > 0 ? `${mm}분 ${ss}초` : `${ss}초`;
                     try {
                         post({
-                            type: 'response',
-                            value: `📝 ${a.emoji} ${a.name} 응답 시작 — 첫 토큰까지 ${timeStr} 대기`
+                            type: 'progressTick',
+                            agent: t.agent, emoji: a.emoji, name: a.name,
+                            phase: `응답 시작 — 첫 토큰까지 ${timeStr} 대기`,
+                            icon: '📝',
+                            elapsedSec: waitSec, timeStr,
+                            model: agentModelForStrip,
+                            firstToken: true,
                         });
                     } catch { /* ignore */ }
                     try { vscode.window.setStatusBarMessage(`✍️ ${a.emoji} ${a.name} 응답 생성 중`, 8000); } catch { /* ignore */ }
@@ -235,13 +424,27 @@ export async function runSpecialistLoop(args: SpecialistLoopArgs): Promise<Speci
                 return { outputs, agentMeta, earlyReturn: true, blocked: false };
             }
             const detail = String(e?.message || e || '').slice(0, 300);
+            /* provider 판정 — 매 specialist 의 실제 매핑 모델 (agentModelForStrip) 기준.
+               try 안 const agentModel 은 catch scope 에 안 보임 → ReferenceError 차단. */
+            const _m = (agentModelForStrip || modelName || '').toLowerCase();
+            const _isCodex = _m.startsWith('gpt-') || _m.startsWith('gpt5') || _m.startsWith('o1') || _m.startsWith('o3');
+            const _cliName = _isCodex ? 'Codex (GPT-5.5)' : 'Claude';
+            const _cliBin = _isCodex ? 'codex' : 'claude';
+            const _binSetting = _isCodex ? 'agentOs.codexBinPath' : 'agentOs.claudeBinPath';
             let hint = '';
             if (/ENOENT|not found/i.test(detail)) {
-                hint = '\n💡 Claude CLI 미설치. `claude --version` 확인 또는 settings.json 의 `agentOs.claudeBinPath` 설정.';
+                hint = `\n💡 ${_cliName} CLI 미설치. \`${_cliBin} --version\` 확인 또는 settings.json 의 \`${_binSetting}\` 설정.`;
             } else if (/timed out|timeout/i.test(detail)) {
-                hint = '\n💡 Claude 응답이 시간 초과. Claude Max 5시간 한도 확인 또는 잠시 뒤 재시도.';
+                hint = _isCodex
+                    ? '\n💡 Codex (GPT-5.5) 응답이 시간 초과. 질문 길이 줄이거나 잠시 뒤 재시도.'
+                    : '\n💡 Claude 응답이 시간 초과. Claude Max 5시간 한도 확인 또는 잠시 뒤 재시도.';
             } else if (/aborted/i.test(detail)) {
                 hint = '\n💡 응답이 중간에 취소됐어요.';
+            } else if (/(thinking|redacted_thinking)[\s\S]{0,120}(cannot be modified|must remain)|invalid_request_error|overloaded|rate[_\s-]?limit|\b429\b|\b5\d\d\b|API Error/i.test(detail)) {
+                /* v2.92.x — 사용량/설치 문제 아님. CLI agentic 루프의 일시적 API 오류
+                   (thinking 블록 재전송 400 등). streamAsk 가 이미 3회 자동 재시도했는데도
+                   실패한 것 → 잠깐 뒤 다시 명령하면 대개 정상. 오답("사용량 초과") 차단. */
+                hint = `\n💡 ${_cliName} API 일시 오류 (사용량·설치 문제 아님). 자동 재시도 후에도 실패 — 잠시 뒤 같은 명령 다시 내리면 대개 정상 작동해요.`;
             }
             /* v2.89.32 — LLM 호출은 실패해도 prefetch가 가져온 실데이터는
                살아있으니 그대로 보존해서 다음 에이전트(peerCtx)와 최종 보고서가
@@ -259,6 +462,102 @@ export async function runSpecialistLoop(args: SpecialistLoopArgs): Promise<Speci
             clearInterval(heartbeatInterval);
         }
         } /* end if (!shortcut) — v2.89.133 LLM 우회 분기 닫음 */
+
+        /* v2.92.x — Developer execution guard (환각 탐지 v2).
+           읽기 액션(read/grep/glob)만 부르고 쓰기 액션(edit_file/create_file)은 안 한 채
+           "Before/After 표 + ✅ 완료" 가짜 보고서 작성하는 패턴을 잡음. 사장님 사례:
+           sessions/2026-05-26T06-15 — 4 read + 0 write + 풍성한 diff 표 + 실제 파일 변경 0건. */
+        /* v2.92.x — Read-only 의도 명령은 환각 가드 자체 skip. 사장님이 "분석만/
+           보고서만/수정 금지" 명시하면 write 0 이 정상이라 환각 retry 발동 X. */
+        const _isReadOnlyIntent = READ_ONLY_INTENT_RE.test(prompt) || READ_ONLY_INTENT_RE.test(t.task);
+        const shouldForceDevActions = !_isReadOnlyIntent && needsConcreteDeveloperAction(t.agent, t.task, prompt);
+        const diag = isHallucinatingCompletion(out);
+        /* read-only 명령이면 가드 자체 무효화 — git check 도 불필요. */
+        if (_isReadOnlyIntent) {
+            diag.hallucinating = false;
+            diag.reason = 'read-only-intent-detected';
+        }
+        /* v2.92.x — Claude 내장 도구 변경 검증. ProoAI 액션 0개여도 git status 가
+           specialist 시작 시점 대비 변했으면 실제 파일 변경 발생 → 환각 retry skip.
+           이 fix 없이는 Claude Opus 가 Edit/Write 내장 도구로 정확히 수정해도 시스템이
+           "환각" 판정하고 false-positive 재시도 메시지 표시 → 사장님 신뢰 깨짐. */
+        let _claudeBuiltInChanged = false;
+        if (diag.hallucinating) {
+            const _gitAfter = captureGitState(_wsRoot);
+            if (_gitAfter && _gitAfter !== _gitBefore) {
+                _claudeBuiltInChanged = true;
+                diag.hallucinating = false;
+                diag.reason = 'claude-builtin-tool-changes-detected';
+                const _diffSummary = (() => {
+                    try {
+                        const beforeLines = new Set(_gitBefore.split('\n').filter(Boolean));
+                        const afterLines = _gitAfter.split('\n').filter(Boolean);
+                        const newOrChanged = afterLines.filter(l => !beforeLines.has(l));
+                        return newOrChanged.slice(0, 5).join(', ') || `${afterLines.length}개 파일`;
+                    } catch { return '변경 발생'; }
+                })();
+                post({
+                    type: 'response',
+                    value: `✅ ${a.emoji} ${a.name}: ProoAI 액션 태그 0개이지만 Claude 내장 도구로 실제 파일 변경 감지 — 환각 X. 변경: ${_diffSummary}`,
+                });
+            }
+        }
+        if (shouldForceDevActions && diag.hallucinating && !_claudeBuiltInChanged) {
+            try {
+                post({ type: 'response',
+                       value: `🚨 ${a.emoji} ${a.name}: 환각 탐지 — 읽기 ${diag.readCount}회 / 쓰기 **0회** 인데 "${diag.reason === 'fake-completion-report' ? '완료 보고서' : 'read-only 변명'}" 작성. 강제 재시도.` });
+                const retryUserMsg = `[시스템 — 환각 탐지됨]
+
+이전 응답 분석:
+- 읽기 액션 (read_file/glob/grep/list_files): ${diag.readCount}회 호출
+- 쓰기 액션 (edit_file/create_file/write_file/run_command): **0회 호출**
+- 그런데 "Before/After 표 / ✅ 완료 / 변경 사항 요약" 같은 가짜 완료 보고를 작성함
+
+이건 환각입니다. 실제 파일은 안 바뀌었습니다.
+
+이번 응답에서 반드시 지킬 규칙:
+1. **금지** — Before/After 표 작성 금지. "변경 사항 요약" 금지. "✅ 완료/적용/반영/교체" 결론 금지. diff 요약 금지. "다음 단계" 제안 금지. (시스템이 실제 실행 결과로 보여줌)
+2. **필수** — 다음 형식으로만 출력:
+
+\`\`\`
+<grep pattern="실제_타깃_텍스트" files="**/*.tsx"/>
+\`\`\`
+→ 결과에서 진짜 파일 경로 확인. (이전 grep 0매치였으면, 키워드를 더 넓게 또는 부분 문자열로 다시 시도)
+
+\`\`\`
+<edit_file path="찾은_파일_절대경로">
+find: <정확히 그 파일 안에 존재하는 원문 일부>
+replace: <새 카피>
+</edit_file>
+\`\`\`
+→ find 의 문자열이 grep 결과로 확인된 실재 텍스트여야 함. 추측 금지.
+
+3. **출력 끝맺음** — 마지막 한 줄로만 "수정 완료: {파일경로}" (시스템이 진짜 결과를 그 뒤에 붙임).
+
+[CEO 원 지시]
+${t.task}
+
+[원 사용자 명령]
+${prompt}
+
+[이전 응답에서 네가 호출한 액션]
+${(out.match(/<[a-z_]+[^>]*>/gi) || []).slice(0, 20).join('\n')}`;
+                const retryOut = await ctx.callAgentLLM(sysPrompt, retryUserMsg, getAgentModel(t.agent, modelName), t.agent, true, {
+                    onChunk: (chunk) => ctx.sessionWriter?.appendAgentChunk(t.agent, chunk),
+                });
+                if ((retryOut || '').trim()) out = `${out}\n\n---\n## 🔁 환각 재시도 (읽기 ${diag.readCount} / 쓰기 0)\n\n${retryOut}`;
+                /* 재시도 후에도 여전히 쓰기 액션 0이면 사장님에게 명시 알림 — 조용히 통과 X. */
+                const postRetryWrites = (retryOut || '').match(/<(?:create_file|write_file|file|edit_file|edit|delete_file|run_command|command|bash|terminal)\b/gi) || [];
+                if (postRetryWrites.length === 0) {
+                    post({ type: 'response',
+                           value: `⚠️ ${a.emoji} ${a.name}: 재시도 후에도 쓰기 액션 **0회** — 모델 한계 또는 타깃 텍스트가 코드에 없음. 사장님이 직접 grep 으로 진짜 위치 확인 필요.` });
+                    out = `${out}\n\n⚠️ 환각 재시도 실패 — 쓰기 액션 0회 유지. 사장님 수동 확인 필요.`;
+                }
+            } catch (e: any) {
+                out = `${out}\n\n⚠️ 환각 재시도 실패: ${e?.message || e}`;
+            }
+        }
+
         /* v2.89.9 — 진짜 도구 실행. corporate dispatch에서도 에이전트가
            <run_command>...</run_command> 출력하면 시스템이 실제로 실행하고
            stdout/stderr를 다시 출력에 주입. 이게 LLM hallucination을
@@ -279,6 +578,27 @@ export async function runSpecialistLoop(args: SpecialistLoopArgs): Promise<Speci
                 }
                 if (c) cmds.push(c);
             }
+            /* v2.92.x — 위험 명령 0순위 차단. sudo, rm -rf /, mkfs, dd of=/dev/,
+               --no-verify, curl | sh 등은 specialist 가 출력해도 실행하지 않음.
+               시스템 파괴 사고 0건 보장 + 채팅창에 사장님 알림 + specialist out
+               에 차단 사실 append (다음 라운드에서 LLM 도 인지하고 회피). */
+            const safeCmds: string[] = [];
+            const blockedHits: { cmd: string; reason: string }[] = [];
+            for (const c of cmds) {
+                const hit = detectDangerousCommand(c);
+                if (hit) {
+                    blockedHits.push(hit);
+                    try { post({ type: 'response', value: formatBlockedCommandNotice(hit) }); } catch { /* ignore */ }
+                    out = `${out}${formatBlockedCommandInjection(hit)}`;
+                } else {
+                    safeCmds.push(c);
+                }
+            }
+            if (blockedHits.length > 0 && safeCmds.length === 0) {
+                /* 전부 차단됨 — 실행할 게 없음. 다음 단계로 그대로 진행. */
+            }
+            cmds.length = 0;
+            cmds.push(...safeCmds);
             if (cmds.length > 0) {
                 post({ type: 'response', value: `🔧 ${a.emoji} ${a.name}: ${cmds.length}개 명령 실행 중...` });
                 const cwd = path.join(getCompanyDir(), '_agents', t.agent, 'tools');
@@ -370,9 +690,147 @@ export async function runSpecialistLoop(args: SpecialistLoopArgs): Promise<Speci
                 post({ type: 'response', value: `📁 ${a.emoji} ${a.name} 파일 액션:\n${summary}` });
                 out = `${out}\n\n---\n## 📁 파일 액션 결과\n\n${fileReport.join('\n')}${fileInjections.join('')}`;
             }
+            /* v2.92.x — 게이트 확장. 사장님이 명시적 implementation 키워드 안 써도
+               (예: "다음 작업 진행해", "outreach 완성하고 ...") 작업형 agent 가 read·
+               exec 만 호출하고 write 없이 종료하면 자동 재호출. fileInjections 가 비
+               어 있어도 (run_command 만 출력했을 때) fileReport 가 있으면 재호출. */
+            const postExecDiag = isHallucinatingCompletion(out);
+            const needsContinue = needsContinuationAfterRead(
+                t.agent, postExecDiag.readCount, postExecDiag.writeCount, postExecDiag.execCount,
+            );
+            const haveSomethingToInject = fileReport.length > 0 || fileInjections.length > 0;
+            /* v2.92.x — simple command 일 땐 적용 재시도 skip. 단순 명령은 환각 retry
+               1회로 충분. 추가 LLM 호출 = round trip 증가 = 사장님 대기.
+               read-only 의도 명령도 skip — 분석/보고서만 명령에 적용 재시도 = false-positive. */
+            if (!simpleCommand && !_isReadOnlyIntent && (shouldForceDevActions || needsContinue) && haveSomethingToInject && !WRITE_SUCCESS_RE.test(fileReport.join('\n'))) {
+                try {
+                    const reason = shouldForceDevActions
+                        ? '명시적 implementation 요청인데 write 0회'
+                        : `${a.name} 가 read·exec 만 ${postExecDiag.readCount + postExecDiag.execCount}회 호출하고 write 0회로 응답 종료`;
+                    post({ type: 'response', value: `🔁 ${a.emoji} ${a.name}: ${reason} → 적용 단계 자동 재호출.` });
+                    const applyUserMsg = `[시스템 재지시 — 적용 단계 자동 재호출]
+직전 응답에서 read·grep·list·run_command 만 출력하고 write 액션 (create_file/edit_file/delete_file) 0회로 응답이 종료됐습니다. 사장님 명령은 "실제 산출물 만들기" 가 핵심입니다. 이제 진짜 작업하세요.
+
+규칙:
+- 추가 read·grep·list 호출 **금지**. 이미 충분히 봤습니다.
+- 같은 응답에서 <create_file> 또는 <edit_file> 또는 (변경 후) <run_command>를 **최소 1개** 출력하세요.
+- 무엇을 만들지 모르겠으면 사장님 명령을 작은 단위로 쪼개서 첫 번째 산출물부터 만드세요.
+- 절대 "다음 단계에서 ~ 하겠습니다", "준비됐습니다" 같은 약속 종료 금지. 같은 응답 내 write 액션으로 끝맺기.
+
+[사장님 원 명령]
+${prompt}
+
+[CEO 가 변환한 step]
+${t.task}
+
+[직전 응답에서 네가 부른 액션 카운트]
+- read·glob·grep·list: ${postExecDiag.readCount}회
+- run_command/bash: ${postExecDiag.execCount}회
+- create_file/edit_file: ${postExecDiag.writeCount}회 ← 이게 0이라 재호출
+
+[직전 응답에서 시스템이 실행한 파일 액션 결과]
+${fileReport.join('\n')}
+${fileInjections.join('\n').slice(0, 20000)}`;
+                    const applyOut = await ctx.callAgentLLM(sysPrompt, applyUserMsg, getAgentModel(t.agent, modelName), t.agent, true, {
+                        onChunk: (chunk) => ctx.sessionWriter?.appendAgentChunk(t.agent, chunk),
+                    });
+                    if ((applyOut || '').trim()) {
+                        const applyReports: string[] = [];
+                        const applyInjections: string[] = [];
+                        const ar = await ctx.executeActions(applyOut, {
+                            rootOverride: fileActionRoot,
+                            appendToOutput: (s) => applyInjections.push(s),
+                            silent: true,
+                            skipRunCommand: false,
+                            agentId: t.agent,
+                        });
+                        applyReports.push(...ar);
+                        out = `${out}\n\n---\n## 🔁 적용 액션 재시도\n\n${applyOut}`;
+                        if (applyReports.length > 0) {
+                            post({ type: 'response', value: `📁 ${a.emoji} ${a.name} 적용 재시도 결과:\n${applyReports.slice(0, 5).join('\n')}` });
+                            out += `\n\n### 적용 재시도 결과\n${applyReports.join('\n')}${applyInjections.join('')}`;
+                        }
+                    }
+                } catch (e: any) {
+                    out = `${out}\n\n⚠️ 적용 액션 재시도 실패: ${e?.message || e}`;
+                }
+            }
         } catch (e: any) {
             /* 파일 액션 실패해도 dispatch 진행. 로그만 남김. */
             try { post({ type: 'response', value: `⚠️ ${a.emoji} ${a.name} 파일 액션 처리 중 오류: ${e?.message || e}` }); } catch { /* ignore */ }
+        }
+
+        /* v2.92.x — Multi-turn continuation loop. 사장님 요구: "claude code 보다 나은 agent".
+           단발 LLM 호출은 1턴 안에서 read → write 반복이 안 됨 → specialist가 read만 하고 끝나는
+           "환각" 사고. 위에서 한 번 retry 했어도 복잡한 작업은 3~5턴 필요.
+           이 loop는 agent가 <done/> 출력하거나 액션 발행을 멈출 때까지 자동 다음 턴 진입.
+           각 턴마다 tool 결과를 user msg 로 feedback → Claude Code의 multi-turn 도구 호출과 동일 패턴.
+           shortcut path 는 1회성이므로 continuation skip. */
+        /* v2.92.x — simple command 일 땐 multi-turn 자체 skip. README 1줄 추가에
+           multi-turn 까지 도는 건 사장님 대기 시간만 증가. 복잡 명령일 때만 5턴까지. */
+        const MAX_CONTINUATION_TURNS = simpleCommand ? 0 : 5;
+        const DONE_RE = /<done\s*\/?>|✅\s*done|작업\s*완료\s*<\/?\s*done\s*\/?>/i;
+        const ACTION_RE = /<(?:run_command|command|bash|terminal|create_file|write_file|edit_file|delete_file|file)\b/i;
+        for (let ct = 0; ct < MAX_CONTINUATION_TURNS && !shortcut; ct++) {
+            if (isAborted()) break;
+            if (DONE_RE.test(out)) break;
+            /* 직전 턴 (out 의 마지막 8000자) 에서 새 액션이 있었는지 확인.
+               없으면 agent 가 알아서 끝낸 것 → continuation 의미 없음. */
+            const tail = out.slice(-8000);
+            if (!ACTION_RE.test(tail)) break;
+            /* 이미 마지막 턴이 "도구 실행 결과" / "파일 액션 결과" / "적용 재시도" 등 시스템
+               inject 만 있고 새 LLM 발화 부분에 action 이 없으면 break. 위 ACTION_RE 가 tail
+               에서 매치되더라도, 그게 시스템 inject 안의 명령 echo 일 수 있어서 한 번 더 체크. */
+            const lastLlmSection = out.split(/##\s+🛠️\s+도구\s+실행\s+결과|##\s+📁\s+파일\s+액션\s+결과|##\s+🔁\s+적용\s+액션\s+재시도|##\s+🔁\s+환각\s+재시도/i).slice(-1)[0] || '';
+            if (!ACTION_RE.test(lastLlmSection)) break;
+
+            try {
+                post({ type: 'response', value: `🔄 ${a.emoji} ${a.name}: turn ${ct + 2} 계속 (multi-turn) …` });
+                const continueUserMsg = `[시스템 — 다음 턴 자동 진입 (multi-turn ${ct + 2}/${MAX_CONTINUATION_TURNS + 1})]
+직전 턴에서 너가 발행한 액션과 그 실행 결과는 아래에 첨부됨. 사장님 원 명령이 완전히 끝났으면 \`<done/>\` 한 줄만 출력. 아니면 다음 액션 (반드시 실제 작업) 발행.
+
+규칙:
+- 이미 시스템이 read/grep/list/run_command/edit_file 모두 실행해 결과를 보여줬으니, 같은 호출 반복 금지.
+- "다음 단계에서 ~ 하겠다", "준비됐다" 같은 약속 종료 금지 — 같은 응답 안에 진짜 액션 또는 \`<done/>\`.
+- 추가 발행 액션 없이 그냥 분석/요약만 쓰면 그게 곧 작업 종료 신호.
+
+[직전 턴 누적 (LLM 발화 + tool 결과)]
+${out.slice(-15000)}
+
+[사장님 원 명령 다시 확인]
+${prompt}`;
+                const turnOut = await ctx.callAgentLLM(sysPrompt, continueUserMsg, getAgentModel(t.agent, modelName), t.agent, true, {
+                    onChunk: (chunk) => ctx.sessionWriter?.appendAgentChunk(t.agent, chunk),
+                });
+                if (!turnOut || !turnOut.trim()) break;
+                /* turn 출력을 누적 */
+                out = `${out}\n\n---\n## 🔄 multi-turn ${ct + 2}\n\n${turnOut}`;
+                /* turn 의 액션 실행. run_command + 파일 액션 모두 ctx.executeActions 가 처리 (skipRunCommand=false 기본).
+                   streaming 출력은 lost (continuation 은 빠른 처리가 우선) — 사장님 사례 1턴짜리 작업 아닌 multi-step 보장이 더 중요. */
+                const turnInjections: string[] = [];
+                const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+                const fileActionRoot = wsRoot || getCompanyDir();
+                const turnReports = await ctx.executeActions(turnOut, {
+                    rootOverride: fileActionRoot,
+                    appendToOutput: (s) => turnInjections.push(s),
+                    silent: true,
+                    skipRunCommand: false,
+                    agentId: t.agent,
+                });
+                if (turnReports.length > 0 || turnInjections.length > 0) {
+                    out += `\n\n### multi-turn ${ct + 2} 결과\n${turnReports.join('\n')}${turnInjections.join('')}`;
+                    post({ type: 'response', value: `📁 ${a.emoji} ${a.name} multi-turn ${ct + 2} 액션 ${turnReports.length}건 실행` });
+                }
+                /* checkpoint */
+                ctx.sessionWriter?.setAgentText(t.agent, out);
+            } catch (e: any) {
+                out = `${out}\n\n⚠️ multi-turn ${ct + 2} 실패: ${e?.message || e}`;
+                break;
+            }
+        }
+        /* multi-turn 종료 사유 로그 */
+        if (DONE_RE.test(out)) {
+            post({ type: 'response', value: `✅ ${a.emoji} ${a.name}: <done/> 신호로 종료` });
         }
 
         outputs[t.agent] = out;
@@ -483,13 +941,27 @@ export async function runSpecialistLoop(args: SpecialistLoopArgs): Promise<Speci
            3) 나중에 final report에 묻히지 않음 */
         const isBlocked = (() => {
             const o = out || '';
-            /* 명시적 신호 */
+            /* 명시적 신호. bare `키` 음절은 한국어 dev 용어 (패키지·아키텍처·도키 등)
+               에 흔해서 false-positive 다발 — 항상 (API|access|secret|발급|발행) 같은
+               자격증명 컨텍스트와 묶어서만 매칭. 2026-05-28 사례: 개발신이 sharp 미설치
+               안내하다가 "패키지의 peer" / "아키텍처·권한" 두 줄에 키 음절이 잡혀
+               전체 dispatch 가 중단된 사고. */
+            const credKey = /(API|access|secret|토큰|token|발급|발행)\s*키/i;
             if (/API\s*키.*(필요|입력|미설정)/i.test(o)) return true;
             if (/OAuth\s*(연결|미연결).*(필요|해주세요)/i.test(o)) return true;
             if (/(자격증명|credentials).*(필요|미설정|missing)/i.test(o)) return true;
-            if (/⚠️.*미설정/i.test(o)) return true;
-            /* 자가평가가 '대기' + 이유에 키 언급 */
-            if (/📊\s*평가:\s*대기/i.test(o) && /키|API|OAuth|credentials/i.test(o)) return true;
+            /* ⚠️ + 미설정 도 그 라인에 키워드 (API·OAuth·credentials·자격증명·환경변수) 동반 시만 */
+            if (/⚠️[^\n]*(API|OAuth|credentials|자격증명|환경\s*변수|env|키)[^\n]*미설정/i.test(o)) return true;
+            /* 자가평가가 '대기' + 본문에 명확한 자격증명 신호.
+               Bare "API" 는 너무 넓다. 개발 작업 보고서의 "API 인증은
+               middleware가 보호" 같은 정상 문장까지 자격증명 부족으로 오판했다. */
+            if (/📊\s*평가:\s*대기/i.test(o)
+                && (
+                    credKey.test(o)
+                    || /OAuth\s*(연결|미연결|인증).*(필요|해주세요|미설정)/i.test(o)
+                    || /(credentials|자격증명).*(필요|미설정|missing)/i.test(o)
+                    || /(환경\s*변수|env).*(미설정|누락|missing)/i.test(o)
+                )) return true;
             return false;
         })();
         if (isBlocked) {

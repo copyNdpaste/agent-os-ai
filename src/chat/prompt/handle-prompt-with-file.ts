@@ -101,11 +101,12 @@ export async function handlePromptWithFile(
 
         const tier: Tier = _modelToTier(modelName);
         const claudePrompt = _serializeMessages(reqMessages);
+        /* opts.model 명시 — gpt-5.5 선택이 tier 변환 단계에서 claude 로 덮이는 버그 차단. */
         await streamAsk(claudePrompt, tier, (token) => {
             if (abortController.signal.aborted) return;
             aiMessage += token;
             ctx.view!.webview.postMessage({ type: 'streamChunk', value: token });
-        });
+        }, { model: modelName, codexReasoningEffort: ctx.getCodexReasoningEffort() });
 
         ctx.view.webview.postMessage({ type: 'streamEnd' });
         ctx.chatHistory.push({ role: 'assistant', content: aiMessage });
@@ -125,7 +126,7 @@ export async function handlePromptWithFile(
 
     } catch (error: any) {
         const msg = error?.message || String(error);
-        const errMsg = _hClassifyChatError(msg);
+        const errMsg = _hClassifyChatError(msg, modelName);
 
         ctx.view.webview.postMessage({ type: 'error', value: errMsg });
 

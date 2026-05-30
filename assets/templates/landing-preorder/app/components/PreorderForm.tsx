@@ -4,6 +4,7 @@
    성공 응답에 preorder_id 받아서 /preorder?id=... 로 이동 (송금 안내). */
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import posthog from 'posthog-js';
 
 export default function PreorderForm() {
   const router = useRouter();
@@ -39,6 +40,14 @@ export default function PreorderForm() {
       if (!r.ok || !j?.id) {
         throw new Error(j?.error || '서버 오류');
       }
+      /* 전환 이벤트 — 퍼널 마지막 단계 (방문→폼→제출). PostHog 키 없으면 no-op. */
+      posthog.capture('preorder_submitted', {
+        idea: process.env.NEXT_PUBLIC_IDEA_NAME || null,
+        price: process.env.NEXT_PUBLIC_PREORDER_PRICE || null,
+        campaign_id: process.env.NEXT_PUBLIC_CAMPAIGN_ID || null,
+        project_key: process.env.NEXT_PUBLIC_PROJECT_KEY || null,
+        has_account4: !!account4,
+      });
       router.push(`/preorder?id=${j.id}`);
     } catch (e: any) {
       setError(e?.message || String(e));

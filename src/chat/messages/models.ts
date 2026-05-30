@@ -5,7 +5,7 @@
  * switch arms in `src/views/sidebar-chat.ts`.
  */
 import * as vscode from 'vscode';
-import { AGENTS, SPECIALIST_IDS } from '../../agents';
+import { AGENTS, AGENT_ORDER, SPECIALIST_IDS } from '../../agents';
 import { getSystemSpecs, estimateModelMemoryGB } from '../../system-specs';
 import {
     listInstalledModels,
@@ -15,12 +15,34 @@ import {
 } from '../../extension';
 import type { MessageContext } from './types';
 
+const GPT_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh']);
+
+function normalizeGptEffort(raw: unknown): 'low' | 'medium' | 'high' | 'xhigh' {
+    const v = String(raw || '').trim().toLowerCase();
+    return GPT_EFFORTS.has(v) ? v as any : 'medium';
+}
+
 export async function handleModelsMessage(ctx: MessageContext, msg: any): Promise<boolean> {
     const webviewView = ctx.webviewView;
     switch (msg.type) {
         case 'getModels':
             await ctx.sendModels();
             return true;
+        case 'setDefaultModel': {
+            const model = String(msg.model || '').trim();
+            if (model) {
+                await ctx.ctx.globalState.update('selectedModel', model);
+                webviewView.webview.postMessage({ type: 'defaultModelSaved', ok: true, model });
+            }
+            return true;
+        }
+        case 'setCodexReasoningEffort': {
+            const effort = normalizeGptEffort(msg.effort);
+            await ctx.ctx.globalState.update('codexReasoningEffort', effort);
+            await vscode.workspace.getConfiguration('agentOs').update('codexReasoningEffort', effort, vscode.ConfigurationTarget.Global);
+            webviewView.webview.postMessage({ type: 'codexReasoningEffortSaved', ok: true, effort });
+            return true;
+        }
         /* v2.89.116 — 1인 기업 모드 specialist dock. 사이드바 헤더의 단일
            모델 셀렉터 자리에서 9명 specialist의 모델 매핑을 한눈에 보고
            인라인 변경. dashboard의 "모델 오케스트레이션" 모달과 동일
@@ -37,7 +59,7 @@ export async function handleModelsMessage(ctx: MessageContext, msg: any): Promis
                     safe: estimateModelMemoryGB(m.id) <= specs.safeModelBudgetGB,
                 }));
                 const map = readAgentModelMap();
-                const defaultModel = 'claude-sonnet-4-6';
+                const defaultModel = ctx.ctx.globalState.get<string>('selectedModel', 'claude-sonnet-4-6');
                 const agents = SPECIALIST_IDS.map(id => ({
                     id,
                     name: AGENTS[id]?.name || id,
@@ -95,16 +117,16 @@ export async function handleModelsMessage(ctx: MessageContext, msg: any): Promis
             try {
                 const model = String(msg.model || '').trim();
                 if (!model) {
-                    webviewView.webview.postMessage({ type: 'agentDockSaved', ok: false, error: '모델이 비어있어요' });
+                    webviewView.webview.postMessage({ type: 'agentDockSaved', ok: false, error: '모델이 비어있습니다.' });
                     return true;
                 }
-                const isDefault = model === 'claude-sonnet-4-6';
+                await ctx.ctx.globalState.update('selectedModel', model);
                 const map: Record<string, string> = {};
-                if (!isDefault) {
-                    for (const id of SPECIALIST_IDS) map[id] = model;
+                for (const id of AGENT_ORDER) {
+                    if (AGENTS[id]) map[id] = model;
                 }
                 writeAgentModelMap(map);
-                webviewView.webview.postMessage({ type: 'agentDockSaved', ok: true, all: true, model });
+                webviewView.webview.postMessage({ type: 'agentDockSaved', ok: true, agent: '*', model });
             } catch (e: any) {
                 webviewView.webview.postMessage({ type: 'agentDockSaved', ok: false, error: String(e?.message || e) });
             }

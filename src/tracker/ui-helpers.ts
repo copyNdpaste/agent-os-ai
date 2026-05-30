@@ -249,6 +249,10 @@ export function listAgentTools(agentId: string): AgentTool[] {
   if (names.includes('google_calendar') && names.includes('google_calendar_write')) {
     names = names.filter(n => n !== 'google_calendar');
   }
+  /* Slack approval is optional legacy transport. Current approval/release
+     flow uses Agent OS dashboard, approvals panel, and Telegram. Hide Slack
+     tools unless explicitly re-enabled by editing their tool JSON. */
+  const slackTools = new Set(['slack_notifier', 'slack_approval_worker']);
   const out: AgentTool[] = [];
   for (const name of names) {
     const scriptPath = path.join(dir, `${name}.py`);
@@ -258,6 +262,7 @@ export function listAgentTools(agentId: string): AgentTool[] {
     try {
       if (fs.existsSync(configPath)) config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
     } catch { /* malformed JSON — leave empty */ }
+    if (slackTools.has(name) && config._enabled !== true) continue;
     let readme = '';
     try { if (fs.existsSync(readmePath)) readme = fs.readFileSync(readmePath, 'utf-8'); } catch {}
     // Display name: first H1 in readme, or prettified file name

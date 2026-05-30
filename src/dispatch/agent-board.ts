@@ -43,6 +43,12 @@ export interface BoardEntry {
     sessionDir?: string;
     /** Short blurb shown on the kanban card. */
     summary?: string;
+    /** Untruncated title for the detail modal. Kanban cards still use `title`
+     *  (clipped). Falls back to `title` if absent. */
+    titleFull?: string;
+    /** Untruncated body for the detail modal — full agent output / task
+     *  description, line breaks preserved. Capped to keep payloads sane. */
+    summaryFull?: string;
     description?: string;
     priority?: string;
     /** Failed/blocked badge for session entries even when sorted under 완료. */
@@ -68,10 +74,73 @@ export interface BoardSnapshot {
     builtAt: number;
 }
 
-/** Convert a tracker task into a board entry. cancelled tasks are dropped at
- *  filter time (caller checks). */
+interface BoardHiddenState {
+    ids: string[];
+    sessionDirs: string[];
+}
+
+function boardHiddenPath(companyDir: string): string {
+    return path.join(companyDir, 'board_hidden.json');
+}
+
+function readBoardHidden(companyDir: string): BoardHiddenState {
+    try {
+        const raw = fs.readFileSync(boardHiddenPath(companyDir), 'utf-8');
+        const parsed = JSON.parse(raw);
+        return {
+            ids: Array.isArray(parsed?.ids) ? parsed.ids.filter((x: any) => typeof x === 'string') : [],
+            sessionDirs: Array.isArray(parsed?.sessionDirs) ? parsed.sessionDirs.filter((x: any) => typeof x === 'string') : [],
+        };
+    } catch {
+        return { ids: [], sessionDirs: [] };
+    }
+}
+
+export function hideBoardEntry(companyDir: string, entry: { id?: string; sessionDir?: string }): void {
+    const cur = readBoardHidden(companyDir);
+    const ids = new Set(cur.ids);
+    const sessionDirs = new Set(cur.sessionDirs);
+    if (entry.id) ids.add(entry.id);
+    if (entry.sessionDir) sessionDirs.add(path.resolve(entry.sessionDir));
+    const next: BoardHiddenState = {
+        ids: Array.from(ids).sort(),
+        sessionDirs: Array.from(sessionDirs).sort(),
+    };
+    fs.writeFileSync(boardHiddenPath(companyDir), JSON.stringify(next, null, 2));
+}
+
+function isHiddenEntry(e: BoardEntry, hidden: BoardHiddenState): boolean {
+    if (hidden.ids.includes(e.id)) return true;
+    if (!e.sessionDir) return false;
+    const resolved = path.resolve(e.sessionDir);
+    return hidden.sessionDirs.includes(resolved);
+}
+
+/** Convert a tracker task into a board entry. Generic cancelled tasks are
+ *  hidden, but dashboard board-aborts stay visible as done+aborted so the
+ *  Kanban card does not look like it was deleted. */
 function trackerToEntry(task: TrackerTask): BoardEntry | null {
-    if (task.status === 'cancelled') return null;
+    if (task.status === 'cancelled') {
+        if (!String(task.evidence || '').includes('대시보드 보드에서 중단')) return null;
+        const created = parseIsoOr(task.createdAt, 0);
+        const completed = task.completedAt ? parseIsoOr(task.completedAt, 0) : Date.now();
+        return {
+            id: `tracker:${task.id}`,
+            agentId: (task.agentIds && task.agentIds[0]) || (task.owner === 'user' ? 'user' : 'ceo'),
+            title: task.title,
+            titleFull: task.title,
+            status: 'done',
+            source: 'tracker',
+            sourceStatus: task.status,
+            createdAt: created,
+            updatedAt: completed || created,
+            completedAt: completed,
+            description: task.description,
+            summaryFull: task.description,
+            priority: task.priority,
+            badge: 'aborted',
+        };
+    }
     const status: BoardStatus = task.status === 'done' ? 'done'
         : task.status === 'in_progress' ? 'in_progress'
         : 'pending';
@@ -81,6 +150,7 @@ function trackerToEntry(task: TrackerTask): BoardEntry | null {
         id: `tracker:${task.id}`,
         agentId: (task.agentIds && task.agentIds[0]) || (task.owner === 'user' ? 'user' : 'ceo'),
         title: task.title,
+        titleFull: task.title,
         status,
         source: 'tracker',
         sourceStatus: task.status,
@@ -88,6 +158,7 @@ function trackerToEntry(task: TrackerTask): BoardEntry | null {
         updatedAt: completed || created,
         completedAt: completed,
         description: task.description,
+        summaryFull: task.description,
         priority: task.priority,
     };
 }
@@ -110,6 +181,7 @@ function sessionToEntries(state: SessionState): BoardEntry[] {
             id: `session:${state.id}:ceo`,
             agentId: 'ceo',
             title: shortTitle(state.prompt),
+            titleFull: state.prompt,
             status,
             source: 'session',
             sourceStatus: state.status,
@@ -118,6 +190,7 @@ function sessionToEntries(state: SessionState): BoardEntry[] {
             completedAt: sessionEndedAt,
             sessionDir: state.sessionDir,
             summary: state.currentStep,
+            summaryFull: state.currentStep,
             badge,
         });
         return out;
@@ -127,12 +200,14 @@ function sessionToEntries(state: SessionState): BoardEntry[] {
         let status: BoardStatus;
         let badge: BoardEntry['badge'] | undefined;
         const sourceStatus = agentOut?.status || 'queued';
-        if (!agentOut) {
+        if (state.status === 'aborted') {
+            status = 'done';
+            badge = 'aborted';
+        } else if (!agentOut) {
             /* Plan listed this agent but they never started — session crashed
                before their turn. Show in pending so user can resume mentally. */
             status = state.status === 'running' ? 'pending' : 'pending';
-            if (state.status === 'aborted') badge = 'aborted';
-            else if (state.status === 'failed') badge = 'failed';
+            if (state.status === 'failed') badge = 'failed';
         } else if (agentOut.status === 'streaming') {
             status = 'in_progress';
         } else if (agentOut.status === 'done') {
@@ -147,10 +222,12 @@ function sessionToEntries(state: SessionState): BoardEntry[] {
             status = 'pending';
         }
         const summary = agentOut?.text ? firstNonHeaderLine(agentOut.text, 100) : t.task;
+        const summaryFull = agentOut?.text ? capLength(agentOut.text, 8000) : t.task;
         out.push({
             id: `session:${state.id}:${t.agent}`,
             agentId: t.agent,
             title: shortTitle(t.task),
+            titleFull: t.task,
             status,
             source: 'session',
             sourceStatus,
@@ -159,6 +236,7 @@ function sessionToEntries(state: SessionState): BoardEntry[] {
             completedAt: status === 'done' ? sessionEndedAt : undefined,
             sessionDir: state.sessionDir,
             summary,
+            summaryFull,
             badge,
         });
     }
@@ -199,7 +277,8 @@ export function buildBoard(companyDir: string, filters: BoardFilters = {}): Boar
     const sessionEntries: BoardEntry[] = [];
     for (const s of sessions) sessionEntries.push(...sessionToEntries(s));
 
-    const all = [...trackerEntries, ...sessionEntries];
+    const hidden = readBoardHidden(companyDir);
+    const all = [...trackerEntries, ...sessionEntries].filter(e => !isHiddenEntry(e, hidden));
     const totalBeforeFilter = all.length;
 
     /* Apply filters. */
@@ -256,6 +335,11 @@ function periodStartMs(period: BoardPeriod): number {
 function shortTitle(s: string): string {
     const cleaned = String(s || '').trim().replace(/\s+/g, ' ');
     return cleaned.length > 140 ? cleaned.slice(0, 137) + '…' : cleaned;
+}
+
+function capLength(s: string, max: number): string {
+    const str = String(s || '');
+    return str.length > max ? str.slice(0, max - 1) + '…' : str;
 }
 
 function firstNonHeaderLine(text: string, max: number): string {

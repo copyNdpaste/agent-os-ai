@@ -72,6 +72,7 @@ import {
     updateTrackerTask,
     _safeReadText,
     resolveApproval,
+    approveAllPendingApprovals,
     listPendingApprovals,
     TASK_PRIORITY_LABEL,
     type TaskPriority,
@@ -236,6 +237,11 @@ export async function handleTelegramCommand(text: string): Promise<void> {
                 return `• \`${a.id.slice(-9)}\` ${ag?.emoji || '🤖'} ${a.title}`;
             }).join('\n');
             await sendTelegramReport(`사용법: \`${cmd} <id>\`\n\n*대기 중 (${pending.length}건)*\n${list}`);
+            return;
+        }
+        if (cmd === '/approve' && /^(all|전체|모두|pending)$/i.test(idArg)) {
+            const r = await approveAllPendingApprovals('텔레그램 일괄 승인');
+            await sendTelegramReport(`✅ *승인 일괄 처리 완료*\n\n승인 ${r.approved}건 · 제외 ${r.skipped}건 · 실패 ${r.failed}건\n전체 대기 ${r.total}건`);
             return;
         }
         const decision = cmd === '/approve' ? 'approved' : 'rejected';

@@ -58,7 +58,15 @@ export function readAgentSharedContext(agentId: string, opts?: { lean?: boolean 
   const dir = getCompanyDir();
   const identity = _safeReadText(path.join(dir, '_shared', 'identity.md'));
   const companyGoals = _safeReadText(path.join(dir, '_shared', 'goals.md'));
-  const decisions = _safeReadText(path.join(dir, '_shared', 'decisions.md'));
+  /* v2.92.x — policies.md: 영구 룰 (보안·금기·브랜드 톤). 사장님이 명시적으로
+     관리. 자동 누적 X. decisions.md 와 분리해서 시간 윈도우 영향 안 받음. */
+  const policies = _safeReadText(path.join(dir, '_shared', 'policies.md'));
+  /* v2.92.x — decisions.md 에서 "## 📦 Archive" 이후는 LLM context 제외. 옛 결정이
+     새 결정과 충돌해 LLM 혼란 일으키는 사고 차단. Archive 는 사람이 review 용으로만
+     파일에 보관. */
+  const decisionsRaw = _safeReadText(path.join(dir, '_shared', 'decisions.md'));
+  const archiveIdx = decisionsRaw.search(/^##\s*📦\s*Archive/m);
+  const decisions = archiveIdx >= 0 ? decisionsRaw.slice(0, archiveIdx).trim() : decisionsRaw;
   const memory = _safeReadText(path.join(dir, '_agents', agentId, 'memory.md'));
   const personalGoal = readAgentGoal(agentId);
   const ragMode = readAgentRagMode(agentId);
@@ -84,7 +92,9 @@ export function readAgentSharedContext(agentId: string, opts?: { lean?: boolean 
   } catch { /* vscode unavailable (tests) or project read failed — skip */ }
   if (companyGoals.trim()) ctx += `\n\n[회사 공동 목표]\n${companyGoals.slice(0, 4000)}`;
   if (identity.trim()) ctx += `\n\n[회사 정체성]\n${identity.slice(0, 2000)}`;
-  if (decisions.trim()) ctx += `\n\n[지난 의사결정 로그]\n${decisions.slice(lean ? -1200 : -3000)}`;
+  /* 영구 정책 — 보안·금기·브랜드 룰. 시간 윈도우 영향 안 받음. */
+  if (policies.trim()) ctx += `\n\n[영구 정책 (모든 작업 매번 준수)]\n${policies.slice(0, 4000)}`;
+  if (decisions.trim()) ctx += `\n\n[최근 일회성 결정 로그 (Archive 제외)]\n${decisions.slice(lean ? -1200 : -3000)}`;
   /* Calendar — secretary's google_calendar tool writes upcoming events here.
      Surfaced to every agent so scheduling and time-aware planning work without
      each agent having to call the tool itself. */
@@ -191,7 +201,7 @@ export function readAgentSharedContext(agentId: string, opts?: { lean?: boolean 
      (refreshCalendarCacheViaOAuth, createCalendarEventForTask). Exclude it
      from the tool catalog so the agent doesn't generate 'cd && python'
      commands for calendar operations. Same for google_calendar (iCal read). */
-  const _BUILTIN_TOOLS = new Set(['google_calendar_write', 'google_calendar']);
+  const _BUILTIN_TOOLS = new Set(['google_calendar_write', 'google_calendar', 'slack_notifier', 'slack_approval_worker']);
   const tools = listAgentTools(agentId).filter(t => t.enabled && !_BUILTIN_TOOLS.has(t.name));
   if (tools.length > 0) {
     ctx += `\n\n[사용 가능한 도구 — <run_command>로 직접 실행 가능]\n` + tools.map(t => {

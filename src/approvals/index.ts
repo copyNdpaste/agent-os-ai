@@ -23,3 +23,5 @@ export type { CreateApprovalOptions } from './create';
 export { listPending, findByShortId } from './list';
 
 export { resolveApproval } from './resolve';
+export { approvePendingBulk, isApprovalExcluded } from './bulk';
+export type { BulkResolveResult } from './bulk';

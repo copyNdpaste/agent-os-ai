@@ -32,3 +32,5 @@ IDEAS.md
 # Python __pycache__ — 빌드 산출물
 __pycache__/
 *.pyc
+.vercel
+.env*
